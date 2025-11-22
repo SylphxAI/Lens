@@ -46,6 +46,31 @@
         "zod": "^3.0.0",
       },
     },
+    "packages/lens-transport-http": {
+      "name": "@sylphx/lens-transport-http",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sylphx/lens-core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "tsup": "^8.0.1",
+        "typescript": "^5.3.3",
+      },
+    },
+    "packages/lens-transport-ws": {
+      "name": "@sylphx/lens-transport-ws",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sylphx/lens-core": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/ws": "^8.5.10",
+        "tsup": "^8.0.1",
+        "typescript": "^5.3.3",
+      },
+    },
   },
   "packages": {
     "@babel/runtime": ["@babel/runtime@7.28.4", "", {}, "sha512-Q/N6JNWvIvPnLDvjlE1OUBLPQHH6l3CltCEsHIujp45zQUSSh8K+gHnaEX45yAT1nyngnINhvWtzN+Nb9D8RAQ=="],
@@ -222,11 +247,17 @@
 
     "@sylphx/lens-server": ["@sylphx/lens-server@workspace:packages/lens-server"],
 
+    "@sylphx/lens-transport-http": ["@sylphx/lens-transport-http@workspace:packages/lens-transport-http"],
+
+    "@sylphx/lens-transport-ws": ["@sylphx/lens-transport-ws@workspace:packages/lens-transport-ws"],
+
     "@types/bun": ["@types/bun@1.3.3", "", { "dependencies": { "bun-types": "1.3.3" } }, "sha512-ogrKbJ2X5N0kWLLFKeytG0eHDleBYtngtlbu9cyBKFtNL3cnpDZkNdQj8flVf6WTZUX5ulI9AY1oa7ljhSrp+g=="],
 
     "@types/estree": ["@types/estree@1.0.8", "", {}, "sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w=="],
 
     "@types/node": ["@types/node@24.10.1", "", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-GNWcUTRBgIRJD5zj+Tq0fKOJ5XZajIiBroOF0yvj2bSU1WvNdYS/dn9UxwsujGW4JX06dnHyjV2y9rRaybH0iQ=="],
+
+    "@types/ws": ["@types/ws@8.18.1", "", { "dependencies": { "@types/node": "*" } }, "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg=="],
 
     "acorn": ["acorn@8.15.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-NZyJarBfL7nWwIq+FDL6Zp/yHEhePMNnnJ0y3qfieCrmNvYct8uvtiV41UvlSe6apAfk0fY1FbWx+NwfmpvtTg=="],
 
