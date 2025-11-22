@@ -71,25 +71,53 @@ export type Selected<T, S> = S extends Select<T>
 
 /**
  * Query definition with Zod schemas
+ *
+ * Supports void input for parameterless queries:
+ * @example
+ * ```ts
+ * const query: LensQuery<void, User[]> = {
+ *   type: "query",
+ *   input: void,
+ *   output: z.array(UserSchema),
+ *   resolve: async () => db.users.findAll()
+ * }
+ * ```
  */
 export interface LensQuery<TInput, TOutput> {
 	type: "query";
 	path: string[];
-	input: z.ZodType<TInput>;
+	input: TInput extends void ? void : z.ZodType<TInput>;
 	output: z.ZodType<TOutput>;
-	resolve: (input: TInput) => Promise<TOutput>;
-	subscribe?: (input: TInput) => Observable<TOutput>;
+	resolve: TInput extends void
+		? () => Promise<TOutput>
+		: (input: TInput) => Promise<TOutput>;
+	subscribe?: TInput extends void
+		? () => Observable<TOutput>
+		: (input: TInput) => Observable<TOutput>;
 }
 
 /**
  * Mutation definition with Zod schemas
+ *
+ * Supports void input for parameterless mutations:
+ * @example
+ * ```ts
+ * const mutation: LensMutation<void, { success: boolean }> = {
+ *   type: "mutation",
+ *   input: void,
+ *   output: z.object({ success: z.boolean() }),
+ *   resolve: async () => ({ success: true })
+ * }
+ * ```
  */
 export interface LensMutation<TInput, TOutput> {
 	type: "mutation";
 	path: string[];
-	input: z.ZodType<TInput>;
+	input: TInput extends void ? void : z.ZodType<TInput>;
 	output: z.ZodType<TOutput>;
-	resolve: (input: TInput) => Promise<TOutput>;
+	resolve: TInput extends void
+		? () => Promise<TOutput>
+		: (input: TInput) => Promise<TOutput>;
 }
 
 /**

@@ -31,21 +31,47 @@ import type {
 
 /**
  * Query builder configuration
+ *
+ * Support void input for operations that don't require parameters:
+ * @example
+ * ```ts
+ * lens.query({
+ *   input: void,  // No input required
+ *   output: z.array(UserSchema),
+ *   resolve: async () => db.users.findAll()
+ * })
+ * ```
  */
 export interface QueryConfig<TInput, TOutput> {
-	input: z.ZodType<TInput>;
+	input: TInput extends void ? void : z.ZodType<TInput>;
 	output: z.ZodType<TOutput>;
-	resolve: (input: TInput) => Promise<TOutput>;
-	subscribe?: (input: TInput) => Observable<TOutput>;
+	resolve: TInput extends void
+		? () => Promise<TOutput>
+		: (input: TInput) => Promise<TOutput>;
+	subscribe?: TInput extends void
+		? () => Observable<TOutput>
+		: (input: TInput) => Observable<TOutput>;
 }
 
 /**
  * Mutation builder configuration
+ *
+ * Support void input for operations that don't require parameters:
+ * @example
+ * ```ts
+ * lens.mutation({
+ *   input: void,  // No input required
+ *   output: z.object({ success: z.boolean() }),
+ *   resolve: async () => ({ success: true })
+ * })
+ * ```
  */
 export interface MutationConfig<TInput, TOutput> {
-	input: z.ZodType<TInput>;
+	input: TInput extends void ? void : z.ZodType<TInput>;
 	output: z.ZodType<TOutput>;
-	resolve: (input: TInput) => Promise<TOutput>;
+	resolve: TInput extends void
+		? () => Promise<TOutput>
+		: (input: TInput) => Promise<TOutput>;
 }
 
 /**
