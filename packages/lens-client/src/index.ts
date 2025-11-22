@@ -120,6 +120,7 @@ function createProxy<T extends LensObject>(
 							path,
 							input: actualInput,
 							select: actualOptions?.select,
+							updateMode: actualOptions?.updateMode,
 						});
 					};
 				}
