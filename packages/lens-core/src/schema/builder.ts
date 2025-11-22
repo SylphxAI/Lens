@@ -30,38 +30,55 @@ import type {
 } from "./types.js";
 
 /**
- * Query configuration without input (parameterless)
+ * Helper type: Resolve function signature based on whether input is provided
+ */
+type ResolveFunction<TInputSchema, TOutputSchema extends z.ZodTypeAny, TContext> = TInputSchema extends z.ZodTypeAny
+	? (input: z.infer<TInputSchema>, ctx: TContext) => Promise<z.infer<TOutputSchema>>
+	: (ctx: TContext) => Promise<z.infer<TOutputSchema>>;
+
+/**
+ * Helper type: Subscribe function signature based on whether input is provided
+ */
+type SubscribeFunction<TInputSchema, TOutputSchema extends z.ZodTypeAny, TContext> = TInputSchema extends z.ZodTypeAny
+	? (input: z.infer<TInputSchema>, ctx: TContext) => Observable<z.infer<TOutputSchema>>
+	: (ctx: TContext) => Observable<z.infer<TOutputSchema>>;
+
+/**
+ * Query configuration with optional input
+ * Input is optional - omit for parameterless queries
  *
  * @example
  * ```ts
  * const lens = createLensBuilder<AppContext>();
  *
+ * // With input:
+ * lens.query({
+ *   input: z.object({ id: z.string() }),
+ *   output: UserSchema,
+ *   resolve: async (input, ctx) => ctx.db.users.findOne(input.id)  // Full type inference!
+ * })
+ *
+ * // Without input:
  * lens.query({
  *   output: z.array(UserSchema),
  *   resolve: async (ctx) => ctx.db.users.findAll()  // ctx auto-inferred!
  * })
  * ```
  */
+export interface QueryConfig<TInputSchema extends z.ZodTypeAny | undefined, TOutputSchema extends z.ZodTypeAny, TContext> {
+	input?: TInputSchema;
+	output: TOutputSchema;
+	resolve: ResolveFunction<TInputSchema, TOutputSchema, TContext>;
+	subscribe?: SubscribeFunction<TInputSchema, TOutputSchema, TContext>;
+}
+
+// Legacy interfaces for backward compatibility
 export interface QueryConfigNoInput<TOutputSchema extends z.ZodTypeAny, TContext> {
 	output: TOutputSchema;
 	resolve: (ctx: TContext) => Promise<z.infer<TOutputSchema>>;
 	subscribe?: (ctx: TContext) => Observable<z.infer<TOutputSchema>>;
 }
 
-/**
- * Query configuration with input
- *
- * @example
- * ```ts
- * const lens = createLensBuilder<AppContext>();
- *
- * lens.query({
- *   input: z.object({ id: z.string() }),
- *   output: UserSchema,
- *   resolve: async ({ id }, ctx) => ctx.db.users.findOne({ id })
- * })
- * ```
- */
 export interface QueryConfigWithInput<TInputSchema extends z.ZodTypeAny, TOutputSchema extends z.ZodTypeAny, TContext> {
 	input: TInputSchema;
 	output: TOutputSchema;
@@ -70,58 +87,45 @@ export interface QueryConfigWithInput<TInputSchema extends z.ZodTypeAny, TOutput
 }
 
 /**
- * Mutation configuration without input (parameterless)
+ * Mutation configuration with optional input
+ * Input is optional - omit for parameterless mutations
  *
  * @example
  * ```ts
  * const lens = createLensBuilder<AppContext>();
  *
+ * // With input:
+ * lens.mutation({
+ *   input: z.object({ id: z.string(), data: UpdateSchema }),
+ *   output: UserSchema,
+ *   resolve: async (input, ctx) => ctx.db.users.update(input.id, input.data)  // Full type inference!
+ * })
+ *
+ * // Without input:
  * lens.mutation({
  *   output: z.object({ success: z.boolean() }),
  *   resolve: async (ctx) => ctx.performAction()  // ctx auto-inferred!
  * })
  * ```
  */
+export interface MutationConfig<TInputSchema extends z.ZodTypeAny | undefined, TOutputSchema extends z.ZodTypeAny, TContext> {
+	input?: TInputSchema;
+	output: TOutputSchema;
+	resolve: ResolveFunction<TInputSchema, TOutputSchema, TContext>;
+}
+
+// Legacy interfaces for backward compatibility
 export interface MutationConfigNoInput<TOutputSchema extends z.ZodTypeAny, TContext> {
 	output: TOutputSchema;
 	resolve: (ctx: TContext) => Promise<z.infer<TOutputSchema>>;
 }
 
-/**
- * Mutation configuration with input
- *
- * @example
- * ```ts
- * const lens = createLensBuilder<AppContext>();
- *
- * lens.mutation({
- *   input: z.object({ id: z.string(), data: UpdateSchema }),
- *   output: UserSchema,
- *   resolve: async ({ id, data }, ctx) => ctx.db.users.update({ id }, data)
- * })
- * ```
- */
 export interface MutationConfigWithInput<TInputSchema extends z.ZodTypeAny, TOutputSchema extends z.ZodTypeAny, TContext> {
 	input: TInputSchema;
 	output: TOutputSchema;
 	resolve: (input: z.infer<TInputSchema>, ctx: TContext) => Promise<z.infer<TOutputSchema>>;
 }
 
-// Legacy type aliases for backward compatibility
-// Note: These use the old generic pattern. Prefer direct use of the specific interfaces.
-export type QueryConfig<TInputSchema extends z.ZodTypeAny | void, TOutputSchema extends z.ZodTypeAny, TContext> =
-	TInputSchema extends void
-		? QueryConfigNoInput<TOutputSchema, TContext>
-		: TInputSchema extends z.ZodTypeAny
-			? QueryConfigWithInput<TInputSchema, TOutputSchema, TContext>
-			: never;
-
-export type MutationConfig<TInputSchema extends z.ZodTypeAny | void, TOutputSchema extends z.ZodTypeAny, TContext> =
-	TInputSchema extends void
-		? MutationConfigNoInput<TOutputSchema, TContext>
-		: TInputSchema extends z.ZodTypeAny
-			? MutationConfigWithInput<TInputSchema, TOutputSchema, TContext>
-			: never;
 
 /**
  * Schema builder class with typed context
@@ -129,107 +133,83 @@ export type MutationConfig<TInputSchema extends z.ZodTypeAny | void, TOutputSche
  */
 class LensBuilder<TContext = any> {
 	/**
-	 * Define a parameterless query operation with auto-inferred context
+	 * Define a query operation with full type inference
+	 * Input is optional - omit for parameterless queries
 	 *
 	 * @example
 	 * ```ts
 	 * const lens = createLensBuilder<AppContext>();
 	 *
+	 * // With input:
+	 * const getUser = lens.query({
+	 *   input: z.object({ id: z.string() }),
+	 *   output: UserSchema,
+	 *   resolve: async (input, ctx) => {
+	 *     // input: { id: string }, ctx: AppContext - fully typed!
+	 *     return ctx.db.users.findOne(input.id);
+	 *   }
+	 * });
+	 *
+	 * // Without input:
 	 * const listUsers = lens.query({
 	 *   output: z.array(UserSchema),
 	 *   resolve: async (ctx) => {
-	 *     // ctx is AppContext - fully typed!
+	 *     // ctx: AppContext - fully typed!
 	 *     return ctx.db.users.findAll();
 	 *   }
 	 * });
 	 * ```
 	 */
-	query<TOutputSchema extends z.ZodTypeAny>(
-		config: QueryConfigNoInput<TOutputSchema, TContext>
-	): LensQuery<void, z.infer<TOutputSchema>, TContext>;
-
-	/**
-	 * Define a query operation with input and auto-inferred context
-	 *
-	 * @example
-	 * ```ts
-	 * const lens = createLensBuilder<AppContext>();
-	 *
-	 * const getUser = lens.query({
-	 *   input: z.object({ id: z.string() }),
-	 *   output: UserSchema,
-	 *   resolve: async ({ id }, ctx) => {
-	 *     // ctx is AppContext - fully typed!
-	 *     return ctx.db.users.findOne({ id });
-	 *   }
-	 * });
-	 * ```
-	 */
-	query<TInputSchema extends z.ZodTypeAny, TOutputSchema extends z.ZodTypeAny>(
-		config: QueryConfigWithInput<TInputSchema, TOutputSchema, TContext>
-	): LensQuery<z.infer<TInputSchema>, z.infer<TOutputSchema>, TContext>;
-
-	// Implementation
-	query(config: QueryConfigNoInput<any, TContext> | QueryConfigWithInput<any, any, TContext>): any {
+	query<TInputSchema extends z.ZodTypeAny | undefined = undefined, TOutputSchema extends z.ZodTypeAny = z.ZodTypeAny>(
+		config: QueryConfig<TInputSchema, TOutputSchema, TContext>
+	): LensQuery<TInputSchema extends z.ZodTypeAny ? z.infer<TInputSchema> : void, z.infer<TOutputSchema>, TContext> {
 		return {
 			type: "query" as const,
 			path: [],
-			input: (config as any).input,
-			output: config.output,
-			resolve: config.resolve,
-			subscribe: (config as any).subscribe,
+			input: config.input as any,
+			output: config.output as any,
+			resolve: config.resolve as any,
+			subscribe: config.subscribe as any,
 		};
 	}
 
 	/**
-	 * Define a parameterless mutation operation with auto-inferred context
+	 * Define a mutation operation with full type inference
+	 * Input is optional - omit for parameterless mutations
 	 *
 	 * @example
 	 * ```ts
 	 * const lens = createLensBuilder<AppContext>();
 	 *
+	 * // With input:
+	 * const updateUser = lens.mutation({
+	 *   input: z.object({ id: z.string(), data: UpdateSchema }),
+	 *   output: UserSchema,
+	 *   resolve: async (input, ctx) => {
+	 *     // input: { id: string, data: ... }, ctx: AppContext - fully typed!
+	 *     return ctx.db.users.update(input.id, input.data);
+	 *   }
+	 * });
+	 *
+	 * // Without input:
 	 * const performAction = lens.mutation({
 	 *   output: z.object({ success: z.boolean() }),
 	 *   resolve: async (ctx) => {
-	 *     // ctx is AppContext - fully typed!
+	 *     // ctx: AppContext - fully typed!
 	 *     return ctx.performAction();
 	 *   }
 	 * });
 	 * ```
 	 */
-	mutation<TOutputSchema extends z.ZodTypeAny>(
-		config: MutationConfigNoInput<TOutputSchema, TContext>
-	): LensMutation<void, z.infer<TOutputSchema>, TContext>;
-
-	/**
-	 * Define a mutation operation with input and auto-inferred context
-	 *
-	 * @example
-	 * ```ts
-	 * const lens = createLensBuilder<AppContext>();
-	 *
-	 * const updateUser = lens.mutation({
-	 *   input: z.object({ id: z.string(), data: UpdateSchema }),
-	 *   output: UserSchema,
-	 *   resolve: async ({ id, data }, ctx) => {
-	 *     // ctx is AppContext - fully typed!
-	 *     return ctx.db.users.update({ id }, data);
-	 *   }
-	 * });
-	 * ```
-	 */
-	mutation<TInputSchema extends z.ZodTypeAny, TOutputSchema extends z.ZodTypeAny>(
-		config: MutationConfigWithInput<TInputSchema, TOutputSchema, TContext>
-	): LensMutation<z.infer<TInputSchema>, z.infer<TOutputSchema>, TContext>;
-
-	// Implementation
-	mutation(config: MutationConfigNoInput<any, TContext> | MutationConfigWithInput<any, any, TContext>): any {
+	mutation<TInputSchema extends z.ZodTypeAny | undefined = undefined, TOutputSchema extends z.ZodTypeAny = z.ZodTypeAny>(
+		config: MutationConfig<TInputSchema, TOutputSchema, TContext>
+	): LensMutation<TInputSchema extends z.ZodTypeAny ? z.infer<TInputSchema> : void, z.infer<TOutputSchema>, TContext> {
 		return {
 			type: "mutation" as const,
 			path: [],
-			input: (config as any).input,
-			output: config.output,
-			resolve: config.resolve,
+			input: config.input as any,
+			output: config.output as any,
+			resolve: config.resolve as any,
 		};
 	}
 
