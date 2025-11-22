@@ -11,6 +11,20 @@
         "typescript": "^5.9.3",
       },
     },
+    "packages/lens-client": {
+      "name": "@sylphx/lens-client",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sylphx/lens-core": "workspace:*",
+      },
+      "devDependencies": {
+        "tsup": "^8.3.5",
+        "typescript": "^5.7.2",
+      },
+      "peerDependencies": {
+        "@sylphx/lens-core": "workspace:*",
+      },
+    },
     "packages/lens-core": {
       "name": "@sylphx/lens-core",
       "version": "0.1.0",
@@ -73,6 +87,20 @@
         "@types/bun": "latest",
         "tsup": "^8.0.1",
         "typescript": "^5.3.3",
+      },
+    },
+    "packages/lens-transport-sse": {
+      "name": "@sylphx/lens-transport-sse",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sylphx/lens-core": "workspace:*",
+      },
+      "devDependencies": {
+        "tsup": "^8.3.5",
+        "typescript": "^5.7.2",
+      },
+      "peerDependencies": {
+        "@sylphx/lens-core": "workspace:*",
       },
     },
     "packages/lens-transport-ws": {
@@ -260,6 +288,8 @@
 
     "@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.53.3", "", { "os": "win32", "cpu": "x64" }, "sha512-UhTd8u31dXadv0MopwGgNOBpUVROFKWVQgAg5N1ESyCz8AuBcMqm4AuTjrwgQKGDfoFuz02EuMRHQIw/frmYKQ=="],
 
+    "@sylphx/lens-client": ["@sylphx/lens-client@workspace:packages/lens-client"],
+
     "@sylphx/lens-core": ["@sylphx/lens-core@workspace:packages/lens-core"],
 
     "@sylphx/lens-react": ["@sylphx/lens-react@workspace:packages/lens-react"],
@@ -267,6 +297,8 @@
     "@sylphx/lens-server": ["@sylphx/lens-server@workspace:packages/lens-server"],
 
     "@sylphx/lens-transport-http": ["@sylphx/lens-transport-http@workspace:packages/lens-transport-http"],
+
+    "@sylphx/lens-transport-sse": ["@sylphx/lens-transport-sse@workspace:packages/lens-transport-sse"],
 
     "@sylphx/lens-transport-ws": ["@sylphx/lens-transport-ws@workspace:packages/lens-transport-ws"],
 
