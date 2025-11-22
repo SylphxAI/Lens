@@ -30,53 +30,91 @@ import type {
 } from "./types.js";
 
 /**
- * Query builder configuration
+ * Query configuration without input (parameterless)
  *
- * Support void input and typed context with auto-inference:
  * @example
  * ```ts
  * const lens = createLensBuilder<AppContext>();
  *
  * lens.query({
- *   input: void,
  *   output: z.array(UserSchema),
  *   resolve: async (ctx) => ctx.db.users.findAll()  // ctx auto-inferred!
  * })
  * ```
  */
-export interface QueryConfig<TInput, TOutput, TContext> {
-	input: TInput extends void ? void : z.ZodType<TInput>;
+export interface QueryConfigNoInput<TOutput, TContext> {
 	output: z.ZodType<TOutput>;
-	resolve: TInput extends void
-		? (ctx: TContext) => Promise<TOutput>
-		: (input: TInput, ctx: TContext) => Promise<TOutput>;
-	subscribe?: TInput extends void
-		? (ctx: TContext) => Observable<TOutput>
-		: (input: TInput, ctx: TContext) => Observable<TOutput>;
+	resolve: (ctx: TContext) => Promise<TOutput>;
+	subscribe?: (ctx: TContext) => Observable<TOutput>;
 }
 
 /**
- * Mutation builder configuration
+ * Query configuration with input
  *
- * Support void input and typed context with auto-inference:
+ * @example
+ * ```ts
+ * const lens = createLensBuilder<AppContext>();
+ *
+ * lens.query({
+ *   input: z.object({ id: z.string() }),
+ *   output: UserSchema,
+ *   resolve: async ({ id }, ctx) => ctx.db.users.findOne({ id })
+ * })
+ * ```
+ */
+export interface QueryConfigWithInput<TInput, TOutput, TContext> {
+	input: z.ZodType<TInput>;
+	output: z.ZodType<TOutput>;
+	resolve: (input: TInput, ctx: TContext) => Promise<TOutput>;
+	subscribe?: (input: TInput, ctx: TContext) => Observable<TOutput>;
+}
+
+/**
+ * Mutation configuration without input (parameterless)
+ *
  * @example
  * ```ts
  * const lens = createLensBuilder<AppContext>();
  *
  * lens.mutation({
- *   input: void,
  *   output: z.object({ success: z.boolean() }),
  *   resolve: async (ctx) => ctx.performAction()  // ctx auto-inferred!
  * })
  * ```
  */
-export interface MutationConfig<TInput, TOutput, TContext> {
-	input: TInput extends void ? void : z.ZodType<TInput>;
+export interface MutationConfigNoInput<TOutput, TContext> {
 	output: z.ZodType<TOutput>;
-	resolve: TInput extends void
-		? (ctx: TContext) => Promise<TOutput>
-		: (input: TInput, ctx: TContext) => Promise<TOutput>;
+	resolve: (ctx: TContext) => Promise<TOutput>;
 }
+
+/**
+ * Mutation configuration with input
+ *
+ * @example
+ * ```ts
+ * const lens = createLensBuilder<AppContext>();
+ *
+ * lens.mutation({
+ *   input: z.object({ id: z.string(), data: UpdateSchema }),
+ *   output: UserSchema,
+ *   resolve: async ({ id, data }, ctx) => ctx.db.users.update({ id }, data)
+ * })
+ * ```
+ */
+export interface MutationConfigWithInput<TInput, TOutput, TContext> {
+	input: z.ZodType<TInput>;
+	output: z.ZodType<TOutput>;
+	resolve: (input: TInput, ctx: TContext) => Promise<TOutput>;
+}
+
+// Legacy type aliases for backward compatibility
+export type QueryConfig<TInput, TOutput, TContext> = TInput extends void
+	? QueryConfigNoInput<TOutput, TContext>
+	: QueryConfigWithInput<TInput, TOutput, TContext>;
+
+export type MutationConfig<TInput, TOutput, TContext> = TInput extends void
+	? MutationConfigNoInput<TOutput, TContext>
+	: MutationConfigWithInput<TInput, TOutput, TContext>;
 
 /**
  * Schema builder class with typed context
@@ -84,7 +122,27 @@ export interface MutationConfig<TInput, TOutput, TContext> {
  */
 class LensBuilder<TContext = any> {
 	/**
-	 * Define a query operation with auto-inferred context
+	 * Define a parameterless query operation with auto-inferred context
+	 *
+	 * @example
+	 * ```ts
+	 * const lens = createLensBuilder<AppContext>();
+	 *
+	 * const listUsers = lens.query({
+	 *   output: z.array(UserSchema),
+	 *   resolve: async (ctx) => {
+	 *     // ctx is AppContext - fully typed!
+	 *     return ctx.db.users.findAll();
+	 *   }
+	 * });
+	 * ```
+	 */
+	query<TOutput>(
+		config: QueryConfigNoInput<TOutput, TContext>
+	): LensQuery<void, TOutput, TContext>;
+
+	/**
+	 * Define a query operation with input and auto-inferred context
 	 *
 	 * @example
 	 * ```ts
@@ -101,8 +159,11 @@ class LensBuilder<TContext = any> {
 	 * ```
 	 */
 	query<TInput, TOutput>(
-		config: QueryConfig<TInput, TOutput, TContext>
-	): LensQuery<TInput, TOutput, TContext> {
+		config: QueryConfigWithInput<TInput, TOutput, TContext>
+	): LensQuery<TInput, TOutput, TContext>;
+
+	// Implementation
+	query<TInput, TOutput>(config: any): any {
 		return {
 			type: "query" as const,
 			path: [],
@@ -114,7 +175,27 @@ class LensBuilder<TContext = any> {
 	}
 
 	/**
-	 * Define a mutation operation with auto-inferred context
+	 * Define a parameterless mutation operation with auto-inferred context
+	 *
+	 * @example
+	 * ```ts
+	 * const lens = createLensBuilder<AppContext>();
+	 *
+	 * const performAction = lens.mutation({
+	 *   output: z.object({ success: z.boolean() }),
+	 *   resolve: async (ctx) => {
+	 *     // ctx is AppContext - fully typed!
+	 *     return ctx.performAction();
+	 *   }
+	 * });
+	 * ```
+	 */
+	mutation<TOutput>(
+		config: MutationConfigNoInput<TOutput, TContext>
+	): LensMutation<void, TOutput, TContext>;
+
+	/**
+	 * Define a mutation operation with input and auto-inferred context
 	 *
 	 * @example
 	 * ```ts
@@ -131,8 +212,11 @@ class LensBuilder<TContext = any> {
 	 * ```
 	 */
 	mutation<TInput, TOutput>(
-		config: MutationConfig<TInput, TOutput, TContext>
-	): LensMutation<TInput, TOutput, TContext> {
+		config: MutationConfigWithInput<TInput, TOutput, TContext>
+	): LensMutation<TInput, TOutput, TContext>;
+
+	// Implementation
+	mutation<TInput, TOutput>(config: any): any {
 		return {
 			type: "mutation" as const,
 			path: [],
