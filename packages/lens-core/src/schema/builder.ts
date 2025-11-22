@@ -162,14 +162,14 @@ class LensBuilder<TContext = any> {
 	 */
 	query<TInputSchema extends z.ZodTypeAny | undefined = undefined, TOutputSchema extends z.ZodTypeAny = z.ZodTypeAny>(
 		config: QueryConfig<TInputSchema, TOutputSchema, TContext>
-	): LensQuery<TInputSchema extends z.ZodTypeAny ? z.infer<TInputSchema> : void, z.infer<TOutputSchema>, TContext> {
+	): LensQuery<TInputSchema, TOutputSchema, TContext> {
 		return {
 			type: "query" as const,
 			path: [],
-			input: config.input as any,
-			output: config.output as any,
-			resolve: config.resolve as any,
-			subscribe: config.subscribe as any,
+			input: config.input as TInputSchema, // Safe: config.input is TInputSchema | undefined, matches constraint
+			output: config.output,
+			resolve: config.resolve,
+			subscribe: config.subscribe,
 		};
 	}
 
@@ -203,13 +203,13 @@ class LensBuilder<TContext = any> {
 	 */
 	mutation<TInputSchema extends z.ZodTypeAny | undefined = undefined, TOutputSchema extends z.ZodTypeAny = z.ZodTypeAny>(
 		config: MutationConfig<TInputSchema, TOutputSchema, TContext>
-	): LensMutation<TInputSchema extends z.ZodTypeAny ? z.infer<TInputSchema> : void, z.infer<TOutputSchema>, TContext> {
+	): LensMutation<TInputSchema, TOutputSchema, TContext> {
 		return {
 			type: "mutation" as const,
 			path: [],
-			input: config.input as any,
-			output: config.output as any,
-			resolve: config.resolve as any,
+			input: config.input as TInputSchema, // Safe: config.input is TInputSchema | undefined, matches constraint
+			output: config.output,
+			resolve: config.resolve,
 		};
 	}
 

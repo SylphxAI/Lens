@@ -72,52 +72,74 @@ export type Selected<T, S> = S extends Select<T>
 /**
  * Query definition with Zod schemas
  *
- * Supports void input for parameterless queries and typed context:
+ * Stores schemas directly for maximum type safety.
+ * Input schema is optional - undefined for parameterless queries.
+ *
  * @example
  * ```ts
- * const query: LensQuery<void, User[], AppContext> = {
+ * // With input:
+ * const getUserQuery: LensQuery<typeof UserIdSchema, typeof UserSchema, AppContext> = {
  *   type: "query",
- *   input: void,
+ *   input: z.object({ id: z.string() }),
+ *   output: UserSchema,
+ *   resolve: async (input, ctx) => ctx.db.users.findOne(input.id)
+ * }
+ *
+ * // Without input:
+ * const listUsersQuery: LensQuery<undefined, typeof UserArraySchema, AppContext> = {
+ *   type: "query",
+ *   input: undefined,
  *   output: z.array(UserSchema),
- *   resolve: async (ctx) => ctx.db.users.findAll()  // ctx auto-inferred!
+ *   resolve: async (ctx) => ctx.db.users.findAll()
  * }
  * ```
  */
-export interface LensQuery<TInput, TOutput, TContext = any> {
+export interface LensQuery<TInputSchema extends z.ZodTypeAny | undefined, TOutputSchema extends z.ZodTypeAny, TContext = any> {
 	type: "query";
 	path: string[];
-	input: TInput extends void ? void : z.ZodType<TInput>;
-	output: z.ZodType<TOutput>;
-	resolve: TInput extends void
-		? (ctx: TContext) => Promise<TOutput>
-		: (input: TInput, ctx: TContext) => Promise<TOutput>;
-	subscribe?: TInput extends void
-		? (ctx: TContext) => Observable<TOutput>
-		: (input: TInput, ctx: TContext) => Observable<TOutput>;
+	input: TInputSchema;
+	output: TOutputSchema;
+	resolve: TInputSchema extends z.ZodTypeAny
+		? (input: z.infer<TInputSchema>, ctx: TContext) => Promise<z.infer<TOutputSchema>>
+		: (ctx: TContext) => Promise<z.infer<TOutputSchema>>;
+	subscribe?: TInputSchema extends z.ZodTypeAny
+		? (input: z.infer<TInputSchema>, ctx: TContext) => Observable<z.infer<TOutputSchema>>
+		: (ctx: TContext) => Observable<z.infer<TOutputSchema>>;
 }
 
 /**
  * Mutation definition with Zod schemas
  *
- * Supports void input for parameterless mutations and typed context:
+ * Stores schemas directly for maximum type safety.
+ * Input schema is optional - undefined for parameterless mutations.
+ *
  * @example
  * ```ts
- * const mutation: LensMutation<void, { success: boolean }, AppContext> = {
+ * // With input:
+ * const updateUserMutation: LensMutation<typeof UpdateUserSchema, typeof UserSchema, AppContext> = {
  *   type: "mutation",
- *   input: void,
+ *   input: z.object({ id: z.string(), data: UpdateSchema }),
+ *   output: UserSchema,
+ *   resolve: async (input, ctx) => ctx.db.users.update(input.id, input.data)
+ * }
+ *
+ * // Without input:
+ * const performActionMutation: LensMutation<undefined, typeof SuccessSchema, AppContext> = {
+ *   type: "mutation",
+ *   input: undefined,
  *   output: z.object({ success: z.boolean() }),
- *   resolve: async (ctx) => ctx.performAction()  // ctx auto-inferred!
+ *   resolve: async (ctx) => ctx.performAction()
  * }
  * ```
  */
-export interface LensMutation<TInput, TOutput, TContext = any> {
+export interface LensMutation<TInputSchema extends z.ZodTypeAny | undefined, TOutputSchema extends z.ZodTypeAny, TContext = any> {
 	type: "mutation";
 	path: string[];
-	input: TInput extends void ? void : z.ZodType<TInput>;
-	output: z.ZodType<TOutput>;
-	resolve: TInput extends void
-		? (ctx: TContext) => Promise<TOutput>
-		: (input: TInput, ctx: TContext) => Promise<TOutput>;
+	input: TInputSchema;
+	output: TOutputSchema;
+	resolve: TInputSchema extends z.ZodTypeAny
+		? (input: z.infer<TInputSchema>, ctx: TContext) => Promise<z.infer<TOutputSchema>>
+		: (ctx: TContext) => Promise<z.infer<TOutputSchema>>;
 }
 
 /**
