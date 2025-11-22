@@ -1,0 +1,44 @@
+{
+	"name": "@sylphx/lens-react",
+	"version": "0.1.0",
+	"description": "React hooks for Lens - Type-safe, real-time React integration",
+	"type": "module",
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": "./dist/index.js",
+			"types": "./dist/index.d.ts"
+		}
+	},
+	"files": [
+		"dist"
+	],
+	"scripts": {
+		"build": "tsup",
+		"dev": "tsup --watch",
+		"test": "bun test",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@sylphx/lens-core": "workspace:*"
+	},
+	"peerDependencies": {
+		"react": "^18.0.0 || ^19.0.0"
+	},
+	"devDependencies": {
+		"@types/bun": "latest",
+		"@types/react": "^18.2.0",
+		"react": "^19.0.0",
+		"tsup": "^8.0.1",
+		"typescript": "^5.3.3"
+	},
+	"keywords": [
+		"lens",
+		"react",
+		"hooks",
+		"type-safe",
+		"real-time"
+	],
+	"license": "MIT"
+}
