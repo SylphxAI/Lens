@@ -72,61 +72,61 @@ export type Selected<T, S> = S extends Select<T>
 /**
  * Query definition with Zod schemas
  *
- * Supports void input for parameterless queries:
+ * Supports void input for parameterless queries and typed context:
  * @example
  * ```ts
- * const query: LensQuery<void, User[]> = {
+ * const query: LensQuery<void, User[], AppContext> = {
  *   type: "query",
  *   input: void,
  *   output: z.array(UserSchema),
- *   resolve: async () => db.users.findAll()
+ *   resolve: async (ctx) => ctx.db.users.findAll()  // ctx auto-inferred!
  * }
  * ```
  */
-export interface LensQuery<TInput, TOutput> {
+export interface LensQuery<TInput, TOutput, TContext = any> {
 	type: "query";
 	path: string[];
 	input: TInput extends void ? void : z.ZodType<TInput>;
 	output: z.ZodType<TOutput>;
 	resolve: TInput extends void
-		? () => Promise<TOutput>
-		: (input: TInput) => Promise<TOutput>;
+		? (ctx: TContext) => Promise<TOutput>
+		: (input: TInput, ctx: TContext) => Promise<TOutput>;
 	subscribe?: TInput extends void
-		? () => Observable<TOutput>
-		: (input: TInput) => Observable<TOutput>;
+		? (ctx: TContext) => Observable<TOutput>
+		: (input: TInput, ctx: TContext) => Observable<TOutput>;
 }
 
 /**
  * Mutation definition with Zod schemas
  *
- * Supports void input for parameterless mutations:
+ * Supports void input for parameterless mutations and typed context:
  * @example
  * ```ts
- * const mutation: LensMutation<void, { success: boolean }> = {
+ * const mutation: LensMutation<void, { success: boolean }, AppContext> = {
  *   type: "mutation",
  *   input: void,
  *   output: z.object({ success: z.boolean() }),
- *   resolve: async () => ({ success: true })
+ *   resolve: async (ctx) => ctx.performAction()  // ctx auto-inferred!
  * }
  * ```
  */
-export interface LensMutation<TInput, TOutput> {
+export interface LensMutation<TInput, TOutput, TContext = any> {
 	type: "mutation";
 	path: string[];
 	input: TInput extends void ? void : z.ZodType<TInput>;
 	output: z.ZodType<TOutput>;
 	resolve: TInput extends void
-		? () => Promise<TOutput>
-		: (input: TInput) => Promise<TOutput>;
+		? (ctx: TContext) => Promise<TOutput>
+		: (input: TInput, ctx: TContext) => Promise<TOutput>;
 }
 
 /**
  * Object grouping queries and mutations
  */
 export type LensObject<T = any> = {
-	[K in keyof T]: T[K] extends LensQuery<any, any>
+	[K in keyof T]: T[K] extends LensQuery<any, any, any>
 		? T[K]
-		: T[K] extends LensMutation<any, any>
+		: T[K] extends LensMutation<any, any, any>
 			? T[K]
 			: T[K] extends LensObject<any>
 				? T[K]
@@ -136,16 +136,22 @@ export type LensObject<T = any> = {
 /**
  * Type inference utilities
  */
-export type InferInput<T> = T extends LensQuery<infer I, any>
+export type InferInput<T> = T extends LensQuery<infer I, any, any>
 	? I
-	: T extends LensMutation<infer I, any>
+	: T extends LensMutation<infer I, any, any>
 		? I
 		: never;
 
-export type InferOutput<T> = T extends LensQuery<any, infer O>
+export type InferOutput<T> = T extends LensQuery<any, infer O, any>
 	? O
-	: T extends LensMutation<any, infer O>
+	: T extends LensMutation<any, infer O, any>
 		? O
+		: never;
+
+export type InferContext<T> = T extends LensQuery<any, any, infer C>
+	? C
+	: T extends LensMutation<any, any, infer C>
+		? C
 		: never;
 
 /**

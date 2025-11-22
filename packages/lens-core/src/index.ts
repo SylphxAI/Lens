@@ -6,7 +6,7 @@
  */
 
 // Schema builder
-export { lens } from "./schema/builder.js";
+export { lens, createLensBuilder } from "./schema/builder.js";
 export type {
 	QueryConfig,
 	MutationConfig,
@@ -23,6 +23,7 @@ export type {
 	Selected,
 	InferInput,
 	InferOutput,
+	InferContext,
 	UpdateMode,
 	UpdatePayload,
 } from "./schema/types.js";

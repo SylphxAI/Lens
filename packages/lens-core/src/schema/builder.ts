@@ -32,68 +32,77 @@ import type {
 /**
  * Query builder configuration
  *
- * Support void input for operations that don't require parameters:
+ * Support void input and typed context with auto-inference:
  * @example
  * ```ts
+ * const lens = createLensBuilder<AppContext>();
+ *
  * lens.query({
- *   input: void,  // No input required
+ *   input: void,
  *   output: z.array(UserSchema),
- *   resolve: async () => db.users.findAll()
+ *   resolve: async (ctx) => ctx.db.users.findAll()  // ctx auto-inferred!
  * })
  * ```
  */
-export interface QueryConfig<TInput, TOutput> {
+export interface QueryConfig<TInput, TOutput, TContext> {
 	input: TInput extends void ? void : z.ZodType<TInput>;
 	output: z.ZodType<TOutput>;
 	resolve: TInput extends void
-		? () => Promise<TOutput>
-		: (input: TInput) => Promise<TOutput>;
+		? (ctx: TContext) => Promise<TOutput>
+		: (input: TInput, ctx: TContext) => Promise<TOutput>;
 	subscribe?: TInput extends void
-		? () => Observable<TOutput>
-		: (input: TInput) => Observable<TOutput>;
+		? (ctx: TContext) => Observable<TOutput>
+		: (input: TInput, ctx: TContext) => Observable<TOutput>;
 }
 
 /**
  * Mutation builder configuration
  *
- * Support void input for operations that don't require parameters:
+ * Support void input and typed context with auto-inference:
  * @example
  * ```ts
+ * const lens = createLensBuilder<AppContext>();
+ *
  * lens.mutation({
- *   input: void,  // No input required
+ *   input: void,
  *   output: z.object({ success: z.boolean() }),
- *   resolve: async () => ({ success: true })
+ *   resolve: async (ctx) => ctx.performAction()  // ctx auto-inferred!
  * })
  * ```
  */
-export interface MutationConfig<TInput, TOutput> {
+export interface MutationConfig<TInput, TOutput, TContext> {
 	input: TInput extends void ? void : z.ZodType<TInput>;
 	output: z.ZodType<TOutput>;
 	resolve: TInput extends void
-		? () => Promise<TOutput>
-		: (input: TInput) => Promise<TOutput>;
+		? (ctx: TContext) => Promise<TOutput>
+		: (input: TInput, ctx: TContext) => Promise<TOutput>;
 }
 
 /**
- * Schema builder class
+ * Schema builder class with typed context
+ * Context type flows through all queries/mutations for auto-inference
  */
-class LensBuilder {
+class LensBuilder<TContext = any> {
 	/**
-	 * Define a query operation
+	 * Define a query operation with auto-inferred context
 	 *
 	 * @example
 	 * ```ts
+	 * const lens = createLensBuilder<AppContext>();
+	 *
 	 * const getUser = lens.query({
 	 *   input: z.object({ id: z.string() }),
 	 *   output: UserSchema,
-	 *   resolve: async ({ id }) => db.users.findOne({ id }),
-	 *   subscribe: ({ id }) => eventStream.subscribe(`user:${id}`)
+	 *   resolve: async ({ id }, ctx) => {
+	 *     // ctx is AppContext - fully typed!
+	 *     return ctx.db.users.findOne({ id });
+	 *   }
 	 * });
 	 * ```
 	 */
 	query<TInput, TOutput>(
-		config: QueryConfig<TInput, TOutput>
-	): LensQuery<TInput, TOutput> {
+		config: QueryConfig<TInput, TOutput, TContext>
+	): LensQuery<TInput, TOutput, TContext> {
 		return {
 			type: "query" as const,
 			path: [],
@@ -105,20 +114,25 @@ class LensBuilder {
 	}
 
 	/**
-	 * Define a mutation operation
+	 * Define a mutation operation with auto-inferred context
 	 *
 	 * @example
 	 * ```ts
+	 * const lens = createLensBuilder<AppContext>();
+	 *
 	 * const updateUser = lens.mutation({
 	 *   input: z.object({ id: z.string(), data: UpdateSchema }),
 	 *   output: UserSchema,
-	 *   resolve: async ({ id, data }) => db.users.update({ id }, data)
+	 *   resolve: async ({ id, data }, ctx) => {
+	 *     // ctx is AppContext - fully typed!
+	 *     return ctx.db.users.update({ id }, data);
+	 *   }
 	 * });
 	 * ```
 	 */
 	mutation<TInput, TOutput>(
-		config: MutationConfig<TInput, TOutput>
-	): LensMutation<TInput, TOutput> {
+		config: MutationConfig<TInput, TOutput, TContext>
+	): LensMutation<TInput, TOutput, TContext> {
 		return {
 			type: "mutation" as const,
 			path: [],
@@ -169,6 +183,51 @@ class LensBuilder {
 }
 
 /**
- * Singleton builder instance
+ * Create a typed Lens builder with context type inference
+ *
+ * This is the recommended way to create a Lens API with full type safety.
+ * Context type is specified once and auto-inferred everywhere.
+ *
+ * @example
+ * ```ts
+ * // Define your context type
+ * interface AppContext {
+ *   db: Database;
+ *   user: User;
+ * }
+ *
+ * // Create typed builder (one-time setup)
+ * const lens = createLensBuilder<AppContext>();
+ *
+ * // All handlers now have auto-inferred context!
+ * export const api = lens.object({
+ *   users: lens.object({
+ *     list: lens.query({
+ *       input: void,
+ *       output: z.array(UserSchema),
+ *       resolve: async (ctx) => {
+ *         // ctx is AppContext - fully typed!
+ *         return ctx.db.users.findAll();
+ *       }
+ *     }),
+ *     get: lens.query({
+ *       input: z.object({ id: z.string() }),
+ *       output: UserSchema,
+ *       resolve: async ({ id }, ctx) => {
+ *         // ctx is AppContext - auto-inferred!
+ *         return ctx.db.users.findOne({ id });
+ *       }
+ *     })
+ *   })
+ * });
+ * ```
  */
-export const lens = new LensBuilder();
+export function createLensBuilder<TContext = any>(): LensBuilder<TContext> {
+	return new LensBuilder<TContext>();
+}
+
+/**
+ * Default untyped builder (legacy)
+ * @deprecated Use createLensBuilder<YourContext>() for type safety
+ */
+export const lens = new LensBuilder<any>();
