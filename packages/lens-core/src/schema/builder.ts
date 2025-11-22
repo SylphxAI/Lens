@@ -128,10 +128,165 @@ export interface MutationConfigWithInput<TInputSchema extends z.ZodTypeAny, TOut
 
 
 /**
+ * Procedure builder for fluent API
+ * Enables perfect type inference through method chaining
+ */
+export interface ProcedureBuilder<TContext, TInputSchema = undefined, TOutputSchema = undefined> {
+	/**
+	 * Set input schema (optional - omit for parameterless operations)
+	 */
+	input<TSchema extends z.ZodTypeAny>(schema: TSchema): ProcedureBuilder<TContext, TSchema, TOutputSchema>;
+
+	/**
+	 * Set output schema (required)
+	 */
+	output<TSchema extends z.ZodTypeAny>(schema: TSchema): ProcedureBuilder<TContext, TInputSchema, TSchema>;
+
+	/**
+	 * Define query operation
+	 */
+	query(
+		fn: TInputSchema extends z.ZodTypeAny
+			? (opts: { input: z.infer<TInputSchema>; ctx: TContext }) => Promise<TOutputSchema extends z.ZodTypeAny ? z.infer<TOutputSchema> : never>
+			: (opts: { ctx: TContext }) => Promise<TOutputSchema extends z.ZodTypeAny ? z.infer<TOutputSchema> : never>
+	): any;
+
+	/**
+	 * Define mutation operation
+	 */
+	mutation(
+		fn: TInputSchema extends z.ZodTypeAny
+			? (opts: { input: z.infer<TInputSchema>; ctx: TContext }) => Promise<TOutputSchema extends z.ZodTypeAny ? z.infer<TOutputSchema> : never>
+			: (opts: { ctx: TContext }) => Promise<TOutputSchema extends z.ZodTypeAny ? z.infer<TOutputSchema> : never>
+	): any;
+
+	/**
+	 * Define subscription operation
+	 */
+	subscription(
+		fn: TInputSchema extends z.ZodTypeAny
+			? (opts: { input: z.infer<TInputSchema>; ctx: TContext }) => Observable<TOutputSchema extends z.ZodTypeAny ? z.infer<TOutputSchema> : never>
+			: (opts: { ctx: TContext }) => Observable<TOutputSchema extends z.ZodTypeAny ? z.infer<TOutputSchema> : never>
+	): any;
+}
+
+/**
  * Schema builder class with typed context
  * Context type flows through all queries/mutations for auto-inference
+ *
+ * Supports two APIs:
+ * 1. Builder Pattern (NEW - perfect type inference):
+ *    lens.input(schema).output(schema).query(fn)
+ *    lens.output(schema).query(fn)
+ *
+ * 2. Config Object (LEGACY - requires explicit input: undefined):
+ *    lens.query({ input, output, resolve })
  */
 class LensBuilder<TContext = any> {
+	/**
+	 * Create procedure builder for fluent API
+	 * Internal implementation for input() and output() methods
+	 */
+	private createProcedureBuilder<TInputSchema = undefined, TOutputSchema = undefined>(
+		inputSchema?: TInputSchema,
+		outputSchema?: TOutputSchema
+	): ProcedureBuilder<TContext, TInputSchema, TOutputSchema> {
+		let currentInput: any = inputSchema;
+		let currentOutput: any = outputSchema;
+
+		const self: ProcedureBuilder<TContext, any, any> = {
+			input(schema) {
+				currentInput = schema;
+				return self;
+			},
+			output(schema) {
+				currentOutput = schema;
+				return self;
+			},
+			query(fn) {
+				return {
+					type: "query" as const,
+					path: [],
+					input: currentInput,
+					output: currentOutput,
+					resolve: (input: any, ctx: TContext) => {
+						if (currentInput !== undefined) {
+							return fn({ input, ctx } as any);
+						}
+						return fn({ ctx } as any);
+					},
+					subscribe: undefined,
+				};
+			},
+			mutation(fn) {
+				return {
+					type: "mutation" as const,
+					path: [],
+					input: currentInput,
+					output: currentOutput,
+					resolve: (input: any, ctx: TContext) => {
+						if (currentInput !== undefined) {
+							return fn({ input, ctx } as any);
+						}
+						return fn({ ctx } as any);
+					},
+				};
+			},
+			subscription(fn) {
+				return {
+					type: "query" as const,
+					path: [],
+					input: currentInput,
+					output: currentOutput,
+					resolve: undefined as any,
+					subscribe: (input: any, ctx: TContext) => {
+						if (currentInput !== undefined) {
+							return fn({ input, ctx } as any);
+						}
+						return fn({ ctx } as any);
+					},
+				};
+			},
+		};
+
+		return self;
+	}
+
+	/**
+	 * Start building with input schema (Builder Pattern)
+	 *
+	 * @example
+	 * ```ts
+	 * lens.input(z.object({ id: z.string() }))
+	 *     .output(UserSchema)
+	 *     .query(async ({ input, ctx }) => {
+	 *       // Perfect type inference!
+	 *       const id: string = input.id;
+	 *       const db = ctx.db;
+	 *     });
+	 * ```
+	 */
+	input<TSchema extends z.ZodTypeAny>(schema: TSchema): ProcedureBuilder<TContext, TSchema, undefined> {
+		return this.createProcedureBuilder(schema, undefined);
+	}
+
+	/**
+	 * Start building with output schema (Builder Pattern)
+	 *
+	 * @example
+	 * ```ts
+	 * lens.output(z.array(UserSchema))
+	 *     .query(async ({ ctx }) => {
+	 *       // Perfect type inference!
+	 *       const db = ctx.db;
+	 *       return [];
+	 *     });
+	 * ```
+	 */
+	output<TSchema extends z.ZodTypeAny>(schema: TSchema): ProcedureBuilder<TContext, undefined, TSchema> {
+		return this.createProcedureBuilder(undefined, schema);
+	}
+
 	/**
 	 * Define a query operation with full type inference
 	 * Input is optional - omit for parameterless queries
