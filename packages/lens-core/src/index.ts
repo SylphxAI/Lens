@@ -7,10 +7,6 @@
 
 // Schema builder
 export { lens, createLensBuilder } from "./schema/builder.js";
-export type {
-	QueryConfig,
-	MutationConfig,
-} from "./schema/builder.js";
 
 // Types
 export type {
@@ -20,6 +16,7 @@ export type {
 	LensRequest,
 	LensResponse,
 	FieldSelection,
+	Select,
 	Selected,
 	InferInput,
 	InferOutput,

@@ -48,17 +48,6 @@ type SubscriptionHandler<TInputSchema, TOutputSchema, TContext> = TInputSchema e
 		? (opts: { ctx: TContext }) => Observable<z.infer<TOutputSchema>>
 		: (opts: { ctx: TContext }) => Observable<any>;
 
-/**
- * Legacy handler function signatures (backward compatibility)
- * Uses (input, ctx) parameter pattern
- */
-type LegacyResolveFunction<TInputSchema, TOutputSchema extends z.ZodTypeAny, TContext> = TInputSchema extends z.ZodTypeAny
-	? (input: z.infer<TInputSchema>, ctx: TContext) => Promise<z.infer<TOutputSchema>>
-	: (ctx: TContext) => Promise<z.infer<TOutputSchema>>;
-
-type LegacySubscribeFunction<TInputSchema, TOutputSchema extends z.ZodTypeAny, TContext> = TInputSchema extends z.ZodTypeAny
-	? (input: z.infer<TInputSchema>, ctx: TContext) => Observable<z.infer<TOutputSchema>>
-	: (ctx: TContext) => Observable<z.infer<TOutputSchema>>;
 
 /**
  * Procedure builder for fluent API
@@ -90,17 +79,27 @@ export class ProcedureBuilder<TContext, TInputSchema = undefined, TOutputSchema 
 	/**
 	 * Build query operation
 	 * Adapter converts { input, ctx } to (input, ctx) for LensQuery
+	 *
+	 * @param resolveHandler - Required resolve function for one-time fetch
+	 * @param subscribeHandler - Optional subscribe function for real-time updates
 	 */
-	query(handler: QueryHandler<TInputSchema, TOutputSchema, TContext>): any {
+	query(
+		resolveHandler: QueryHandler<TInputSchema, TOutputSchema, TContext>,
+		subscribeHandler?: SubscriptionHandler<TInputSchema, TOutputSchema, TContext>
+	): any {
 		return {
 			type: "query" as const,
 			path: [],
 			input: this.inputSchema,
 			output: this.outputSchema,
 			resolve: this.inputSchema !== undefined
-				? ((input: any, ctx: TContext) => handler({ input, ctx }))
-				: ((ctx: TContext) => handler({ ctx } as any)),
-			subscribe: undefined,
+				? ((input: any, ctx: TContext) => resolveHandler({ input, ctx }))
+				: ((ctx: TContext) => resolveHandler({ ctx } as any)),
+			subscribe: subscribeHandler
+				? (this.inputSchema !== undefined
+					? ((input: any, ctx: TContext) => subscribeHandler({ input, ctx }))
+					: ((ctx: TContext) => subscribeHandler({ ctx } as any)))
+				: undefined,
 		};
 	}
 
@@ -138,38 +137,17 @@ export class ProcedureBuilder<TContext, TInputSchema = undefined, TOutputSchema 
 	}
 }
 
-/**
- * Legacy query config (backward compatibility)
- */
-export interface QueryConfig<TInputSchema extends z.ZodTypeAny | undefined, TOutputSchema extends z.ZodTypeAny, TContext> {
-	input?: TInputSchema;
-	output: TOutputSchema;
-	resolve: LegacyResolveFunction<TInputSchema, TOutputSchema, TContext>;
-	subscribe?: LegacySubscribeFunction<TInputSchema, TOutputSchema, TContext>;
-}
-
-/**
- * Legacy mutation config (backward compatibility)
- */
-export interface MutationConfig<TInputSchema extends z.ZodTypeAny | undefined, TOutputSchema extends z.ZodTypeAny, TContext> {
-	input?: TInputSchema;
-	output: TOutputSchema;
-	resolve: LegacyResolveFunction<TInputSchema, TOutputSchema, TContext>;
-}
 
 /**
  * Schema builder class with typed context
  *
- * Recommended API (Builder Pattern):
+ * Builder Pattern API:
  *   lens.input(schema).output(schema).query(handler)
  *   lens.output(schema).query(handler)
- *
- * Legacy API (backward compatibility):
- *   lens.query({ input, output, resolve })
  */
 class LensBuilder<TContext = any> {
 	/**
-	 * Start building with input schema (Builder Pattern)
+	 * Start building with input schema
 	 *
 	 * @example
 	 * ```ts
@@ -187,7 +165,7 @@ class LensBuilder<TContext = any> {
 	}
 
 	/**
-	 * Start building with output schema (Builder Pattern)
+	 * Start building with output schema
 	 *
 	 * @example
 	 * ```ts
@@ -200,75 +178,6 @@ class LensBuilder<TContext = any> {
 	 */
 	output<TSchema extends z.ZodTypeAny>(schema: TSchema): ProcedureBuilder<TContext, undefined, TSchema> {
 		return new ProcedureBuilder<TContext, undefined, TSchema>(undefined as any, undefined as any, schema);
-	}
-
-	/**
-	 * Define query operation (Legacy API)
-	 *
-	 * @deprecated Use Builder Pattern: lens.input().output().query() or lens.output().query()
-	 *
-	 * @example
-	 * ```ts
-	 * // With input (works with explicit type)
-	 * lens.query({
-	 *   input: z.object({ id: z.string() }),
-	 *   output: UserSchema,
-	 *   resolve: async (input, ctx) => { ... }
-	 * });
-	 *
-	 * // Without input (requires explicit input: undefined)
-	 * lens.query({
-	 *   input: undefined,
-	 *   output: UserSchema,
-	 *   resolve: async (ctx) => { ... }
-	 * });
-	 * ```
-	 */
-	query<TInputSchema extends z.ZodTypeAny | undefined = undefined, TOutputSchema extends z.ZodTypeAny = z.ZodTypeAny>(
-		config: QueryConfig<TInputSchema, TOutputSchema, TContext>
-	): LensQuery<TInputSchema, TOutputSchema, TContext> {
-		return {
-			type: "query" as const,
-			path: [],
-			input: config.input as TInputSchema,
-			output: config.output,
-			resolve: config.resolve,
-			subscribe: config.subscribe,
-		};
-	}
-
-	/**
-	 * Define mutation operation (Legacy API)
-	 *
-	 * @deprecated Use Builder Pattern: lens.input().output().mutation() or lens.output().mutation()
-	 *
-	 * @example
-	 * ```ts
-	 * // With input
-	 * lens.mutation({
-	 *   input: z.object({ id: z.string() }),
-	 *   output: UserSchema,
-	 *   resolve: async (input, ctx) => { ... }
-	 * });
-	 *
-	 * // Without input (requires explicit input: undefined)
-	 * lens.mutation({
-	 *   input: undefined,
-	 *   output: UserSchema,
-	 *   resolve: async (ctx) => { ... }
-	 * });
-	 * ```
-	 */
-	mutation<TInputSchema extends z.ZodTypeAny | undefined = undefined, TOutputSchema extends z.ZodTypeAny = z.ZodTypeAny>(
-		config: MutationConfig<TInputSchema, TOutputSchema, TContext>
-	): LensMutation<TInputSchema, TOutputSchema, TContext> {
-		return {
-			type: "mutation" as const,
-			path: [],
-			input: config.input as TInputSchema,
-			output: config.output,
-			resolve: config.resolve,
-		};
 	}
 
 	/**
@@ -347,7 +256,7 @@ export function createLensBuilder<TContext = any>(): LensBuilder<TContext> {
 }
 
 /**
- * Default untyped builder (legacy)
- * @deprecated Use createLensBuilder<YourContext>() for type safety
+ * Default untyped builder
+ * For typed version, use: createLensBuilder<YourContext>()
  */
 export const lens = new LensBuilder<any>();

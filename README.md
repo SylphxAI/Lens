@@ -38,12 +38,12 @@ Zero config. Zero codegen. Pure TypeScript.
 bun add @sylphx/lens zod
 ```
 
-### 2. Backend - Define API with Zod
+### 2. Backend - Define API with Builder Pattern
 
 ```typescript
 // api/user.ts
 import { z } from 'zod';
-import { lens } from '@sylphx/lens-core';
+import { createLensBuilder } from '@sylphx/lens-core';
 
 // 1. Define schemas with Zod
 const UserSchema = z.object({
@@ -58,36 +58,44 @@ const UserSchema = z.object({
   })).optional()
 });
 
-// 2. Define API with schemas
+// 2. Create typed builder
+interface AppContext {
+  db: Database;
+  eventStream: EventStream;
+}
+
+const lens = createLensBuilder<AppContext>();
+
+// 3. Define API with Builder Pattern
 export const user = lens.object({
-  get: lens.query({
-    input: z.object({ id: z.string() }),
-    output: UserSchema,
-    resolve: async ({ id }) => {
-      const user = await db.users.findOne({ id });
-      const posts = await db.posts.find({ userId: id });
-      return { ...user, posts };
-    },
+  get: lens
+    .input(z.object({ id: z.string() }))
+    .output(UserSchema)
+    .query(
+      // Resolve: One-time fetch
+      async ({ input, ctx }) => {
+        const user = await ctx.db.users.findOne({ id: input.id });
+        const posts = await ctx.db.posts.find({ userId: input.id });
+        return { ...user, posts };
+      },
+      // Subscribe: Real-time updates (optional)
+      ({ input, ctx }) => {
+        return ctx.eventStream.subscribe(`user:${input.id}`);
+      }
+    ),
 
-    // Optional: manual subscribe for complex cases
-    subscribe: ({ id }) => {
-      return eventStream.subscribe(`user:${id}`);
-    }
-  }),
-
-  update: lens.mutation({
-    input: z.object({
+  update: lens
+    .input(z.object({
       id: z.string(),
       data: z.object({
         name: z.string(),
         bio: z.string()
       })
-    }),
-    output: UserSchema,
-    resolve: async ({ id, data }) => {
-      return await db.users.update({ id }, data);
-    }
-  })
+    }))
+    .output(UserSchema)
+    .mutation(async ({ input, ctx }) => {
+      return await ctx.db.users.update({ id: input.id }, input.data);
+    })
 });
 ```
 
@@ -116,8 +124,14 @@ const server = createLensServer(api, {
   }
 });
 
+// HTTP (queries and mutations)
 app.use('/lens', server.handler);
+
+// WebSocket (real-time subscriptions)
 wss.on('connection', server.wsHandler);
+
+// Server-Sent Events (real-time subscriptions, simpler than WebSocket)
+app.get('/lens/subscribe', server.sseHandler);
 ```
 
 ### 4. Frontend - Type-Safe + Live Updates
@@ -228,6 +242,7 @@ await updateUser({ id: '123', data: { name: 'John' } });
 import {
   HTTPTransport,
   WebSocketTransport,
+  SSETransport,
   InProcessTransport,
   TransportRouter
 } from '@sylphx/lens-core';
@@ -235,9 +250,14 @@ import {
 // Compose transports
 const transport = new TransportRouter([
   {
-    // Subscriptions → WebSocket
-    match: (req) => req.type === 'subscription',
+    // Subscriptions → WebSocket (bidirectional, faster)
+    match: (req) => req.type === 'subscription' && needsBidirectional,
     transport: new WebSocketTransport({ url: 'ws://localhost:3000' })
+  },
+  {
+    // Subscriptions → SSE (simpler, auto-reconnect)
+    match: (req) => req.type === 'subscription',
+    transport: new SSETransport({ url: 'http://localhost:3000/subscribe' })
   },
   {
     // Everything else → HTTP
@@ -246,7 +266,10 @@ const transport = new TransportRouter([
   }
 ]);
 
-// Or use custom transport (gRPC, Redis Streams, WebRTC, etc.)
+// Or use in-process transport (for embedding server)
+const transport = new InProcessTransport({ api });
+
+// Or custom transport (gRPC, Redis Streams, WebRTC, etc.)
 import { GRPCTransport } from './transports/grpc';
 const transport = new GRPCTransport({ host: 'localhost', port: 50051 });
 ```
@@ -293,19 +316,90 @@ Update: Change user.name from "John" to "Jane"
 
 ---
 
-## Comparison
+## Design Philosophy
 
-| Feature | GraphQL | tRPC | Lens |
-|---------|---------|------|------|
-| **Schema** | SDL Required | Not required | Zod schemas |
-| **Codegen** | Required | Not required | Not required |
-| **Type Safety** | Via codegen | ✅ Native | ✅ Native |
-| **Field Selection** | ✅ Yes | ❌ No | ✅ Yes |
-| **Real-time** | Subscriptions (manual) | Subscriptions (manual) | ✅ Auto |
-| **Optimistic** | Manual | Manual | ✅ Built-in |
-| **Minimal Transfer** | ❌ No | ❌ No | ✅ Auto delta/patch |
-| **Runtime Validation** | ❌ No | ❌ No | ✅ Zod |
-| **Transport** | HTTP only | HTTP only | ✅ Pluggable |
+**Lens = tRPC + GraphQL + Pothos**
+
+Lens combines the best aspects of each framework:
+
+### From tRPC 🔷
+- ✅ **Perfect type inference** - Zero codegen, pure TypeScript
+- ✅ **Builder Pattern** - `.input().output().query()` chaining
+- ✅ **Zero overhead** - Pure type layer, no runtime cost
+- ✅ **Simple** - No schema language, just TypeScript + Zod
+
+**Improvement over tRPC:**
+```typescript
+// tRPC
+t.procedure.input(z.string()).query((opts) => opts.input)  // ⚠️ Need opts.input
+
+// Lens
+lens.input(z.string()).query(({ input }) => input)  // ✅ Direct destructuring
+```
+
+### From GraphQL 🟦
+- ✅ **Field selection** - Client chooses which fields to fetch
+- ✅ **Frontend-driven** - Reduces over-fetching
+- ✅ **Real-time subscriptions** - Built-in live updates
+- ✅ **Flexible queries** - Type-safe field projection
+
+**Improvement over GraphQL:**
+```typescript
+// GraphQL - Requires SDL + Codegen
+type User {
+  id: ID!
+  name: String!
+}
+
+// Lens - Pure TypeScript
+const UserSchema = z.object({
+  id: z.string(),
+  name: z.string()
+})
+```
+
+### From Pothos 🟩
+- ✅ **Code-first** - Define schemas in code, not SDL
+- ✅ **Excellent DX** - Clean, intuitive Builder API
+- ✅ **Type-safe** - Perfect inference at every step
+- ✅ **Plugin potential** - Extensible architecture
+
+**Improvement over Pothos:**
+```typescript
+// Pothos - GraphQL only
+builder.queryType({
+  fields: (t) => ({
+    user: t.field({ ... })
+  })
+})
+
+// Lens - Universal (REST/RPC/GraphQL)
+lens.input(Schema).output(Schema).query(...)
+```
+
+### Unique to Lens 🔶
+- ✅ **Update Strategies** - Delta (57% savings), Patch (99% savings)
+- ✅ **Unified Subscriptions** - `query(resolve, subscribe)` in one definition
+- ✅ **Auto-optimization** - Intelligent payload selection
+- ✅ **Frontend-driven + Type-safe** - Best of both worlds
+
+---
+
+## Comparison Table
+
+| Feature | GraphQL | tRPC | Pothos | Lens |
+|---------|---------|------|--------|------|
+| **Schema** | SDL | TypeScript | Code-first | TypeScript + Zod |
+| **Codegen** | ✅ Required | ❌ No | ❌ No | ❌ No |
+| **Type Safety** | Via codegen | ✅ Native | ✅ Native | ✅ Native |
+| **Field Selection** | ✅ Yes | ❌ No | ✅ Yes | ✅ Yes |
+| **Real-time** | Manual setup | Manual setup | Manual setup | ✅ Built-in |
+| **Optimistic** | Manual | Manual | Manual | ✅ Built-in |
+| **Minimal Transfer** | ❌ No | ❌ No | ❌ No | ✅ Auto delta/patch |
+| **Runtime Validation** | ❌ No | ⚠️ Optional | ⚠️ Optional | ✅ Zod built-in |
+| **Transport** | HTTP only | HTTP only | HTTP only | ✅ Pluggable |
+| **Bundle Size** | ~80KB | ~10KB | ~20KB | ~15KB |
+| **Runtime Overhead** | ⚠️ High (AST) | ✅ Zero | ⚠️ Medium | ✅ Zero |
 
 ---
 

@@ -74,6 +74,11 @@ export interface LensServer {
 	wsHandler: (ws: any) => void;
 
 	/**
+	 * Server-Sent Events (SSE) handler
+	 */
+	sseHandler: (req: any, res: any) => Promise<void>;
+
+	/**
 	 * Close server and cleanup resources
 	 */
 	close: () => Promise<void>;
@@ -105,6 +110,9 @@ export interface LensServer {
  *
  * // WebSocket
  * wss.on('connection', server.wsHandler);
+ *
+ * // Server-Sent Events (SSE)
+ * app.get('/lens/subscribe', server.sseHandler);
  * ```
  */
 export function createLensServer<T extends LensObject<any>>(
@@ -114,10 +122,12 @@ export function createLensServer<T extends LensObject<any>>(
 	// Import handlers dynamically to avoid circular dependencies
 	const { createHTTPHandler } = require("./handlers/http.js");
 	const { createWebSocketHandler } = require("./handlers/websocket.js");
+	const { createSSEHandler } = require("./handlers/sse.js");
 
 	// Create handlers
 	const handler = createHTTPHandler(api, config);
 	const wsHandler = createWebSocketHandler(api, config);
+	const sseHandler = createSSEHandler(api, config);
 
 	// Cleanup
 	const close = async () => {
@@ -129,6 +139,7 @@ export function createLensServer<T extends LensObject<any>>(
 	return {
 		handler,
 		wsHandler,
+		sseHandler,
 		close,
 	};
 }

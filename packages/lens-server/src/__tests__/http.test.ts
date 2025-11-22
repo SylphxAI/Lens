@@ -11,19 +11,18 @@ describe("HTTP Handler", () => {
 	// Test API
 	const api = lens.object({
 		user: lens.object({
-			get: lens.query({
-				input: z.object({ id: z.string() }),
-				output: z.object({
+			get: lens
+				.input(z.object({ id: z.string() }))
+				.output(z.object({
 					id: z.string(),
 					name: z.string(),
 					email: z.string(),
-				}),
-				resolve: async ({ id }) => ({
-					id,
+				}))
+				.query(async ({ input }) => ({
+					id: input.id,
 					name: "John Doe",
 					email: "john@example.com",
-				}),
-			}),
+				})),
 		}),
 	});
 

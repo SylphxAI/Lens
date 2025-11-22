@@ -5,6 +5,7 @@
  */
 
 import { Observable } from "rxjs";
+import type { z } from "zod";
 import type { LensQuery } from "@sylphx/lens-core";
 import type { PubSubAdapter } from "./pubsub.js";
 import type { ChannelNamingStrategy } from "./channel.js";
@@ -31,19 +32,47 @@ export interface AutoSubscribeConfig {
  * If query has explicit subscribe function, use it.
  * Otherwise, create convention-based subscription from pub/sub.
  */
-export function createAutoSubscription<TInput, TOutput>(
-	query: LensQuery<TInput, TOutput>,
+export function createAutoSubscription(
+	query: LensQuery<any, any, any>,
 	config: AutoSubscribeConfig
-): (input: TInput) => Observable<TOutput> {
-	return (input: TInput) => {
+): any {
+	// With input
+	if (query.input !== undefined) {
+		return ((input: any, ctx: any) => {
+			// If query has explicit subscribe, use it
+			if (query.subscribe) {
+				return (query.subscribe as any)(input, ctx);
+			}
+
+			// Otherwise, create convention-based subscription
+			const channel = config.channelFor(query.path, input);
+			const observable = config.pubsub.subscribe(channel);
+
+			// Map event to output
+			return {
+				subscribe: (observer: any) => {
+					return observable.subscribe({
+						next: (event) => {
+							const callback = observer.next || observer;
+							callback(event.payload);
+						},
+						error: observer.error,
+						complete: observer.complete,
+					});
+				},
+			} as Observable<any>;
+		}) as any;
+	}
+
+	// Without input
+	return ((ctx: any) => {
 		// If query has explicit subscribe, use it
 		if (query.subscribe) {
-			return query.subscribe(input);
+			return (query.subscribe as any)(ctx);
 		}
 
 		// Otherwise, create convention-based subscription
-		const channel = config.channelFor(query.path, input);
-
+		const channel = config.channelFor(query.path, undefined);
 		const observable = config.pubsub.subscribe(channel);
 
 		// Map event to output
@@ -52,14 +81,14 @@ export function createAutoSubscription<TInput, TOutput>(
 				return observable.subscribe({
 					next: (event) => {
 						const callback = observer.next || observer;
-						callback(event.payload as TOutput);
+						callback(event.payload);
 					},
 					error: observer.error,
 					complete: observer.complete,
 				});
 			},
-		} as Observable<TOutput>;
-	};
+		} as Observable<any>;
+	}) as any;
 }
 
 /**

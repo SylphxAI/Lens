@@ -37,38 +37,36 @@ const mockDb: Record<string, User> = {
 // Test API
 const api = lens.object({
 	user: lens.object({
-		get: lens.query({
-			input: z.object({ id: z.string() }),
-			output: UserSchema,
-			resolve: async ({ id }) => {
-				const user = mockDb[id];
+		get: lens
+			.input(z.object({ id: z.string() }))
+			.output(UserSchema)
+			.query(async ({ input }) => {
+				const user = mockDb[input.id];
 				if (!user) {
 					throw new Error("User not found");
 				}
 				return user;
-			},
-		}),
+			}),
 
-		update: lens.mutation({
-			input: z.object({
+		update: lens
+			.input(z.object({
 				id: z.string(),
 				data: z.object({
 					name: z.string().optional(),
 					bio: z.string().optional(),
 				}),
-			}),
-			output: UserSchema,
-			resolve: async ({ id, data }) => {
-				const user = mockDb[id];
+			}))
+			.output(UserSchema)
+			.mutation(async ({ input }) => {
+				const user = mockDb[input.id];
 				if (!user) {
 					throw new Error("User not found");
 				}
 
-				const updated = { ...user, ...data };
-				mockDb[id] = updated;
+				const updated = { ...user, ...input.data };
+				mockDb[input.id] = updated;
 				return updated;
-			},
-		}),
+			}),
 	}),
 });
 
@@ -170,14 +168,13 @@ describe("Lens Core", () => {
 	test("output validation fails on invalid response", async () => {
 		const brokenApi = lens.object({
 			user: lens.object({
-				get: lens.query({
-					input: z.object({ id: z.string() }),
-					output: UserSchema,
-					resolve: async ({ id }) => {
+				get: lens
+					.input(z.object({ id: z.string() }))
+					.output(UserSchema)
+					.query(async ({ input }) => {
 						// Return invalid data
-						return { id, invalid: true } as any;
-					},
-				}),
+						return { id: input.id, invalid: true } as any;
+					}),
 			}),
 		});
 
