@@ -170,14 +170,14 @@ class LensBuilder<TContext = any> {
 	): LensQuery<z.infer<TInputSchema>, z.infer<TOutputSchema>, TContext>;
 
 	// Implementation
-	query<TInput, TOutput>(config: any): any {
+	query(config: QueryConfigNoInput<any, TContext> | QueryConfigWithInput<any, any, TContext>): any {
 		return {
 			type: "query" as const,
 			path: [],
-			input: config.input,
+			input: (config as any).input,
 			output: config.output,
 			resolve: config.resolve,
-			subscribe: config.subscribe,
+			subscribe: (config as any).subscribe,
 		};
 	}
 
@@ -223,11 +223,11 @@ class LensBuilder<TContext = any> {
 	): LensMutation<z.infer<TInputSchema>, z.infer<TOutputSchema>, TContext>;
 
 	// Implementation
-	mutation<TInput, TOutput>(config: any): any {
+	mutation(config: MutationConfigNoInput<any, TContext> | MutationConfigWithInput<any, any, TContext>): any {
 		return {
 			type: "mutation" as const,
 			path: [],
-			input: config.input,
+			input: (config as any).input,
 			output: config.output,
 			resolve: config.resolve,
 		};
