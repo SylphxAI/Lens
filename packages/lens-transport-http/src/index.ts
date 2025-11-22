@@ -46,13 +46,21 @@ export class HTTPTransport implements LensTransport {
 		};
 	}
 
-	async send<T>(request: LensRequest): Promise<T> {
-		if (request.type === "subscription") {
-			throw new Error(
-				"HTTP transport does not support subscriptions. Use WebSocket transport.",
-			);
-		}
+	async query<T>(request: LensRequest): Promise<T> {
+		return this.executeRequest(request);
+	}
 
+	async mutate<T>(request: LensRequest): Promise<T> {
+		return this.executeRequest(request);
+	}
+
+	subscribe<T>(_request: LensRequest): never {
+		throw new Error(
+			"HTTP transport does not support subscriptions. Use WebSocket transport.",
+		);
+	}
+
+	private async executeRequest<T>(request: LensRequest): Promise<T> {
 		const controller = new AbortController();
 		const timeoutId = setTimeout(() => controller.abort(), this.config.timeout);
 

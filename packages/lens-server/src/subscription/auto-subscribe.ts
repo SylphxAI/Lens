@@ -4,7 +4,7 @@
  * Automatically creates subscriptions for queries based on conventions
  */
 
-import type { Observable } from "@sylphx/lens-core";
+import { Observable } from "rxjs";
 import type { LensQuery } from "@sylphx/lens-core";
 import type { PubSubAdapter } from "./pubsub.js";
 import type { ChannelNamingStrategy } from "./channel.js";

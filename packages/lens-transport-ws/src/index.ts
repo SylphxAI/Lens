@@ -160,64 +160,77 @@ export class WebSocketTransport implements LensTransport {
 		}, delay);
 	}
 
-	send<T>(request: LensRequest): Promise<T> | any {
+	query<T>(request: LensRequest): Promise<T> {
+		return this.executeRequest(request, "query");
+	}
+
+	mutate<T>(request: LensRequest): Promise<T> {
+		return this.executeRequest(request, "mutation");
+	}
+
+	subscribe<T>(request: LensRequest): any {
+		if (this.ws?.readyState !== WebSocket.OPEN) {
+			throw new Error("WebSocket not connected");
+		}
+
+		const id = String(++this.messageId);
+
+		return {
+			subscribe: (observer: {
+				next: (value: any) => void;
+				error?: (error: Error) => void;
+				complete?: () => void;
+			}) => {
+				this.pending.set(id, {
+					resolve: () => {},
+					reject: () => {},
+					type: "subscription",
+					observer,
+				});
+
+				// Store original request for reconnection
+				if (!this.ws) return;
+				(this.ws as any).__requests = (this.ws as any).__requests || new Map();
+				(this.ws as any).__requests.set(id, request);
+
+				this.ws?.send(
+					JSON.stringify({
+						id,
+						type: "request",
+						payload: request,
+					}),
+				);
+
+				return {
+					unsubscribe: () => {
+						this.pending.delete(id);
+						this.ws?.send(
+							JSON.stringify({
+								id,
+								type: "unsubscribe",
+							}),
+						);
+					},
+				};
+			},
+		};
+	}
+
+	private executeRequest<T>(
+		request: LensRequest,
+		type: "query" | "mutation",
+	): Promise<T> {
 		if (this.ws?.readyState !== WebSocket.OPEN) {
 			return Promise.reject(new Error("WebSocket not connected"));
 		}
 
 		const id = String(++this.messageId);
 
-		if (request.type === "subscription") {
-			// Return Observable for subscriptions
-			return {
-				subscribe: (observer: {
-					next: (value: any) => void;
-					error?: (error: Error) => void;
-					complete?: () => void;
-				}) => {
-					const promise = new Promise<never>((resolve, reject) => {
-						this.pending.set(id, {
-							resolve,
-							reject,
-							type: "subscription",
-							observer,
-						});
-
-						// Store original request for reconnection
-						if (!this.ws) return;
-						(this.ws as any).__requests = (this.ws as any).__requests || new Map();
-						(this.ws as any).__requests.set(id, request);
-
-						this.ws?.send(
-							JSON.stringify({
-								id,
-								type: "request",
-								payload: request,
-							}),
-						);
-					});
-
-					return {
-						unsubscribe: () => {
-							this.pending.delete(id);
-							this.ws?.send(
-								JSON.stringify({
-									id,
-									type: "unsubscribe",
-								}),
-							);
-						},
-					};
-				},
-			};
-		}
-
-		// Return Promise for queries and mutations
 		return new Promise<T>((resolve, reject) => {
 			this.pending.set(id, {
 				resolve,
 				reject,
-				type: request.type as "query" | "mutation",
+				type,
 			});
 
 			this.ws?.send(

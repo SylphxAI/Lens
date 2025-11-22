@@ -14,20 +14,33 @@ import type { Observable } from "rxjs";
 import type { LensRequest, LensResponse } from "../schema/types.js";
 
 /**
- * Transport interface
- *
- * Single method: send a request and return Promise or Observable
+ * Transport interface for queries and mutations
  */
-export interface LensTransport {
-	/**
-	 * Send a request and return response
-	 *
-	 * - Queries: Return Promise<T>
-	 * - Subscriptions: Return Observable<T>
-	 * - Mutations: Return Promise<T>
-	 */
-	send<T>(request: LensRequest): Promise<T> | Observable<T>;
+export interface QueryTransport {
+	/** Execute a query and return Promise */
+	query<T>(request: LensRequest): Promise<T>;
 
+	/** Execute a mutation and return Promise */
+	mutate<T>(request: LensRequest): Promise<T>;
+}
+
+/**
+ * Transport interface for subscriptions
+ */
+export interface SubscriptionTransport {
+	/** Subscribe to real-time updates and return Observable */
+	subscribe<T>(request: LensRequest): Observable<T>;
+}
+
+/**
+ * Complete transport interface
+ *
+ * Type-safe methods for all operation types.
+ * Implementations can choose to support all or subset.
+ */
+export interface LensTransport
+	extends QueryTransport,
+		SubscriptionTransport {
 	/**
 	 * Optional: Close transport connection
 	 */
@@ -59,16 +72,37 @@ export class MiddlewareTransport implements LensTransport {
 		private readonly middleware: TransportMiddleware[]
 	) {}
 
-	send<T>(request: LensRequest): Promise<T> | Observable<T> {
-		// Build middleware chain
+	query<T>(request: LensRequest): Promise<T> {
 		type NextFn = (req: LensRequest) => Promise<any> | Observable<any>;
 
 		const chain = this.middleware.reduceRight<NextFn>(
 			(next, middleware) => (req: LensRequest) => middleware(req, next),
-			(req: LensRequest) => this.transport.send(req)
+			(req: LensRequest) => this.transport.query(req)
 		);
 
-		return chain(request) as Promise<T> | Observable<T>;
+		return chain(request) as Promise<T>;
+	}
+
+	mutate<T>(request: LensRequest): Promise<T> {
+		type NextFn = (req: LensRequest) => Promise<any> | Observable<any>;
+
+		const chain = this.middleware.reduceRight<NextFn>(
+			(next, middleware) => (req: LensRequest) => middleware(req, next),
+			(req: LensRequest) => this.transport.mutate(req)
+		);
+
+		return chain(request) as Promise<T>;
+	}
+
+	subscribe<T>(request: LensRequest): Observable<T> {
+		type NextFn = (req: LensRequest) => Promise<any> | Observable<any>;
+
+		const chain = this.middleware.reduceRight<NextFn>(
+			(next, middleware) => (req: LensRequest) => middleware(req, next),
+			(req: LensRequest) => this.transport.subscribe(req)
+		);
+
+		return chain(request) as Observable<T>;
 	}
 
 	close() {
@@ -103,7 +137,7 @@ export class TransportRouter implements LensTransport {
 		}>
 	) {}
 
-	send<T>(request: LensRequest): Promise<T> | Observable<T> {
+	query<T>(request: LensRequest): Promise<T> {
 		const route = this.routes.find((r) => r.match(request));
 
 		if (!route) {
@@ -112,7 +146,31 @@ export class TransportRouter implements LensTransport {
 			);
 		}
 
-		return route.transport.send(request);
+		return route.transport.query(request);
+	}
+
+	mutate<T>(request: LensRequest): Promise<T> {
+		const route = this.routes.find((r) => r.match(request));
+
+		if (!route) {
+			throw new Error(
+				`No transport found for request: ${request.type} ${request.path.join(".")}`
+			);
+		}
+
+		return route.transport.mutate(request);
+	}
+
+	subscribe<T>(request: LensRequest): Observable<T> {
+		const route = this.routes.find((r) => r.match(request));
+
+		if (!route) {
+			throw new Error(
+				`No transport found for request: ${request.type} ${request.path.join(".")}`
+			);
+		}
+
+		return route.transport.subscribe(request);
 	}
 
 	close() {

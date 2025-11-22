@@ -30,6 +30,8 @@ export type {
 // Transport
 export type {
 	LensTransport,
+	QueryTransport,
+	SubscriptionTransport,
 	TransportMiddleware,
 } from "./transport/interface.js";
 
@@ -46,4 +48,7 @@ export { ValueStrategy } from "./update-strategy/value.js";
 export { DeltaStrategy } from "./update-strategy/delta.js";
 export { PatchStrategy } from "./update-strategy/patch.js";
 export { AutoStrategy } from "./update-strategy/auto.js";
+
+// Re-export Observable for convenience
+export type { Observable } from "rxjs";
 

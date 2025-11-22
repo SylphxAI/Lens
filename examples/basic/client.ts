@@ -14,7 +14,7 @@ async function demo() {
 
 	// 1. Get user with all fields
 	console.log("1. Get user (all fields):");
-	const user = await transport.send({
+	const user = await transport.query({
 		type: "query",
 		path: ["user", "get"],
 		input: { id: "1" },
@@ -24,7 +24,7 @@ async function demo() {
 
 	// 2. Get user with field selection (array syntax)
 	console.log("2. Get user (selected fields - array syntax):");
-	const userBasic = await transport.send({
+	const userBasic = await transport.query({
 		type: "query",
 		path: ["user", "get"],
 		input: { id: "1" },
@@ -35,7 +35,7 @@ async function demo() {
 
 	// 3. Get user with nested field selection (object syntax)
 	console.log("3. Get user with posts (nested selection):");
-	const userWithPosts = await transport.send({
+	const userWithPosts = await transport.query({
 		type: "query",
 		path: ["user", "get"],
 		input: { id: "1" },
@@ -54,7 +54,7 @@ async function demo() {
 
 	// 4. Create new user
 	console.log("4. Create new user:");
-	const newUser = await transport.send({
+	const newUser = await transport.query({
 		type: "mutation",
 		path: ["user", "create"],
 		input: {
@@ -68,7 +68,7 @@ async function demo() {
 
 	// 5. Update user
 	console.log("5. Update user bio:");
-	const updated = await transport.send({
+	const updated = await transport.query({
 		type: "mutation",
 		path: ["user", "update"],
 		input: {
@@ -83,7 +83,7 @@ async function demo() {
 
 	// 6. List users
 	console.log("6. List all users:");
-	const allUsers = await transport.send({
+	const allUsers = await transport.query({
 		type: "query",
 		path: ["user", "list"],
 		input: { limit: 10, offset: 0 },
@@ -93,7 +93,7 @@ async function demo() {
 
 	// 7. Create and publish post
 	console.log("7. Create post:");
-	const newPost = await transport.send({
+	const newPost = await transport.query({
 		type: "mutation",
 		path: ["post", "create"],
 		input: {
@@ -106,7 +106,7 @@ async function demo() {
 	console.log();
 
 	console.log("8. Publish post:");
-	const published = await transport.send({
+	const published = await transport.query({
 		type: "mutation",
 		path: ["post", "publish"],
 		input: { id: newPost.id },
@@ -117,7 +117,7 @@ async function demo() {
 	// 9. Test validation error
 	console.log("9. Test validation (should fail):");
 	try {
-		await transport.send({
+		await transport.query({
 			type: "query",
 			path: ["user", "get"],
 			input: { id: 999 }, // Invalid: should be string
@@ -130,7 +130,7 @@ async function demo() {
 	// 10. Test not found error
 	console.log("10. Test not found (should fail):");
 	try {
-		await transport.send({
+		await transport.query({
 			type: "query",
 			path: ["user", "get"],
 			input: { id: "999" },

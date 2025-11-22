@@ -26,8 +26,78 @@ export interface InProcessTransportConfig {
 export class InProcessTransport implements LensTransport {
 	constructor(private readonly config: InProcessTransportConfig) {}
 
-	send<T>(request: LensRequest): Promise<T> | Observable<T> {
-		// Navigate to the target query/mutation
+	query<T>(request: LensRequest): Promise<T> {
+		return this.executeRequest(request, "query");
+	}
+
+	mutate<T>(request: LensRequest): Promise<T> {
+		return this.executeRequest(request, "mutation");
+	}
+
+	subscribe<T>(request: LensRequest): Observable<T> {
+		// Navigate to the target
+		const target = this.navigateToTarget(request);
+
+		if (!target.subscribe) {
+			throw new Error(
+				`No subscription defined for: ${request.path.join(".")}`
+			);
+		}
+
+		// Validate input
+		const validatedInput = this.validateInput(target, request);
+
+		return new Observable<T>((subscriber) => {
+			const subscription = target.subscribe(validatedInput).subscribe({
+				next: (value: any) => {
+					// Validate output
+					const outputResult = target.output.safeParse(value);
+					if (outputResult.success) {
+						subscriber.next(
+							this.applyFieldSelection(outputResult.data, request.select)
+						);
+					} else {
+						subscriber.error(
+							new Error(
+								`Output validation failed: ${outputResult.error.message}`
+							)
+						);
+					}
+				},
+				error: (error: any) => subscriber.error(error),
+				complete: () => subscriber.complete(),
+			});
+
+			return () => subscription.unsubscribe();
+		});
+	}
+
+	private executeRequest<T>(
+		request: LensRequest,
+		expectedType: "query" | "mutation"
+	): Promise<T> {
+		// Navigate to the target
+		const target = this.navigateToTarget(request);
+
+		// Validate input
+		const validatedInput = this.validateInput(target, request);
+
+		// Execute
+		return target.resolve(validatedInput).then((result: any) => {
+			// Validate output
+			const outputResult = target.output.safeParse(result);
+			if (!outputResult.success) {
+				throw new Error(
+					`Output validation failed: ${outputResult.error.message}`
+				);
+			}
+
+			// Apply field selection
+			return this.applyFieldSelection(outputResult.data, request.select) as T;
+		});
+	}
+
+	private navigateToTarget(request: LensRequest): any {
 		let target: any = this.config.api;
 
 		for (const segment of request.path) {
@@ -44,60 +114,17 @@ export class InProcessTransport implements LensTransport {
 			);
 		}
 
-		// Validate input
+		return target;
+	}
+
+	private validateInput(target: any, request: LensRequest): any {
 		const inputResult = target.input.safeParse(request.input);
 		if (!inputResult.success) {
 			throw new Error(
 				`Input validation failed: ${inputResult.error.message}`
 			);
 		}
-
-		const validatedInput = inputResult.data;
-
-		// Handle subscription
-		if (request.type === "subscription") {
-			if (!target.subscribe) {
-				throw new Error(
-					`No subscription defined for: ${request.path.join(".")}`
-				);
-			}
-
-			return new Observable<T>((subscriber) => {
-				const subscription = target.subscribe(validatedInput).subscribe({
-					next: (value: any) => {
-						// Validate output
-						const outputResult = target.output.safeParse(value);
-						if (outputResult.success) {
-							subscriber.next(this.applyFieldSelection(outputResult.data, request.select));
-						} else {
-							subscriber.error(
-								new Error(
-									`Output validation failed: ${outputResult.error.message}`
-								)
-							);
-						}
-					},
-					error: (error: any) => subscriber.error(error),
-					complete: () => subscriber.complete(),
-				});
-
-				return () => subscription.unsubscribe();
-			});
-		}
-
-		// Handle query/mutation
-		return target.resolve(validatedInput).then((result: any) => {
-			// Validate output
-			const outputResult = target.output.safeParse(result);
-			if (!outputResult.success) {
-				throw new Error(
-					`Output validation failed: ${outputResult.error.message}`
-				);
-			}
-
-			// Apply field selection
-			return this.applyFieldSelection(outputResult.data, request.select) as T;
-		});
+		return inputResult.data;
 	}
 
 	/**

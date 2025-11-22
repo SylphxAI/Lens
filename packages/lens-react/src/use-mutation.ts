@@ -62,7 +62,7 @@ export function useMutation<TData, TVariables extends LensRequest>(
 			setIsLoading(true);
 			setError(null);
 
-			const result = (await transport.send<TData>(variables)) as TData;
+			const result = await transport.mutate<TData>(variables);
 			setData(result);
 			options.onSuccess?.(result, variables);
 			options.onSettled?.(result, null, variables);

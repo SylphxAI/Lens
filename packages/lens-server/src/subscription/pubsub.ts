@@ -9,7 +9,7 @@
  * - In-memory (for testing)
  */
 
-import type { Observable } from "@sylphx/lens-core";
+import { Observable } from "rxjs";
 
 /**
  * Event structure

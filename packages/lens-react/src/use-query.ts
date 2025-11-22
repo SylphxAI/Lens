@@ -55,7 +55,7 @@ export function useQuery<TData>(
 			setIsLoading(true);
 			setError(null);
 
-			const result = (await transport.send<TData>(request)) as TData;
+			const result = await transport.query<TData>(request);
 			setData(result);
 			options.onSuccess?.(result);
 		} catch (err) {

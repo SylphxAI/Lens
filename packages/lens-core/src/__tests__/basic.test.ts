@@ -83,7 +83,7 @@ describe("Lens Core", () => {
 	test("query with InProcessTransport", async () => {
 		const transport = new InProcessTransport({ api });
 
-		const result = await transport.send({
+		const result = await transport.query({
 			type: "query",
 			path: ["user", "get"],
 			input: { id: "1" },
@@ -95,7 +95,7 @@ describe("Lens Core", () => {
 	test("query with field selection (array syntax)", async () => {
 		const transport = new InProcessTransport({ api });
 
-		const result = await transport.send({
+		const result = await transport.query({
 			type: "query",
 			path: ["user", "get"],
 			input: { id: "1" },
@@ -111,7 +111,7 @@ describe("Lens Core", () => {
 	test("query with field selection (object syntax)", async () => {
 		const transport = new InProcessTransport({ api });
 
-		const result = await transport.send({
+		const result = await transport.query({
 			type: "query",
 			path: ["user", "get"],
 			input: { id: "1" },
@@ -130,7 +130,7 @@ describe("Lens Core", () => {
 	test("mutation updates data", async () => {
 		const transport = new InProcessTransport({ api });
 
-		const result = await transport.send({
+		const result = await transport.mutate({
 			type: "mutation",
 			path: ["user", "update"],
 			input: {
@@ -156,7 +156,7 @@ describe("Lens Core", () => {
 		const transport = new InProcessTransport({ api });
 
 		try {
-			await transport.send({
+			await transport.query({
 				type: "query",
 				path: ["user", "get"],
 				input: { id: 123 }, // Invalid: should be string
@@ -184,7 +184,7 @@ describe("Lens Core", () => {
 		const transport = new InProcessTransport({ api: brokenApi });
 
 		try {
-			await transport.send({
+			await transport.query({
 				type: "query",
 				path: ["user", "get"],
 				input: { id: "1" },

@@ -53,33 +53,29 @@ export function useSubscription<TData>(
 			return;
 		}
 
-		const observable = transport.send<TData>(request);
+		const observable = transport.subscribe<TData>(request);
+		setIsConnected(true);
 
-		// Check if it's an observable (subscription)
-		if (typeof observable === "object" && "subscribe" in observable) {
-			setIsConnected(true);
-
-			const subscription = observable.subscribe({
-				next: (value: TData) => {
-					setData(value);
-					options.onData?.(value);
-				},
-				error: (err: Error) => {
-					setError(err);
-					setIsConnected(false);
-					options.onError?.(err);
-				},
-				complete: () => {
-					setIsConnected(false);
-					options.onComplete?.();
-				},
-			});
-
-			return () => {
-				subscription.unsubscribe();
+		const subscription = observable.subscribe({
+			next: (value: TData) => {
+				setData(value);
+				options.onData?.(value);
+			},
+			error: (err: Error) => {
+				setError(err);
 				setIsConnected(false);
-			};
-		}
+				options.onError?.(err);
+			},
+			complete: () => {
+				setIsConnected(false);
+				options.onComplete?.();
+			},
+		});
+
+		return () => {
+			subscription.unsubscribe();
+			setIsConnected(false);
+		};
 	}, [JSON.stringify(request), options.enabled]);
 
 	return {
