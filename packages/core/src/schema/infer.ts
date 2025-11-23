@@ -249,3 +249,120 @@ export type DeepPartial<T> = T extends object
 			[P in keyof T]?: DeepPartial<T[P]>;
 		}
 	: T;
+
+// =============================================================================
+// Type-Safe Filter Types (Where)
+// =============================================================================
+
+/** String field filter operations */
+export type StringFilter = {
+	equals?: string;
+	not?: string | StringFilter;
+	in?: string[];
+	notIn?: string[];
+	contains?: string;
+	startsWith?: string;
+	endsWith?: string;
+	mode?: "default" | "insensitive";
+};
+
+/** Number field filter operations (int/float) */
+export type NumberFilter = {
+	equals?: number;
+	not?: number | NumberFilter;
+	in?: number[];
+	notIn?: number[];
+	lt?: number;
+	lte?: number;
+	gt?: number;
+	gte?: number;
+};
+
+/** Boolean field filter operations */
+export type BooleanFilter = {
+	equals?: boolean;
+	not?: boolean | BooleanFilter;
+};
+
+/** DateTime field filter operations */
+export type DateTimeFilter = {
+	equals?: Date | string;
+	not?: Date | string | DateTimeFilter;
+	in?: (Date | string)[];
+	notIn?: (Date | string)[];
+	lt?: Date | string;
+	lte?: Date | string;
+	gt?: Date | string;
+	gte?: Date | string;
+};
+
+/** Enum field filter operations */
+export type EnumFilter<T extends string> = {
+	equals?: T;
+	not?: T | EnumFilter<T>;
+	in?: T[];
+	notIn?: T[];
+};
+
+/** Get filter type for a field type */
+export type FieldFilter<F extends FieldDefinition> = F extends IdType
+	? StringFilter
+	: F extends StringType
+		? StringFilter
+		: F extends IntType
+			? NumberFilter
+			: F extends FloatType
+				? NumberFilter
+				: F extends BooleanType
+					? BooleanFilter
+					: F extends DateTimeType
+						? DateTimeFilter
+						: F extends EnumType<infer V>
+							? EnumFilter<V[number]>
+							: never;
+
+/** Where input for filtering entities */
+export type WhereInput<E extends EntityDefinition> = {
+	[K in ScalarFields<E>]?: FieldFilter<E[K]> | InferScalarWithNullable<E[K]>;
+} & {
+	AND?: WhereInput<E> | WhereInput<E>[];
+	OR?: WhereInput<E>[];
+	NOT?: WhereInput<E> | WhereInput<E>[];
+};
+
+// =============================================================================
+// Type-Safe Sorting Types (OrderBy)
+// =============================================================================
+
+/** Sort direction */
+export type SortOrder = "asc" | "desc";
+
+/** Null handling in sorting */
+export type NullsOrder = "first" | "last";
+
+/** Sort field with options */
+export type SortOrderInput = SortOrder | { sort: SortOrder; nulls?: NullsOrder };
+
+/** OrderBy input for sorting entities */
+export type OrderByInput<E extends EntityDefinition> = {
+	[K in ScalarFields<E>]?: SortOrderInput;
+};
+
+// =============================================================================
+// Type-Safe Cursor Pagination
+// =============================================================================
+
+/** Cursor pagination input */
+export type CursorInput<E extends EntityDefinition> = {
+	[K in ScalarFields<E>]?: InferScalarWithNullable<E[K]>;
+};
+
+/** Pagination options */
+export type PaginationInput<E extends EntityDefinition> = {
+	/** Number of records to take */
+	take?: number;
+	/** Number of records to skip */
+	skip?: number;
+	/** Cursor for cursor-based pagination */
+	cursor?: CursorInput<E>;
+};

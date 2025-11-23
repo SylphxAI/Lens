@@ -11,8 +11,8 @@ import type {
 	InferEntity,
 	Select,
 	CreateInput,
-	UpdateInput,
-	DeleteInput,
+	WhereInput,
+	OrderByInput,
 } from "@lens/core";
 import { type Signal } from "../signals/signal";
 import { ReactiveStore, type EntityState } from "../store/reactive-store";
@@ -47,14 +47,16 @@ export interface QueryOptions<S extends SchemaDefinition, E extends keyof S> {
 /** List query options */
 export interface ListOptions<S extends SchemaDefinition, E extends keyof S>
 	extends QueryOptions<S, E> {
-	/** Filter conditions */
-	where?: Record<string, unknown>;
-	/** Sorting */
-	orderBy?: Record<string, "asc" | "desc">;
+	/** Filter conditions (type-safe) */
+	where?: WhereInput<S[E]>;
+	/** Sorting (type-safe) */
+	orderBy?: OrderByInput<S[E]> | OrderByInput<S[E]>[];
 	/** Limit */
 	take?: number;
 	/** Offset */
 	skip?: number;
+	/** Cursor for cursor-based pagination */
+	cursor?: { id: string };
 }
 
 /** Mutation options */

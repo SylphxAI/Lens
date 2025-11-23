@@ -93,6 +93,22 @@ export {
 	type CreateInput,
 	type UpdateInput,
 	type DeleteInput,
+	// Filter types (Where)
+	type StringFilter,
+	type NumberFilter,
+	type BooleanFilter,
+	type DateTimeFilter,
+	type EnumFilter,
+	type FieldFilter,
+	type WhereInput,
+	// Sorting types (OrderBy)
+	type SortOrder,
+	type NullsOrder,
+	type SortOrderInput,
+	type OrderByInput,
+	// Pagination types
+	type CursorInput,
+	type PaginationInput,
 	// Utility types
 	type RequireKeys,
 	type OptionalKeys,
