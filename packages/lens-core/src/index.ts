@@ -66,3 +66,62 @@ export { AutoStrategy } from "./update-strategy/auto.js";
 // Re-export Observable for convenience
 export type { Observable } from "rxjs";
 
+// Resource system
+export {
+	defineResource,
+	validateAllResources,
+	getResource,
+	getAllResources,
+	ResourceDefinitionError,
+	hasMany,
+	belongsTo,
+	hasOne,
+	manyToMany,
+	ResourceRegistry,
+	ResourceRegistryError,
+	getRegistry,
+} from "./resource/index.js";
+
+export type {
+	Resource,
+	ResourceDefinition,
+	InferEntity,
+	Relationship,
+	RelationshipType,
+	HasManyRelationship,
+	BelongsToRelationship,
+	HasOneRelationship,
+	ManyToManyRelationship,
+	BaseRelationship,
+	ComputedField,
+	ResourceHooks,
+	QueryOptions,
+	ListOptions,
+	MutationOptions,
+	Subscription,
+	SubscriptionHandlers,
+	QueryContext,
+	HasManyOptions,
+	BelongsToOptions,
+	HasOneOptions,
+	ManyToManyOptions,
+} from "./resource/index.js";
+
+// Query planning
+export { QueryPlanner } from "./query/index.js";
+export type {
+	QueryPlan,
+	QueryStrategy,
+	N1Detection,
+	DepthAnalysis,
+} from "./query/index.js";
+
+// DataLoader
+export {
+	DataLoader,
+	ResourceDataLoaderFactory,
+	createDataLoaderFactory,
+} from "./loader/index.js";
+
+export type { BatchLoadFn, DataLoaderOptions } from "./loader/index.js";
+
