@@ -1,0 +1,3 @@
+[test]
+# Only run tests in packages directory
+root = "packages"
