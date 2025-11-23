@@ -49,7 +49,8 @@ export class InProcessTransport implements LensTransport {
 		const validatedInput = this.validateInput(target, request);
 
 		return new Observable<T>((subscriber) => {
-			const subscription = target.subscribe({ input: validatedInput, ctx: this.config.context }).subscribe({
+			// Builder expects two separate parameters: (input, ctx)
+			const subscription = target.subscribe(validatedInput, this.config.context).subscribe({
 				next: (value: any) => {
 					// Validate output
 					const outputResult = target.output.safeParse(value);
@@ -83,15 +84,9 @@ export class InProcessTransport implements LensTransport {
 		// Validate input
 		const validatedInput = this.validateInput(target, request);
 
-		// DEBUG: Log context being passed
-		console.log('[InProcessTransport] executeRequest:', {
-			path: request.path.join('.'),
-			hasContext: !!this.config.context,
-			context: this.config.context,
-		});
-
 		// Execute with context
-		return target.resolve({ input: validatedInput, ctx: this.config.context }).then((result: any) => {
+		// Builder expects two separate parameters: (input, ctx)
+		return target.resolve(validatedInput, this.config.context).then((result: any) => {
 			// Validate output
 			const outputResult = target.output.safeParse(result);
 			if (!outputResult.success) {
