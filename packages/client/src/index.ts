@@ -85,3 +85,4 @@ export {
 
 export { WebSocketTransport } from "./transport/websocket";
 export { HttpTransport, type HttpTransportConfig } from "./transport/http";
+export { SSETransport, type SSETransportConfig } from "./transport/sse";

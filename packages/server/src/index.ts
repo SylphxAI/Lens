@@ -56,3 +56,40 @@ export {
 	type LensServer,
 	type WebSocketLike,
 } from "./server/create";
+
+// =============================================================================
+// SSE (Server-Sent Events)
+// =============================================================================
+
+export {
+	// Class
+	SSEHandler,
+	// Factory
+	createSSEHandler,
+	// Types
+	type SSEClient,
+	type SSESubscription,
+	type ProgressEvent,
+	type SSEHandlerConfig,
+} from "./sse/handler";
+
+// =============================================================================
+// Streaming & Progress
+// =============================================================================
+
+export {
+	// Class
+	ProgressTracker,
+	// Factories
+	createProgressTracker,
+	// Utilities
+	streamingBatchProcess,
+	streamingGenerator,
+	streamEmbeddings,
+	// Types
+	type Progress,
+	type ProgressCallback,
+	type StreamingOptions,
+	type EmbeddingResult,
+	type EmbeddingInput,
+} from "./streaming/progress";
