@@ -9,7 +9,7 @@
 	],
 	"scripts": {
 		"build": "bun run --filter '*' build",
-		"test": "bun test",
+		"test": "cd packages/core && bun test && cd ../client && bun test && cd ../server && bun test && cd ../react && bun test",
 		"test:watch": "bun test --watch",
 		"lint": "biome check .",
 		"lint:fix": "biome check --fix .",
@@ -21,7 +21,7 @@
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
-		"@changesets/cli": "^2.27.10",
+		"@changesets/cli": "^2.29.7",
 		"@types/bun": "latest",
 		"typescript": "^5.9.3"
 	},

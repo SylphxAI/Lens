@@ -36,7 +36,4 @@ yarn-error.log*
 .bun/
 bun.lockb
 
-# Changesets
-.changeset/*.md
-!.changeset/README.md
-!.changeset/config.json
+# Changesets (changeset files ARE tracked for CI workflow)
