@@ -107,6 +107,21 @@ export type {
 	BelongsToOptions,
 	HasOneOptions,
 	ManyToManyOptions,
+	UpdateStrategyMode,
+	UpdateStrategyConfig,
+	StrategyConfig,
+} from "./resource/index.js";
+
+// Update strategy integration
+export {
+	UpdateStrategySelector,
+	applyUpdateStrategy,
+	applyUpdateStrategies,
+	createOptimisticUpdate,
+	encodeUpdate,
+	decodeUpdate,
+	getStrategyMetadata,
+	DEFAULT_STRATEGY_CONFIG,
 } from "./resource/index.js";
 
 // Query planning

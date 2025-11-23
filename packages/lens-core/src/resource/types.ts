@@ -209,7 +209,51 @@ export interface OptimisticConfig<TEntity = any> {
  * - delta: Delta encoding for strings (57% savings)
  * - patch: JSON Patch for objects (99% savings)
  */
-export type UpdateStrategy = "auto" | "value" | "delta" | "patch";
+export type UpdateStrategyMode = "auto" | "value" | "delta" | "patch";
+
+/**
+ * Update strategy configuration
+ *
+ * Controls how updates are encoded, transmitted, and applied.
+ */
+export interface UpdateStrategyConfig {
+	/**
+	 * Strategy selection mode
+	 * - 'auto': Automatically select based on field types (recommended)
+	 * - 'delta': Use Delta strategy for all string fields
+	 * - 'patch': Use Patch strategy for all object fields
+	 * - 'value': Use Value strategy for all fields
+	 */
+	mode?: UpdateStrategyMode;
+
+	/**
+	 * Custom strategy mapping per field
+	 *
+	 * @example
+	 * ```ts
+	 * fieldStrategies: {
+	 *   title: 'delta',     // String field with streaming updates
+	 *   metadata: 'patch',  // Object field with partial updates
+	 *   status: 'value',    // Enum field with direct value
+	 * }
+	 * ```
+	 */
+	fieldStrategies?: Record<string, UpdateStrategyMode>;
+
+	/**
+	 * Streaming fields configuration
+	 *
+	 * Fields that emit start/delta/end events for real-time streaming.
+	 * Automatically uses Delta strategy.
+	 *
+	 * @example
+	 * ```ts
+	 * streamingFields: ['title', 'content']
+	 * // Enables: title.start, title.delta, title.end events
+	 * ```
+	 */
+	streamingFields?: string[];
+}
 
 /**
  * Resource definition
@@ -267,8 +311,8 @@ export interface ResourceDefinition<
 	/** Optimistic update configuration */
 	optimistic?: OptimisticConfig<z.infer<TFields>>;
 
-	/** Update strategy for subscriptions */
-	updateStrategy?: UpdateStrategy;
+	/** Update strategy configuration for subscriptions and mutations */
+	updateStrategy?: UpdateStrategyMode | UpdateStrategyConfig;
 
 	/** Optional: database table name (defaults to `${name}s`) */
 	tableName?: string;

@@ -49,7 +49,8 @@ export type {
 	// Optimistic updates
 	OptimisticConfig,
 	// Update strategies
-	UpdateStrategy,
+	UpdateStrategyMode,
+	UpdateStrategyConfig,
 	// Query types
 	QueryOptions,
 	ListOptions,
@@ -64,3 +65,16 @@ export type {
 	DatabaseAdapter,
 	EventStreamInterface,
 } from "./types";
+
+// Update strategy integration
+export {
+	UpdateStrategySelector,
+	applyUpdateStrategy,
+	applyUpdateStrategies,
+	createOptimisticUpdate,
+	encodeUpdate,
+	decodeUpdate,
+	getStrategyMetadata,
+	DEFAULT_STRATEGY_CONFIG,
+	type StrategyConfig,
+} from "./update-strategy-integration";
