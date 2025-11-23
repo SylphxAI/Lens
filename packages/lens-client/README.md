@@ -151,6 +151,77 @@ function App() {
 }
 ```
 
+## Automatic Optimistic Updates
+
+Lens client handles optimistic updates completely automatically when configured with an `OptimisticManager`.
+
+### Setup
+
+```typescript
+import { createLensClient, OptimisticManager } from '@sylphx/lens-client';
+
+const optimisticManager = new OptimisticManager({ debug: false });
+
+const client = createLensClient<API>({
+  transport,
+  schema: api,  // Pass API schema for optimistic metadata
+  optimisticManager,
+});
+```
+
+### How It Works
+
+**Mutations**: Optimistic updates are applied automatically before the mutation completes.
+
+```typescript
+// Define optimistic in API
+updateTitle: lens
+  .input(z.object({ sessionId: z.string(), newTitle: z.string() }))
+  .optimistic((opt) => opt
+    .entity('Session')
+    .id($ => $.sessionId)
+    .apply((draft, input, t) => {
+      draft.title = input.newTitle;
+      draft.updatedAt = t.now();
+    })
+  )
+  .mutation(async ({ input }) => { ... })
+
+// Call mutation - optimistic applied automatically!
+await client.session.updateTitle.mutate({ sessionId, newTitle: 'New' });
+// ✅ UI updates immediately (optimistic)
+// ✅ Server confirms → merge into base
+// ✅ Error → automatic rollback
+```
+
+**Subscriptions**: Server updates are automatically merged with optimistic state.
+
+```typescript
+// Subscriptions auto-wrap with optimistic manager
+client.session.getById.subscribe({ sessionId }).subscribe({
+  next: (session) => {
+    // ✅ Receives merged state (optimistic + server)
+    // ✅ No manual wrapping needed
+    console.log('Session:', session);
+  }
+});
+```
+
+### OptimisticManager API
+
+```typescript
+// Get current entity state (merged)
+const session = optimisticManager.get('Session', sessionId);
+
+// Subscribe to entity changes
+optimisticManager.subscribe('Session', sessionId).subscribe({
+  next: (session) => console.log('Updated:', session)
+});
+
+// Check for pending optimistic updates
+const hasPending = optimisticManager.hasOptimistic('Session', sessionId);
+```
+
 ## Comparison with tRPC
 
 | Feature | Lens | tRPC |
@@ -162,3 +233,5 @@ function App() {
 | Update strategies | ✅ Delta/Patch | ❌ Full updates |
 | Schema validation | Zod | Zod |
 | Real-time | Auto-subscribe | Manual |
+| **Optimistic updates** | ✅ **Automatic** | ❌ Manual |
+| **Reconciliation** | ✅ **Built-in** | ❌ Manual |

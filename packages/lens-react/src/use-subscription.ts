@@ -44,6 +44,13 @@ export function useSubscription<TData>(
 	options: UseSubscriptionOptions<TData> = {},
 ): UseSubscriptionResult<TData> {
 	const { transport } = useLensContext();
+
+	if (!transport) {
+		throw new Error(
+			"useSubscription requires LensProvider with 'transport' prop. " +
+				"Use useResource for high-level resource API.",
+		);
+	}
 	const [data, setData] = useState<TData | undefined>(undefined);
 	const [error, setError] = useState<Error | null>(null);
 	const [isConnected, setIsConnected] = useState(false);

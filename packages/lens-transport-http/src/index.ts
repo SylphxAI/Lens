@@ -7,6 +7,7 @@
 
 import type {
 	LensRequest,
+	LensResponse,
 	LensTransport,
 } from "@sylphx/lens-core";
 
@@ -82,7 +83,20 @@ export class HTTPTransport implements LensTransport {
 				throw new Error(error.error?.message || "Request failed");
 			}
 
-			return (await response.json()) as T;
+			// Parse response as LensResponse and unwrap data field
+			const lensResponse = (await response.json()) as LensResponse<T>;
+
+			// Check for errors in response
+			if (lensResponse.error) {
+				throw new Error(lensResponse.error.message || "Request failed");
+			}
+
+			// Unwrap and return data
+			if (lensResponse.data === undefined) {
+				throw new Error("Response missing data field");
+			}
+
+			return lensResponse.data;
 		} catch (error) {
 			if (error instanceof Error && error.name === "AbortError") {
 				throw new Error(`Request timeout after ${this.config.timeout}ms`);

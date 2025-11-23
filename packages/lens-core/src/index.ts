@@ -66,3 +66,134 @@ export { AutoStrategy } from "./update-strategy/auto.js";
 // Re-export Observable for convenience
 export type { Observable } from "rxjs";
 
+// Resource system
+export {
+	defineResource,
+	validateAllResources,
+	getResource,
+	getAllResources,
+	ResourceDefinitionError,
+	hasMany,
+	belongsTo,
+	hasOne,
+	manyToMany,
+	ResourceRegistry,
+	ResourceRegistryError,
+	getRegistry,
+} from "./resource/index.js";
+
+export type {
+	Resource,
+	ResourceDefinition,
+	InferEntity,
+	Relationship,
+	RelationshipType,
+	HasManyRelationship,
+	BelongsToRelationship,
+	HasOneRelationship,
+	ManyToManyRelationship,
+	BaseRelationship,
+	ComputedField,
+	ResourceHooks,
+	QueryOptions,
+	ListOptions,
+	MutationOptions,
+	Subscription,
+	SubscriptionHandlers,
+	QueryContext,
+	DatabaseAdapter,
+	EventStreamInterface,
+	HasManyOptions,
+	BelongsToOptions,
+	HasOneOptions,
+	ManyToManyOptions,
+	UpdateStrategyMode,
+	UpdateStrategyConfig,
+	StrategyConfig,
+} from "./resource/index.js";
+
+// Update strategy integration
+export {
+	UpdateStrategySelector,
+	applyUpdateStrategy,
+	applyUpdateStrategies,
+	createOptimisticUpdate,
+	encodeUpdate,
+	decodeUpdate,
+	getStrategyMetadata,
+	DEFAULT_STRATEGY_CONFIG,
+} from "./resource/index.js";
+
+// Query planning
+export { QueryPlanner } from "./query/index.js";
+export type {
+	QueryPlan,
+	QueryStrategy,
+	N1Detection,
+	DepthAnalysis,
+} from "./query/index.js";
+
+// DataLoader
+export {
+	DataLoader,
+	ResourceDataLoaderFactory,
+	createDataLoaderFactory,
+} from "./loader/index.js";
+
+export type { BatchLoadFn, DataLoaderOptions } from "./loader/index.js";
+
+// Code generation
+export { generateResourceAPI, type ResourceAPI } from "./codegen/index.js";
+
+// Event system
+export {
+	EventStream,
+	createEventStream,
+	type Event,
+	type SubscriptionOptions,
+} from "./events/index.js";
+
+// Error system
+export {
+	LensError,
+	ValidationError,
+	QueryError,
+	EntityNotFoundError,
+	MutationError,
+	RelationshipError,
+	ResourceError,
+	ContextError,
+	DataLoaderError,
+	EventError,
+	ErrorHelpers,
+	LensErrorCode,
+	type LensErrorMeta,
+} from "./errors/index.js";
+
+// Performance monitoring
+export {
+	PerformanceMonitor,
+	getPerformanceMonitor,
+	setPerformanceMonitor,
+	measure,
+	type PerformanceMetric,
+	type PerformanceSummary,
+} from "./performance/index.js";
+
+// Field-level subscriptions
+export {
+	FieldSubscriptionManager,
+	getFieldSubscriptionManager,
+	setFieldSubscriptionManager,
+	isStreamingHandlers,
+	isFieldHandlers,
+	applyDelta,
+	type DeltaOperation,
+	type StreamingFieldHandlers,
+	type FieldHandlers,
+	type FieldSubscriptionHandlers,
+	type FieldSubscriptions,
+	type FieldSubscriptionOptions,
+	type FieldUpdateEvent,
+} from "./subscription/index.js";
+
