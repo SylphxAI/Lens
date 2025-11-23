@@ -1,642 +1,349 @@
-# Lens Implementation Architecture
+# Lens Architecture
 
-**Status:** 🚧 Design Complete - Ready for Implementation
+> **TypeScript-first, Reactive Graph API Framework**
+
+Lens is a revolutionary approach to building APIs that combines the best of GraphQL's query flexibility with tRPC's type safety, while adding first-class support for real-time streaming and optimistic updates.
+
+---
+
+## Core Philosophy
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                                                             │
+│   "Everything is Reactive. Everything can Stream."          │
+│                                                             │
+│   - Zero distinction between static and streaming data      │
+│   - Server emits, Client receives                           │
+│   - No configuration, only implementation                   │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Design Principles
+
+1. **TypeScript-First** - Full type inference from schema to client, zero codegen
+2. **Reactive by Default** - Every field, every entity is reactive
+3. **Frontend-Driven** - Client declares what it needs, server delivers
+4. **Zero Config** - Schema = Shape, Resolver = Implementation, that's it
+5. **Minimal Transfer** - Automatic delta/patch/value strategy selection
+6. **Transparent Streaming** - Client doesn't know or care about streaming
+
+---
+
+## Mental Model
+
+### The Unified Reactive Model
+
+There is no distinction between "streaming" and "non-streaming" fields.
+
+```
+Static data    = Server yields once
+Streaming data = Server yields many times
+Same pattern, same code, same API
+```
+
+### Data Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                         CLIENT                               │
+│                                                             │
+│   const user = api.user.get({ id })   // Signal<User>       │
+│   <div>{user.name}</div>              // Auto-updates       │
+│                                                             │
+│   ┌─────────────────────────────────────────────────────┐   │
+│   │              Reactive Store                         │   │
+│   │   Signals auto-subscribe, auto-update, auto-dispose │   │
+│   └─────────────────────────────────────────────────────┘   │
+│                          ▲                                  │
+│                          │ WebSocket                        │
+└──────────────────────────┼──────────────────────────────────┘
+                           │
+┌──────────────────────────┼──────────────────────────────────┐
+│                          ▼              SERVER               │
+│   ┌─────────────────────────────────────────────────────┐   │
+│   │              Graph Emitter                          │   │
+│   │   yield data → Framework delivers to subscribers    │   │
+│   └─────────────────────────────────────────────────────┘   │
+│                          ▲                                  │
+│                          │                                  │
+│   ┌──────────┬───────────┴───────────┬──────────┐          │
+│   │    DB    │         LLM           │  Service │          │
+│   │  Source  │        Source         │  Source  │          │
+│   └──────────┴───────────────────────┴──────────┘          │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Architecture Layers
+
+### Layer 1: Schema (Shape Definition)
+
+Schema defines WHAT the data looks like. Nothing else.
+
+```typescript
+import { createSchema, t } from '@lens/core';
+
+const schema = createSchema({
+  User: {
+    id: t.id(),
+    name: t.string(),
+    email: t.string(),
+    avatar: t.string().nullable(),
+    posts: t.hasMany('Post'),
+    profile: t.hasOne('Profile'),
+  },
+
+  Post: {
+    id: t.id(),
+    title: t.string(),
+    content: t.string(),         // Can stream (LLM) or not (DB)
+    status: t.enum(['draft', 'published']),
+    author: t.belongsTo('User'),
+    comments: t.hasMany('Comment'),
+  },
+
+  Comment: {
+    id: t.id(),
+    body: t.string(),
+    author: t.belongsTo('User'),
+    post: t.belongsTo('Post'),
+  },
+});
+```
+
+**Key points:**
+- No `.streaming()` annotation - streaming is runtime behavior
+- Relations define the graph structure
+- Types are inferred automatically
+
+### Layer 2: Resolvers (Implementation)
+
+Resolvers define HOW to get data. They decide runtime behavior.
+
+```typescript
+import { createResolvers } from '@lens/server';
+
+const resolvers = createResolvers(schema, {
+  User: {
+    // Simple: return value (yields once)
+    resolve: async (id, ctx) => {
+      return await ctx.db.user.findUnique({ where: { id } });
+    },
+
+    // Batch: for N+1 elimination
+    batch: async (ids, ctx) => {
+      return await ctx.db.user.findMany({ where: { id: { in: ids } } });
+    },
+
+    // Relations
+    posts: async (user, ctx) => {
+      return await ctx.db.post.findMany({ where: { authorId: user.id } });
+    },
+  },
+
+  Post: {
+    // Streaming: yield multiple times
+    resolve: async function* (id, ctx) {
+      // Initial from DB
+      const post = await ctx.db.post.findUnique({ where: { id } });
+      yield post;
+
+      // If generating, stream from LLM
+      if (post.isGenerating) {
+        for await (const chunk of ctx.llm.stream(post.promptId)) {
+          yield {
+            ...post,
+            content: post.content + chunk.text,
+          };
+        }
+      }
+
+      // Listen for DB changes
+      for await (const change of ctx.db.watch('Post', id)) {
+        yield change;
+      }
+    },
+  },
+});
+```
+
+**Key points:**
+- `return` = yield once (static)
+- `yield` = can yield many times (streaming)
+- Same API, different behavior based on implementation
+
+### Layer 3: Client (Reactive Access)
+
+Client provides reactive access to the graph.
+
+```typescript
+import { createClient } from '@lens/client';
+
+const api = createClient<typeof schema>({
+  url: 'wss://api.example.com/lens',
+});
+
+// Get entity - returns Signal
+const user = api.user.get({ id: '123' });
+// user: Signal<User | null>
+
+// Computed relations
+const posts = computed(() => user.value?.posts ?? []);
+// posts: Signal<Post[]>
+
+// Field selection (optimization)
+const simpleUser = api.user.get({ id: '123' }, {
+  select: { name: true, avatar: true },
+});
+// simpleUser: Signal<{ name: string; avatar: string | null } | null>
+
+// Mutations (auto-optimistic)
+await api.post.update({
+  id: '456',
+  title: 'New Title',
+});
+// UI updates immediately, rolls back on error
+```
+
+**Key points:**
+- Everything returns a Signal (reactive)
+- Field selection is an optimization hint
+- Optimistic updates are automatic
+
+### Layer 4: React Integration
+
+React hooks wrap signals for React's rendering model.
+
+```tsx
+import { useEntity, useMutation } from '@lens/react';
+
+function UserProfile({ userId }: { userId: string }) {
+  const user = useEntity(api.user, { id: userId });
+  const posts = useComputed(() => user.value?.posts ?? []);
+
+  const updateUser = useMutation(api.user.update);
+
+  return (
+    <div>
+      <h1>{user.value?.name}</h1>
+      <button onClick={() => updateUser({ id: userId, name: 'New Name' })}>
+        Update
+      </button>
+      {posts.value.map(post => (
+        <PostCard key={post.id} post={post} />
+      ))}
+    </div>
+  );
+}
+```
+
+---
+
+## Transfer Optimization
+
+### Automatic Strategy Selection
+
+Server automatically selects the optimal transfer strategy:
+
+| Field Type | Strategy | Savings |
+|------------|----------|---------|
+| `string` (short) | `value` | - |
+| `string` (long, small change) | `delta` | ~57% |
+| `object` | `patch` | ~99% |
+| `array` | `patch` | ~90% |
+| `number`, `boolean` | `value` | - |
+
+### Wire Protocol
+
+```typescript
+// Initial
+{ type: 'initial', entity: 'Post', id: '123', data: { ... } }
+
+// Value update
+{ type: 'update', entity: 'Post', id: '123', field: 'title', strategy: 'value', data: 'New Title' }
+
+// Delta update (streaming text)
+{ type: 'update', entity: 'Post', id: '123', field: 'content', strategy: 'delta', data: { pos: 100, insert: 'Hello' } }
+
+// Patch update (object/array)
+{ type: 'update', entity: 'Post', id: '123', field: 'metadata', strategy: 'patch', data: [{ op: 'add', path: '/views', value: 100 }] }
+```
+
+---
+
+## Optimistic Updates
+
+### Automatic Inference
+
+Optimistic updates are inferred from mutation input:
+
+```typescript
+// Mutation
+await api.post.update({ id: '123', title: 'New Title' });
+
+// Framework automatically:
+// 1. Detects: has `id` → update operation
+// 2. Extracts: fields to update = { title: 'New Title' }
+// 3. Applies: merge into cached entity
+// 4. Marks: as optimistic
+// 5. On success: confirm
+// 6. On error: rollback
+```
+
+No configuration needed!
+
+### Create/Delete
+
+```typescript
+// Create - generates temp ID
+await api.post.create({ title: 'New Post' });
+// temp:uuid → replaced with real ID on success
+
+// Delete - removes from cache
+await api.post.delete({ id: '123' });
+// Restored on error
+```
 
 ---
 
 ## Package Structure
 
 ```
-packages/lens/
-├── lens-core/           # Core types, schema builder, client runtime
-├── lens-server/         # Server-side runtime, auto-subscription
-├── lens-transport-http/ # HTTP transport implementation
-├── lens-transport-ws/   # WebSocket transport implementation
-├── lens-react/          # React hooks (useLens, useLensMutation)
-└── lens-vue/            # Vue composables (optional)
+@lens/core      Schema types, utilities, shared code
+@lens/server    Resolvers, graph execution, handlers
+@lens/client    Reactive store, signals, transport
+@lens/react     React hooks and bindings
 ```
 
 ---
 
-## Implementation Phases
+## Comparison
 
-### Phase 1: Core Type System (lens-core)
-**Goal:** Type-safe schema builder with Zod integration
-
-**Files to Create:**
-```
-lens-core/src/
-├── schema/
-│   ├── builder.ts           # lens.object(), lens.query(), lens.mutation()
-│   ├── types.ts             # Core type definitions
-│   └── inference.ts         # Type inference utilities
-├── transport/
-│   ├── interface.ts         # LensTransport interface
-│   ├── router.ts            # TransportRouter
-│   ├── middleware.ts        # MiddlewareTransport
-│   └── in-process.ts        # InProcessTransport
-├── update-strategy/
-│   ├── types.ts             # UpdateMode, UpdateStrategy
-│   ├── value.ts             # ValueStrategy
-│   ├── delta.ts             # DeltaStrategy (text delta)
-│   ├── patch.ts             # PatchStrategy (JSON Patch RFC 6902)
-│   └── auto.ts              # AutoStrategy (intelligent selection)
-├── client/
-│   ├── client.ts            # createLensClient()
-│   ├── request.ts           # Request building
-│   └── response.ts          # Response handling
-└── index.ts
-```
-
-**Core Types:**
-```typescript
-// schema/types.ts
-export interface LensQuery<TInput, TOutput> {
-  type: 'query';
-  input: z.ZodType<TInput>;
-  output: z.ZodType<TOutput>;
-  resolve: (input: TInput) => Promise<TOutput>;
-  subscribe?: (input: TInput) => Observable<TOutput>;
-}
-
-export interface LensMutation<TInput, TOutput> {
-  type: 'mutation';
-  input: z.ZodType<TInput>;
-  output: z.ZodType<TOutput>;
-  resolve: (input: TInput) => Promise<TOutput>;
-}
-
-export interface LensObject<T> {
-  [key: string]: LensQuery<any, any> | LensMutation<any, any> | LensObject<any>;
-}
-
-// transport/interface.ts
-export interface LensTransport {
-  send<T>(request: LensRequest): Promise<T> | Observable<T>;
-  close?: () => void;
-}
-
-export interface LensRequest {
-  type: 'query' | 'mutation' | 'subscription';
-  path: string[];
-  input: unknown;
-  select?: FieldSelection;
-  updateMode?: UpdateMode;
-}
-
-// update-strategy/types.ts
-export type UpdateMode = 'value' | 'delta' | 'patch' | 'auto';
-
-export interface UpdateStrategy {
-  mode: UpdateMode;
-  encode(current: unknown, next: unknown): unknown;
-  decode(current: unknown, update: unknown): unknown;
-}
-```
-
-**Implementation Priority:**
-1. ✅ Schema builder (lens.query, lens.mutation, lens.object)
-2. ✅ Type inference from Zod schemas
-3. ✅ Transport interface
-4. ✅ Update strategies (value, delta, patch, auto)
-5. ✅ Client runtime
+| Feature | GraphQL | tRPC | Lens |
+|---------|---------|------|------|
+| Type Safety | Codegen | Native | Native |
+| Field Selection | ✅ | ❌ | ✅ |
+| Nested Queries | ✅ | ❌ | ✅ |
+| Real-time | Subscription | Manual | Native |
+| Streaming | ❌ | ❌ | Native |
+| Optimistic | Manual | Manual | Auto |
+| N+1 Prevention | DataLoader | Manual | Auto |
+| Transfer Optimization | ❌ | ❌ | Auto |
+| Boilerplate | High | Low | Zero |
 
 ---
 
-### Phase 2: Server Runtime (lens-server)
-**Goal:** Handle requests, auto-subscription, field selection
+## Summary
 
-**Files to Create:**
 ```
-lens-server/src/
-├── handler/
-│   ├── request-handler.ts   # Process incoming requests
-│   ├── field-selector.ts    # Apply field selection to results
-│   └── validator.ts         # Zod validation
-├── subscription/
-│   ├── auto-subscribe.ts    # Auto-subscription logic
-│   ├── channel.ts           # Channel naming conventions
-│   └── pubsub.ts            # PubSub adapter interface
-├── compression/
-│   ├── middleware.ts        # Compression middleware
-│   ├── brotli.ts           # Brotli compression
-│   └── gzip.ts             # Gzip compression
-├── server.ts                # createLensServer()
-└── index.ts
+Schema     = Define shape (WHAT)
+Resolvers  = Implement fetching (HOW)
+Client     = Reactive access (USE)
+
+Everything else is automatic.
+Zero config. Only implementation.
 ```
-
-**Server Configuration:**
-```typescript
-// server.ts
-export interface LensServerConfig {
-  // Auto-subscription
-  autoSubscribe?: {
-    channelFor: (path: string[], input: unknown) => string;
-    pubsub: PubSubAdapter;
-  };
-
-  // Update mode
-  updateMode?: UpdateMode;
-
-  // Compression
-  compression?: {
-    enabled: boolean;
-    algorithm: 'brotli' | 'gzip';
-    threshold: number;
-  };
-}
-
-export function createLensServer<T extends LensObject<any>>(
-  api: T,
-  config?: LensServerConfig
-): LensServer;
-```
-
-**Implementation Priority:**
-1. ✅ Request handler (parse, validate, execute)
-2. ✅ Field selection implementation
-3. ✅ Auto-subscription system
-4. ✅ Compression middleware
-5. ✅ HTTP/WebSocket handlers
-
----
-
-### Phase 3: Transport Implementations
-
-#### HTTP Transport (lens-transport-http)
-```
-lens-transport-http/src/
-├── transport.ts             # HTTPTransport class
-├── fetch.ts                 # Fetch wrapper
-└── index.ts
-```
-
-```typescript
-export class HTTPTransport implements LensTransport {
-  constructor(config: {
-    url: string;
-    headers?: Record<string, string>;
-    fetch?: typeof fetch;
-  });
-
-  send<T>(request: LensRequest): Promise<T>;
-}
-```
-
-#### WebSocket Transport (lens-transport-ws)
-```
-lens-transport-ws/src/
-├── transport.ts             # WebSocketTransport class
-├── reconnect.ts             # Auto-reconnect logic
-└── index.ts
-```
-
-```typescript
-export class WebSocketTransport implements LensTransport {
-  constructor(config: {
-    url: string;
-    reconnect?: boolean;
-    compress?: 'brotli' | 'gzip';
-  });
-
-  send<T>(request: LensRequest): Observable<T>;
-  close(): void;
-}
-```
-
----
-
-### Phase 4: React Integration (lens-react)
-**Goal:** Hooks for queries and mutations with optimistic updates
-
-**Files to Create:**
-```
-lens-react/src/
-├── hooks/
-│   ├── useLens.ts           # Query hook with live updates
-│   ├── useLensMutation.ts   # Mutation hook with optimistic updates
-│   └── useLensSubscription.ts # Direct subscription hook
-├── context/
-│   └── LensProvider.tsx     # React context provider
-├── optimistic/
-│   ├── manager.ts           # Optimistic update manager
-│   ├── effects.ts           # Effect system integration
-│   └── rollback.ts          # Auto-rollback logic
-└── index.ts
-```
-
-**Hook Signatures:**
-```typescript
-// hooks/useLens.ts
-export function useLens<T, S>(
-  fn: LensQuery<any, T>,
-  input?: unknown,
-  options?: {
-    select?: S;
-    live?: boolean;
-    refetchInterval?: number;
-    enabled?: boolean;
-    onSuccess?: (data: Selected<T, S>) => void;
-    onError?: (error: Error) => void;
-  }
-): {
-  data: Selected<T, S> | null;
-  isLoading: boolean;
-  error: Error | null;
-  refetch: () => void;
-};
-
-// hooks/useLensMutation.ts
-export function useLensMutation<TInput, TOutput>(
-  fn: LensMutation<TInput, TOutput>,
-  options?: {
-    optimistic?: boolean;
-    onSuccess?: (data: TOutput) => void;
-    onError?: (error: Error) => void;
-    onSettled?: () => void;
-    retry?: number;
-    retryDelay?: number;
-  }
-): {
-  mutate: (input: TInput) => Promise<TOutput>;
-  isLoading: boolean;
-  error: Error | null;
-  data: TOutput | null;
-};
-```
-
-**Optimistic Update Integration:**
-```typescript
-// Integrate with existing @sylphx/optimistic system
-import { runOptimisticEffects } from '@sylphx/optimistic';
-
-export function useLensMutation<TInput, TOutput>(
-  fn: LensMutation<TInput, TOutput>,
-  options?: MutationOptions<TInput, TOutput>
-) {
-  const mutate = async (input: TInput) => {
-    if (options?.optimistic) {
-      // 1. Generate optimistic effects
-      const effects = generateOptimisticEffects(fn, input);
-
-      // 2. Apply optimistically
-      runOptimisticEffects(effects);
-
-      // 3. Send to server
-      try {
-        const result = await client.send(request);
-        // Confirm optimistic update
-        return result;
-      } catch (error) {
-        // Rollback on error
-        runOptimisticEffects(generateRollbackEffects(fn, input));
-        throw error;
-      }
-    }
-
-    // Non-optimistic path
-    return await client.send(request);
-  };
-
-  return { mutate, isLoading, error, data };
-}
-```
-
----
-
-## Key Implementation Details
-
-### 1. Field Selection Implementation
-
-**Server-side (lens-server/handler/field-selector.ts):**
-```typescript
-export function applyFieldSelection<T>(
-  data: T,
-  select: FieldSelection
-): Selected<T, typeof select> {
-  if (Array.isArray(select)) {
-    // Array syntax: ['id', 'name']
-    return Object.fromEntries(
-      select.map(key => [key, data[key as keyof T]])
-    );
-  }
-
-  if (typeof select === 'object') {
-    // Object syntax: { id: true, posts: { title: true } }
-    const result: any = {};
-    for (const [key, value] of Object.entries(select)) {
-      if (value === true) {
-        result[key] = data[key as keyof T];
-      } else if (typeof value === 'object') {
-        // Nested selection
-        const nested = data[key as keyof T];
-        if (Array.isArray(nested)) {
-          result[key] = nested.map(item => applyFieldSelection(item, value));
-        } else {
-          result[key] = applyFieldSelection(nested, value);
-        }
-      }
-    }
-    return result;
-  }
-
-  // No selection - return all
-  return data;
-}
-```
-
-### 2. Auto-Subscription Implementation
-
-**Server-side (lens-server/subscription/auto-subscribe.ts):**
-```typescript
-export function createAutoSubscription<TInput, TOutput>(
-  query: LensQuery<TInput, TOutput>,
-  config: AutoSubscribeConfig
-) {
-  return (input: TInput): Observable<TOutput> => {
-    // If query has explicit subscribe, use it
-    if (query.subscribe) {
-      return query.subscribe(input);
-    }
-
-    // Otherwise, use convention-based channel
-    const channel = config.channelFor(query.path, input);
-
-    return config.pubsub.subscribe(channel).pipe(
-      map(event => event.payload as TOutput)
-    );
-  };
-}
-```
-
-**Auto-publish on mutation:**
-```typescript
-export async function executeMutation<TInput, TOutput>(
-  mutation: LensMutation<TInput, TOutput>,
-  input: TInput,
-  config: LensServerConfig
-): Promise<TOutput> {
-  // 1. Execute mutation
-  const result = await mutation.resolve(input);
-
-  // 2. Auto-publish if configured
-  if (config.autoSubscribe) {
-    const channel = config.autoSubscribe.channelFor(mutation.path, input);
-    await config.autoSubscribe.pubsub.publish(channel, {
-      type: 'mutation',
-      payload: result
-    });
-  }
-
-  return result;
-}
-```
-
-### 3. Update Strategy - Auto Selection
-
-**lens-core/update-strategy/auto.ts:**
-```typescript
-export class AutoStrategy implements UpdateStrategy {
-  mode = 'auto' as const;
-
-  encode(current: unknown, next: unknown): { mode: UpdateMode; data: unknown } {
-    // String growth (LLM streaming) → delta
-    if (
-      typeof current === 'string' &&
-      typeof next === 'string' &&
-      next.startsWith(current) &&
-      next.length > current.length
-    ) {
-      return {
-        mode: 'delta',
-        data: next.slice(current.length)
-      };
-    }
-
-    // Object update → patch
-    if (
-      typeof current === 'object' &&
-      typeof next === 'object' &&
-      current !== null &&
-      next !== null
-    ) {
-      const patch = jsonPatch.compare(current, next);
-      const patchSize = JSON.stringify(patch).length;
-      const valueSize = JSON.stringify(next).length;
-
-      // Use patch if >50% savings
-      if (patchSize < valueSize * 0.5) {
-        return { mode: 'patch', data: patch };
-      }
-    }
-
-    // Default: full value
-    return { mode: 'value', data: next };
-  }
-
-  decode(current: unknown, update: { mode: UpdateMode; data: unknown }): unknown {
-    switch (update.mode) {
-      case 'delta':
-        return current + update.data;
-      case 'patch':
-        return jsonPatch.applyPatch(current, update.data);
-      case 'value':
-        return update.data;
-    }
-  }
-}
-```
-
-### 4. Compression Middleware
-
-**lens-server/compression/middleware.ts:**
-```typescript
-export function compressionMiddleware(config: CompressionConfig): LensMiddleware {
-  return async (request, next) => {
-    const result = await next(request);
-
-    if (!config.enabled) return result;
-
-    const serialized = JSON.stringify(result);
-    if (serialized.length < config.threshold) {
-      // Too small, don't compress
-      return result;
-    }
-
-    const compressed = await compress(serialized, config.algorithm);
-
-    return {
-      compressed: true,
-      algorithm: config.algorithm,
-      data: compressed
-    };
-  };
-}
-
-async function compress(data: string, algorithm: 'brotli' | 'gzip'): Promise<Uint8Array> {
-  if (algorithm === 'brotli') {
-    return brotliCompress(Buffer.from(data));
-  } else {
-    return gzipCompress(Buffer.from(data));
-  }
-}
-```
-
----
-
-## Integration with Existing Architecture
-
-### Event Stream Integration
-
-**Connect Lens to existing AppEventStream:**
-```typescript
-// lens-server config
-import { AppEventStream } from '@sylphx/code-server';
-
-const eventStream = new AppEventStream();
-
-const server = createLensServer(api, {
-  autoSubscribe: {
-    channelFor: (path, input) => {
-      // Convention: `query:user:get:123`
-      return `query:${path.join(':')}:${input.id}`;
-    },
-    pubsub: {
-      subscribe: (channel) => eventStream.subscribe(channel),
-      publish: (channel, event) => eventStream.publish(channel, event)
-    }
-  }
-});
-```
-
-### Zen Signal Integration
-
-**Client-side integration with @sylphx/zen:**
-```typescript
-// lens-react with zen signals
-import { zen, computed } from '@sylphx/zen';
-
-export function useLens<T>(fn, input, options) {
-  const dataSignal = zen<T | null>(null);
-  const isLoadingSignal = zen(true);
-  const errorSignal = zen<Error | null>(null);
-
-  useEffect(() => {
-    const subscription = client.send(request).subscribe({
-      next: (data) => {
-        dataSignal.value = data;
-        isLoadingSignal.value = false;
-      },
-      error: (error) => {
-        errorSignal.value = error;
-        isLoadingSignal.value = false;
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, [/* deps */]);
-
-  return {
-    data: useZen(dataSignal),
-    isLoading: useZen(isLoadingSignal),
-    error: useZen(errorSignal)
-  };
-}
-```
-
----
-
-## Testing Strategy
-
-### Unit Tests
-- Schema builder type inference
-- Field selection logic
-- Update strategy selection
-- Transport implementations
-- Compression/decompression
-
-### Integration Tests
-- Client-server communication
-- Auto-subscription flow
-- Optimistic updates with rollback
-- Real-time updates via WebSocket
-- Field selection with nested data
-
-### Performance Tests
-- Bandwidth savings (delta vs patch vs value)
-- Compression ratio (brotli vs gzip)
-- Update strategy overhead
-- Large payload handling
-
----
-
-## Implementation Order
-
-**Week 1: Core Foundation**
-1. ✅ Schema builder (lens.query, lens.mutation, lens.object)
-2. ✅ Type inference system
-3. ✅ Transport interface
-4. ✅ InProcessTransport (for testing)
-
-**Week 2: Update Strategies**
-1. ✅ ValueStrategy
-2. ✅ DeltaStrategy (text delta)
-3. ✅ PatchStrategy (JSON Patch)
-4. ✅ AutoStrategy (intelligent selection)
-
-**Week 3: Server Runtime**
-1. ✅ Request handler
-2. ✅ Field selector
-3. ✅ Validation
-4. ✅ Auto-subscription
-
-**Week 4: Transport Layer**
-1. ✅ HTTPTransport
-2. ✅ WebSocketTransport
-3. ✅ TransportRouter
-4. ✅ Compression middleware
-
-**Week 5: React Integration**
-1. ✅ useLens hook
-2. ✅ useLensMutation hook
-3. ✅ Optimistic updates
-4. ✅ LensProvider
-
-**Week 6: Polish & Testing**
-1. ✅ Integration tests
-2. ✅ Performance benchmarks
-3. ✅ Documentation examples
-4. ✅ Migration guides
-
----
-
-## Success Metrics
-
-- ✅ Type inference works without codegen
-- ✅ Field selection reduces payload size
-- ✅ Delta mode achieves 50%+ bandwidth savings on LLM streaming
-- ✅ Patch mode achieves 90%+ bandwidth savings on object updates
-- ✅ Auto-subscription works with AppEventStream
-- ✅ Optimistic updates integrate with @sylphx/optimistic
-- ✅ Custom transports can be implemented in <100 LOC
-- ✅ API is simpler than tRPC/GraphQL
-
----
-
-## Open Questions
-
-1. **Caching strategy** - Should Lens have built-in cache? Or rely on React Query patterns?
-2. **Subscription lifecycle** - How to handle connection drops and replay?
-3. **Authentication** - Middleware pattern or config-based?
-4. **Error codes** - Standard error format like tRPC?
-5. **Batching** - Should Lens batch multiple queries like GraphQL?
-
----
-
-## Next Steps
-
-1. Create package scaffolding (package.json, tsconfig, etc.)
-2. Implement core schema builder
-3. Write type inference tests
-4. Implement InProcessTransport for testing
-5. Create first example application
