@@ -9,6 +9,7 @@
 
 import type { Resource, QueryContext } from "../resource/types";
 import { getRegistry } from "../resource/registry";
+import { ErrorHelpers } from "../errors/index";
 
 /**
  * Batch loader function
@@ -249,9 +250,7 @@ export class ResourceDataLoaderFactory {
 		if (!this.loaders.has(loaderKey)) {
 			const relationship = resource.definition.relationships?.[relationName];
 			if (!relationship) {
-				throw new Error(
-					`Relationship '${relationName}' not found on resource '${resource.name}'`,
-				);
+				throw ErrorHelpers.relationshipNotFound(resource.name, relationName);
 			}
 
 			const loader = new DataLoader<string, T[]>(async (parentIds) => {

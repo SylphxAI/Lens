@@ -21,6 +21,7 @@ import type {
 import { createDataLoaderFactory } from "../loader/dataloader";
 import { QueryPlanner } from "../query/planner";
 import { getRegistry } from "../resource/registry";
+import { ErrorHelpers, ContextError, LensErrorCode } from "../errors/index";
 
 /**
  * Generated API for a resource
@@ -156,9 +157,7 @@ export function generateResourceAPI<
 			ctx?: QueryContext,
 		): Promise<Entity | null> {
 			if (!ctx || !ctx.db) {
-				throw new Error(
-					`Context with database required for ${resource.name}.get.query`,
-				);
+				throw ErrorHelpers.missingDatabase(`${resource.name}.get.query`);
 			}
 
 			// Create DataLoader factory for this request
@@ -211,9 +210,7 @@ export function generateResourceAPI<
 			ctx?: QueryContext,
 		): { unsubscribe: () => void } {
 			if (!ctx || !ctx.eventStream) {
-				throw new Error(
-					`Context with eventStream required for ${resource.name}.get.subscribe`,
-				);
+				throw ErrorHelpers.missingEventStream(resource.name, "get.subscribe");
 			}
 
 			// Subscribe to entity updates
@@ -254,7 +251,7 @@ export function generateResourceAPI<
 	const list = {
 		async query(input?: ListOptions<Entity>, ctx?: QueryContext): Promise<Entity[]> {
 			if (!ctx || !ctx.db) {
-				throw new Error(`Context with database required for ${resource.name}.list.query`);
+				throw ErrorHelpers.missingDatabase(`${resource.name}.list.query`);
 			}
 
 			const tableName = resource.definition.tableName || `${resource.name}s`;
@@ -297,9 +294,7 @@ export function generateResourceAPI<
 			ctx?: QueryContext,
 		): { unsubscribe: () => void } {
 			if (!ctx || !ctx.eventStream) {
-				throw new Error(
-					`Context with eventStream required for ${resource.name}.list.subscribe`,
-				);
+				throw ErrorHelpers.missingEventStream(resource.name, "list.subscribe");
 			}
 
 			// Subscribe to collection updates
@@ -345,7 +340,7 @@ export function generateResourceAPI<
 			ctx?: QueryContext,
 		): Promise<Entity> {
 			if (!ctx || !ctx.db) {
-				throw new Error(`Context with database required for ${resource.name}.create.mutate`);
+				throw ErrorHelpers.missingDatabase(`${resource.name}.create.mutate`);
 			}
 
 			// Execute beforeCreate hook
@@ -399,7 +394,7 @@ export function generateResourceAPI<
 			ctx?: QueryContext,
 		): Promise<Entity> {
 			if (!ctx || !ctx.db) {
-				throw new Error(`Context with database required for ${resource.name}.update.mutate`);
+				throw ErrorHelpers.missingDatabase(`${resource.name}.update.mutate`);
 			}
 
 			// Execute beforeUpdate hook
@@ -446,7 +441,7 @@ export function generateResourceAPI<
 			ctx?: QueryContext,
 		): Promise<{ id: string; deleted: boolean }> {
 			if (!ctx || !ctx.db) {
-				throw new Error(`Context with database required for ${resource.name}.delete.mutate`);
+				throw ErrorHelpers.missingDatabase(`${resource.name}.delete.mutate`);
 			}
 
 			// Execute beforeDelete hook

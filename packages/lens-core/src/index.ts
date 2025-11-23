@@ -138,3 +138,30 @@ export {
 	type SubscriptionOptions,
 } from "./events/index.js";
 
+// Error system
+export {
+	LensError,
+	ValidationError,
+	QueryError,
+	EntityNotFoundError,
+	MutationError,
+	RelationshipError,
+	ResourceError,
+	ContextError,
+	DataLoaderError,
+	EventError,
+	ErrorHelpers,
+	LensErrorCode,
+	type LensErrorMeta,
+} from "./errors/index.js";
+
+// Performance monitoring
+export {
+	PerformanceMonitor,
+	getPerformanceMonitor,
+	setPerformanceMonitor,
+	measure,
+	type PerformanceMetric,
+	type PerformanceSummary,
+} from "./performance/index.js";
+
