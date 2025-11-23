@@ -86,3 +86,9 @@ export {
 export { WebSocketTransport } from "./transport/websocket";
 export { HttpTransport, type HttpTransportConfig } from "./transport/http";
 export { SSETransport, type SSETransportConfig } from "./transport/sse";
+export {
+	InProcessTransport,
+	createInProcessTransport,
+	type InProcessTransportConfig,
+	type InProcessResolvers,
+} from "./transport/in-process";
