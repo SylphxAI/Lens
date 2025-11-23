@@ -46,6 +46,13 @@ export function useQuery<TData>(
 	options: UseQueryOptions<TData> = {},
 ): UseQueryResult<TData> {
 	const { transport } = useLensContext();
+
+	if (!transport) {
+		throw new Error(
+			"useQuery requires LensProvider with 'transport' prop. " +
+				"Use useResource for high-level resource API.",
+		);
+	}
 	const [data, setData] = useState<TData | undefined>(options.initialData);
 	const [error, setError] = useState<Error | null>(null);
 	const [isLoading, setIsLoading] = useState(true);

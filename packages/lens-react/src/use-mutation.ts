@@ -53,6 +53,13 @@ export function useMutation<TData, TVariables extends LensRequest>(
 	options: UseMutationOptions<TData, TVariables> = {},
 ): UseMutationResult<TData, TVariables> {
 	const { transport } = useLensContext();
+
+	if (!transport) {
+		throw new Error(
+			"useMutation requires LensProvider with 'transport' prop. " +
+				"Use useResourceMutation for high-level resource API.",
+		);
+	}
 	const [data, setData] = useState<TData | undefined>(undefined);
 	const [error, setError] = useState<Error | null>(null);
 	const [isLoading, setIsLoading] = useState(false);

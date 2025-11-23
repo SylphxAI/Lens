@@ -70,7 +70,7 @@ export class UpdateStrategySelector {
 
 		// Auto selection based on Zod type
 		if (config.mode === "auto") {
-			const typeName = zodType._def.typeName;
+			const typeName = (zodType as any)._def.typeName;
 
 			switch (typeName) {
 				case "ZodString":
@@ -194,13 +194,11 @@ export function applyUpdateStrategy<T>(
 		return currentValue;
 	}
 
-	// Create optimistic value using strategy
-	const optimisticFieldValue = strategy.createOptimisticValue(current, next);
-
-	// Return updated entity
+	// Create optimistic value - just apply the mutation directly
+	// (optimistic means assuming the mutation succeeds)
 	return {
 		...currentValue,
-		[fieldName]: optimisticFieldValue,
+		[fieldName]: next,
 	};
 }
 
@@ -264,7 +262,8 @@ export function encodeUpdate<T>(
 
 		// Only encode changed fields
 		if (oldFieldValue !== newFieldValue) {
-			encoded[fieldName] = strategy.encodeUpdate(oldFieldValue, newFieldValue);
+			const payload = strategy.encode(oldFieldValue, newFieldValue);
+			encoded[fieldName] = payload.data;
 		}
 	}
 
@@ -293,7 +292,8 @@ export function decodeUpdate<T>(
 		const strategy = strategies.get(fieldName);
 		if (strategy) {
 			const currentFieldValue = (currentValue as any)[fieldName];
-			decoded[fieldName] = strategy.applyUpdate(currentFieldValue, encodedValue);
+			const payload = { mode: strategy.mode, data: encodedValue };
+			decoded[fieldName] = strategy.decode(currentFieldValue, payload);
 		} else {
 			// No strategy, use value as-is
 			decoded[fieldName] = encodedValue;
