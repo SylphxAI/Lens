@@ -49,7 +49,7 @@ export class InProcessTransport implements LensTransport {
 		const validatedInput = this.validateInput(target, request);
 
 		return new Observable<T>((subscriber) => {
-			const subscription = target.subscribe(validatedInput, this.config.context).subscribe({
+			const subscription = target.subscribe({ input: validatedInput, ctx: this.config.context }).subscribe({
 				next: (value: any) => {
 					// Validate output
 					const outputResult = target.output.safeParse(value);
@@ -84,7 +84,7 @@ export class InProcessTransport implements LensTransport {
 		const validatedInput = this.validateInput(target, request);
 
 		// Execute with context
-		return target.resolve(validatedInput, this.config.context).then((result: any) => {
+		return target.resolve({ input: validatedInput, ctx: this.config.context }).then((result: any) => {
 			// Validate output
 			const outputResult = target.output.safeParse(result);
 			if (!outputResult.success) {
