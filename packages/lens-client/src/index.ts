@@ -14,6 +14,15 @@ export { OptimisticExecutor } from "./optimistic/executor.js";
 export { executeTransform } from "./optimistic/transforms.js";
 export { OptimisticManager } from "./optimistic/manager.js";
 export type { OptimisticManagerConfig } from "./optimistic/manager.js";
+export {
+	wrapSubscriptionWithOptimistic,
+	createMergedSubscription,
+	subscribeWithOptimistic,
+} from "./optimistic/subscription.js";
+export type {
+	OptimisticSubscriptionOptions,
+	UseOptimisticSubscriptionOptions,
+} from "./optimistic/subscription.js";
 
 /**
  * Client configuration
