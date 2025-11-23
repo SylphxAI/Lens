@@ -159,19 +159,19 @@ export interface ResourceHooks<TEntity = any> {
 	beforeCreate?: (data: Partial<TEntity>) => Promise<Partial<TEntity>>;
 
 	/** After entity created - side effects only */
-	afterCreate?: (entity: TEntity) => Promise<void>;
+	afterCreate?: (entity: TEntity, ctx?: any) => Promise<void>;
 
 	/** Before entity update - can transform data */
 	beforeUpdate?: (id: string, data: Partial<TEntity>) => Promise<Partial<TEntity>>;
 
-	/** After entity updated - side effects only */
-	afterUpdate?: (entity: TEntity) => Promise<void>;
+	/** After entity updated - side effects only, receives updated entity AND update data */
+	afterUpdate?: (entity: TEntity, data: Partial<TEntity>, ctx?: any) => Promise<void>;
 
 	/** Before entity deletion - validation or archival */
-	beforeDelete?: (id: string) => Promise<void>;
+	beforeDelete?: (id: string, ctx?: any) => Promise<void>;
 
 	/** After entity deleted - cleanup */
-	afterDelete?: (id: string) => Promise<void>;
+	afterDelete?: (id: string, ctx?: any) => Promise<void>;
 }
 
 /**
