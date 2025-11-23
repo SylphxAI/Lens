@@ -7,6 +7,7 @@
 
 import type { LensObject, LensRequest, LensTransport, Select, Selected } from "@sylphx/lens-core";
 import type { Observable } from "@sylphx/lens-core";
+import { wrapSubscriptionWithOptimistic } from "./optimistic/subscription.js";
 
 // Optimistic updates
 export { NormalizedCache } from "./optimistic/cache.js";
@@ -181,12 +182,28 @@ function createProxy<T extends LensObject>(
 						const actualInput = hasInput ? inputOrOptions : undefined;
 						const actualOptions = hasInput ? options : inputOrOptions;
 
-						return transport.subscribe({
+						// Get raw subscription from transport
+						const rawSubscription = transport.subscribe({
 							type: "subscription",
 							path,
 							input: actualInput,
 							select: actualOptions?.select,
 						});
+
+						// Auto-wrap with optimistic if manager is available
+						// This makes optimistic updates completely transparent to the user
+						if (optimisticManager) {
+							// Infer entity type from path (e.g., ['session', 'getById'] → 'Session')
+							const entityType = path[0] ? path[0].charAt(0).toUpperCase() + path[0].slice(1) : 'Unknown';
+
+							return wrapSubscriptionWithOptimistic(rawSubscription, optimisticManager, {
+								entityType,
+								getEntityId: (data: any) => data?.id,
+								debug: false,
+							});
+						}
+
+						return rawSubscription;
 					};
 				}
 

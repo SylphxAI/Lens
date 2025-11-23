@@ -37,6 +37,18 @@ function createInputProxy<T>(path: string[] = []): any {
 				return true;
 			}
 
+			// Handle Symbol.toPrimitive for truthy checks and comparisons
+			// This allows: if (input.content) { ... }
+			// Returns undefined so proxy is falsy in boolean context
+			if (prop === Symbol.toPrimitive) {
+				return () => undefined;
+			}
+
+			// Handle valueOf/toString for other primitive conversions
+			if (prop === "valueOf" || prop === "toString") {
+				return () => undefined;
+			}
+
 			// Create nested proxy for deeper access
 			return createInputProxy([...path, String(prop)]);
 		},

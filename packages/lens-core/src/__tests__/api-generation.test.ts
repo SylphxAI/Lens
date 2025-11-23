@@ -548,10 +548,11 @@ describe("API Generation", () => {
 				ctx,
 			);
 
-			expect(afterUpdateMock).toHaveBeenCalledWith({
-				id: "1",
-				name: "Updated",
-			});
+			expect(afterUpdateMock).toHaveBeenCalledWith(
+				{ id: "1", name: "Updated" },
+				{ name: "Updated" },
+				ctx,
+			);
 		});
 
 		test("should publish update event", async () => {

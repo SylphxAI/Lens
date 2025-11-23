@@ -452,7 +452,7 @@ export function generateResourceAPI<
 
 			// Execute afterUpdate hook
 			if (!options?.skipHooks && resource.definition.hooks?.afterUpdate) {
-				await resource.definition.hooks.afterUpdate(updated);
+				await resource.definition.hooks.afterUpdate(updated, data, ctx);
 			}
 
 			// Publish update event
