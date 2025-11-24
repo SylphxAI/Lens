@@ -15,6 +15,39 @@ export interface BaseContext {
 	[key: string]: unknown;
 }
 
+/**
+ * Emit context - provides emit() and onCleanup() for reactive resolvers.
+ * This is injected by the execution engine when running resolvers.
+ */
+export interface EmitContext<T = Record<string, unknown>> {
+	/**
+	 * Emit data to subscribed clients.
+	 * Can be called multiple times for streaming updates.
+	 *
+	 * @param data - Full or partial entity data
+	 * @example
+	 * ctx.emit({ content: "Updated content" })  // Partial update
+	 * ctx.emit({ id, title, content })          // Full update
+	 */
+	emit: (data: Partial<T>) => void;
+
+	/**
+	 * Register cleanup function called when subscription ends.
+	 *
+	 * @param fn - Cleanup function
+	 * @returns Unregister function
+	 * @example
+	 * ctx.onCleanup(() => redis.unsubscribe(channel))
+	 */
+	onCleanup: (fn: () => void) => () => void;
+}
+
+/**
+ * Full resolver context with emit capabilities.
+ * Combines user context with emit functionality.
+ */
+export type ResolverContext<T, Ctx extends BaseContext = BaseContext> = Ctx & EmitContext<T>;
+
 // =============================================================================
 // Resolver Types
 // =============================================================================

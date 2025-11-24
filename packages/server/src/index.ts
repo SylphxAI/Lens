@@ -19,6 +19,8 @@ export {
 export {
 	// Types
 	type BaseContext,
+	type EmitContext,
+	type ResolverContext,
 	type EntityResolver,
 	type BatchResolver,
 	type RelationResolver,
@@ -95,3 +97,21 @@ export {
 	type EntitySubscriptionState,
 	type SubscriptionHandlerConfig,
 } from "./subscriptions";
+
+// =============================================================================
+// State Management (Canonical state + client sync)
+// =============================================================================
+
+export {
+	// Class
+	GraphStateManager,
+	// Factory
+	createGraphStateManager,
+	// Types
+	type EntityKey as StateEntityKey,
+	type StateClient,
+	type StateUpdateMessage,
+	type StateFullMessage,
+	type Subscription,
+	type GraphStateManagerConfig,
+} from "./state";
