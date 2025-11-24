@@ -100,6 +100,12 @@ export {
 	createInProcessLink,
 	type InProcessLinkOptions,
 	type InProcessResolvers,
+	// WebSocket subscription transport
+	WebSocketSubscriptionTransport,
+	createWebSocketTransport,
+	websocketLink,
+	type WebSocketLinkOptions,
+	type WebSocketState,
 } from "./links";
 
 // =============================================================================

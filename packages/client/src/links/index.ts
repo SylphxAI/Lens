@@ -60,3 +60,15 @@ export {
 	type InProcessLinkOptions,
 	type InProcessResolvers,
 } from "./in-process";
+
+// =============================================================================
+// Subscription Transport (WebSocket)
+// =============================================================================
+
+export {
+	WebSocketSubscriptionTransport,
+	createWebSocketTransport,
+	websocketLink,
+	type WebSocketLinkOptions,
+	type WebSocketState,
+} from "./websocket";
