@@ -332,7 +332,10 @@ export class HasOneType<Target extends string> extends FieldType<RelationBrand> 
 	readonly _tsType!: RelationBrand;
 	readonly _relationKind = "hasOne" as const;
 
-	constructor(public readonly target: Target) {
+	constructor(
+		public readonly target: Target,
+		public readonly foreignKey?: string,
+	) {
 		super();
 	}
 }
@@ -343,7 +346,10 @@ export class HasManyType<Target extends string> extends FieldType<RelationBrand[
 	readonly _tsType!: RelationBrand[];
 	readonly _relationKind = "hasMany" as const;
 
-	constructor(public readonly target: Target) {
+	constructor(
+		public readonly target: Target,
+		public readonly foreignKey?: string,
+	) {
 		super();
 	}
 }
@@ -354,7 +360,10 @@ export class BelongsToType<Target extends string> extends FieldType<RelationBran
 	readonly _tsType!: RelationBrand;
 	readonly _relationKind = "belongsTo" as const;
 
-	constructor(public readonly target: Target) {
+	constructor(
+		public readonly target: Target,
+		public readonly foreignKey?: string,
+	) {
 		super();
 	}
 }

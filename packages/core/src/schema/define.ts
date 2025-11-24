@@ -38,6 +38,35 @@ import { HasOneType, HasManyType, BelongsToType } from "./types";
 import { Schema } from "./create";
 
 // =============================================================================
+// Field Accessor Helper (Proxy-based field extraction)
+// =============================================================================
+
+/**
+ * Extract field name from accessor function using Proxy.
+ * Used for type-safe relation definitions.
+ *
+ * @example
+ * extractFieldName((e) => e.authorId) // Returns "authorId"
+ */
+function extractFieldName<T>(accessor: (entity: T) => unknown): string {
+	let fieldName: string | undefined;
+	const proxy = new Proxy(
+		{},
+		{
+			get(_, key) {
+				fieldName = String(key);
+				return fieldName;
+			},
+		},
+	);
+	accessor(proxy as T);
+	if (!fieldName) {
+		throw new Error("Field accessor must access a property (e.g., e => e.authorId)");
+	}
+	return fieldName;
+}
+
+// =============================================================================
 // Entity Definition Builder
 // =============================================================================
 
@@ -112,6 +141,20 @@ export function defineEntity<Name extends string, Fields extends EntityDefinitio
 	};
 }
 
+/**
+ * Simplified alias for defineEntity.
+ * Recommended API for new projects.
+ *
+ * @example
+ * ```typescript
+ * const User = entity('User', {
+ *   id: t.id(),
+ *   name: t.string(),
+ * });
+ * ```
+ */
+export const entity = defineEntity;
+
 /** Check if value is an EntityDef */
 export function isEntityDef(value: unknown): value is EntityDef<string, EntityDefinition> {
 	return typeof value === "object" && value !== null && ENTITY_SYMBOL in value;
@@ -148,38 +191,104 @@ export function createSchemaFrom<S extends SchemaInput>(definition: S): Schema<S
 // Convenience: Relation Helpers on Entity
 // =============================================================================
 
+/** Relation type with foreign key info */
+export interface RelationTypeWithForeignKey {
+	_type: string;
+	target: string;
+	foreignKey?: string;
+}
+
 /**
  * Create a hasMany relation to a target entity
  *
+ * @param target - Target entity definition
+ * @param fieldAccessor - Optional field accessor for foreign key (e.g., e => e.authorId)
+ *
  * @example
  * ```typescript
- * const schema = createSchemaFrom({
- *   User: User.with({
- *     posts: hasMany(Post),
- *   }),
- * });
+ * // Without foreign key (backward compatible)
+ * hasMany(Post)
+ *
+ * // With foreign key (new API)
+ * hasMany(Post, e => e.authorId)
  * ```
  */
 export function hasMany<Target extends EntityDef<string, EntityDefinition>>(
 	target: Target,
-): HasManyType<Target["name"]> {
-	return new HasManyType(target.name);
+	fieldAccessor?: (entity: unknown) => unknown,
+): HasManyType<Target["name"]> & { foreignKey?: string } {
+	const foreignKey = fieldAccessor ? extractFieldName(fieldAccessor) : undefined;
+	return new HasManyType(target.name, foreignKey);
 }
 
 /**
  * Create a hasOne relation to a target entity
+ *
+ * @param target - Target entity definition
+ * @param fieldAccessor - Optional field accessor for foreign key
  */
 export function hasOne<Target extends EntityDef<string, EntityDefinition>>(
 	target: Target,
-): HasOneType<Target["name"]> {
-	return new HasOneType(target.name);
+	fieldAccessor?: (entity: unknown) => unknown,
+): HasOneType<Target["name"]> & { foreignKey?: string } {
+	const foreignKey = fieldAccessor ? extractFieldName(fieldAccessor) : undefined;
+	return new HasOneType(target.name, foreignKey);
 }
 
 /**
  * Create a belongsTo relation to a target entity
+ *
+ * @param target - Target entity definition
+ * @param fieldAccessor - Optional field accessor for foreign key
  */
 export function belongsTo<Target extends EntityDef<string, EntityDefinition>>(
 	target: Target,
-): BelongsToType<Target["name"]> {
-	return new BelongsToType(target.name);
+	fieldAccessor?: (entity: unknown) => unknown,
+): BelongsToType<Target["name"]> & { foreignKey?: string } {
+	const foreignKey = fieldAccessor ? extractFieldName(fieldAccessor) : undefined;
+	return new BelongsToType(target.name, foreignKey);
+}
+
+// =============================================================================
+// Relation Definition (Separate from Schema)
+// =============================================================================
+
+/** Relation definition for an entity */
+export interface RelationDef<
+	E extends EntityDef<string, EntityDefinition>,
+	R extends Record<string, RelationTypeWithForeignKey>,
+> {
+	entityName: E["name"];
+	relations: R;
+}
+
+/**
+ * Define relations for an entity separately from the entity definition.
+ * This allows for a cleaner separation of concerns.
+ *
+ * @param entity - The entity to define relations for
+ * @param relations - Object of relation definitions
+ *
+ * @example
+ * ```typescript
+ * const userRelations = relation(User, {
+ *   posts: hasMany(Post, e => e.authorId),
+ * });
+ *
+ * const postRelations = relation(Post, {
+ *   author: belongsTo(User, e => e.authorId),
+ * });
+ *
+ * // Can be collected as an array
+ * const relations = [userRelations, postRelations];
+ * ```
+ */
+export function relation<
+	E extends EntityDef<string, EntityDefinition>,
+	R extends Record<string, RelationTypeWithForeignKey>,
+>(entity: E, relations: R): RelationDef<E, R> {
+	return {
+		entityName: entity.name,
+		relations,
+	};
 }

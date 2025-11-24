@@ -77,6 +77,7 @@ export {
 export {
 	// Entity definition
 	defineEntity,
+	entity, // Simplified alias
 	isEntityDef,
 	type EntityDef,
 	// Schema creation
@@ -85,6 +86,10 @@ export {
 	hasMany,
 	hasOne,
 	belongsTo,
+	// Separate relation definition
+	relation,
+	type RelationDef,
+	type RelationTypeWithForeignKey,
 } from "./schema/define";
 
 // =============================================================================
@@ -211,4 +216,32 @@ export {
 	createUpdate,
 	applyUpdate,
 } from "./updates/strategies";
+
+// =============================================================================
+// Operations API (query, mutation)
+// =============================================================================
+
+export {
+	// Builders
+	query,
+	mutation,
+	// Helpers
+	tempId,
+	resetTempIdCounter,
+	isTempId,
+	// Type guards
+	isQueryDef,
+	isMutationDef,
+	isOperationDef,
+	// Types
+	type QueryDef,
+	type MutationDef,
+	type QueryBuilder,
+	type MutationBuilder,
+	type ResolverContext,
+	type ResolverFn,
+	type OptimisticFn,
+	type ReturnSpec,
+	type ZodLikeSchema,
+} from "./operations/index";
 
