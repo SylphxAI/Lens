@@ -1,6 +1,6 @@
 # Lens Implementation Plan
 
-> Current Status: **Phase 1** - New Architecture Implementation
+> Current Status: **Phase 4** - Server Integration Complete, Client Integration In Progress
 
 ---
 
@@ -9,57 +9,18 @@
 | Phase | Component | Status |
 |-------|-----------|--------|
 | 1 | New Architecture Design | ✅ Complete |
-| 2 | Schema Layer | 🟡 In Progress |
-| 3 | Operations Layer | ⬜ Pending |
-| 4 | Entity Resolvers | ⬜ Pending |
-| 5 | Server Integration | ⬜ Pending |
-| 6 | Client Integration | ⬜ Pending |
-| 7 | React Hooks | ⬜ Pending |
+| 2 | Core API (@lens/core) | ✅ Complete |
+| 3 | Server Integration | ✅ Complete |
+| 4 | Client Integration | 🟡 In Progress |
+| 5 | React Hooks Update | ⬜ Pending |
 
 ---
 
-## Architecture Summary
+## Phase 2: Core API ✅ Complete
 
-### Three-Layer Design
+All new APIs implemented in `@lens/core`:
 
-```
-Operations        →  Entry points (any query/mutation)
-Entity Resolvers  →  Nested data handling (reused everywhere)
-Schema            →  Structure + Relations only
-```
-
-### Key Design Decisions
-
-1. **Operations + Entity Resolvers (not CRUD-only)**
-   - Operations define any query/mutation (like GraphQL Query/Mutation)
-   - Entity Resolvers handle nested data (like GraphQL type resolvers)
-   - CRUD is just one pattern, not a limitation
-
-2. **Type-Safe Relations (no strings)**
-   - `hasMany(Post, e => e.authorId)` instead of `hasMany('Post', 'authorId')`
-   - TypeScript validates at compile time
-
-3. **AsyncLocalStorage Context**
-   - `useDB()`, `useCurrentUser()` composables
-   - Explicit `ctx` fallback available
-
-4. **Multi-Entity Mutations**
-   - `returns({ users: [User], notifications: [Notification] })`
-   - Optimistic updates for all affected entities
-
-5. **Simplified API**
-   - `entity()` not `defineEntity()`
-   - `query()` not `defineQuery()`
-
----
-
-## Implementation Phases
-
-### Phase 1: Schema Layer ✅ → 🟡
-
-**Goal:** Define entities and type-safe relations
-
-**API:**
+### Schema API
 ```typescript
 // entities.ts
 export const User = entity('User', {
@@ -76,67 +37,20 @@ export const relations = [
 ]
 ```
 
-**Tasks:**
-- [ ] Implement `entity()` function
-- [ ] Implement field type builders (`t.id()`, `t.string()`, etc.)
-- [ ] Implement field modifiers (`.optional()`, `.default()`, `.compute()`)
-- [ ] Implement `relation()` function
-- [ ] Implement `hasMany()`, `belongsTo()`, `hasOne()` with Proxy field extraction
-- [ ] Write tests for all schema functions
-- [ ] Ensure full type inference
-
-**TDD Order:**
-1. `t.id()`, `t.string()` basics → test type inference
-2. `entity()` → test entity creation and typing
-3. Field modifiers → test `.optional()`, `.default()`, `.compute()`
-4. `hasMany()`, `belongsTo()` → test Proxy field extraction
-5. `relation()` → test relation definition
-6. Integration → test full schema with relations
-
----
-
-### Phase 2: Operations Layer ⬜
-
-**Goal:** Define queries and mutations with builder pattern
-
-**API:**
+### Operations API
 ```typescript
 export const whoami = query()
   .returns(User)
   .resolve(() => useCurrentUser())
 
 export const createPost = mutation()
-  .input(z.object({ title: z.string() }))
+  .input(z.object({ title: z.string(), content: z.string() }))
   .returns(Post)
   .optimistic(({ input }) => ({ id: tempId(), ...input }))
   .resolve(({ input }) => useDB().post.create({ data: input }))
 ```
 
-**Tasks:**
-- [ ] Implement `query()` builder
-- [ ] Implement `mutation()` builder
-- [ ] Implement `.input()` with Zod validation
-- [ ] Implement `.returns()` with entity type inference
-- [ ] Implement `.optimistic()` for mutations
-- [ ] Implement `.resolve()` with context injection
-- [ ] Support three resolver patterns (return, yield, emit)
-- [ ] Write tests for all operation functions
-
-**TDD Order:**
-1. `query().returns().resolve()` → basic query
-2. `query().input().returns().resolve()` → query with input
-3. `mutation().input().returns().resolve()` → basic mutation
-4. `mutation()...optimistic()` → optimistic updates
-5. Multi-entity returns → `returns({ users, notifications })`
-6. Streaming → generator and emit patterns
-
----
-
-### Phase 3: Entity Resolvers ⬜
-
-**Goal:** Handle nested data resolution
-
-**API:**
+### Entity Resolvers API
 ```typescript
 export const resolvers = entityResolvers({
   User: {
@@ -144,91 +58,69 @@ export const resolvers = entityResolvers({
   },
   Post: {
     author: {
-      batch: (posts) => { /* N+1 prevention */ },
+      batch: async (posts) => { /* N+1 prevention */ },
     },
   },
 })
 ```
 
-**Tasks:**
-- [ ] Implement `entityResolvers()` function
-- [ ] Support simple resolver functions
-- [ ] Support batch resolvers for N+1 prevention
-- [ ] Integrate with schema relations
-- [ ] Write tests
-
-**TDD Order:**
-1. Simple resolver → `posts: (user) => ...`
-2. Batch resolver → `author: { batch: (posts) => ... }`
-3. Integration with schema → validate resolver matches relations
-
----
-
-### Phase 4: Context System ⬜
-
-**Goal:** AsyncLocalStorage-based context with composables
-
-**API:**
+### Context System
 ```typescript
-// Server setup
-const server = createServer({
-  context: async (req) => ({
-    db: prisma,
-    currentUser: await getUserFromToken(req),
-  }),
-})
+const ctx = createContext<AppContext>()
 
-// In resolvers
-const user = useCurrentUser()
-const db = useDB()
+await runWithContext(ctx, { db, currentUser }, async () => {
+  const db = useContext().db
+  const user = useCurrentUser()
+})
 ```
 
-**Tasks:**
-- [ ] Implement AsyncLocalStorage context store
-- [ ] Implement `useContext()`, `useDB()`, `useCurrentUser()` composables
-- [ ] Support explicit `ctx` fallback in resolvers
-- [ ] Write tests
-
-**TDD Order:**
-1. `useContext()` → basic context retrieval
-2. Custom composables → `useDB()`, `useCurrentUser()`
-3. Explicit ctx fallback → `resolve(({ input, ctx }) => ...)`
-
 ---
 
-### Phase 5: Server Integration ⬜
+## Phase 3: Server Integration ✅ Complete
 
-**Goal:** Wire everything together in createServer
+New `createServerV2()` implemented with operations-based API:
 
-**API:**
 ```typescript
-const server = createServer({
+const server = createServerV2({
   entities,
   relations,
   queries,
   mutations,
   resolvers,
-  context: async (req) => ({ ... }),
+  context: async (req) => ({
+    db: prisma,
+    currentUser: await getUserFromRequest(req),
+  }),
 })
 
 server.listen(3000)
 ```
 
-**Tasks:**
-- [ ] Update `createServer()` to accept new config shape
-- [ ] Wire operations to execution engine
-- [ ] Wire entity resolvers for nested data
-- [ ] Integrate GraphStateManager for reactive updates
-- [ ] Support WebSocket transport
-- [ ] Write integration tests
+### Features Implemented
+
+- **Operations Support**: Execute queries/mutations by name
+- **Context Integration**: `runWithContext()` for AsyncLocalStorage
+- **Input Validation**: Zod schema validation from operation definitions
+- **WebSocket Transport**: Handshake, query, mutation message handling
+- **HTTP Transport**: POST-based query/mutation execution
+- **Async Generators**: Streaming support (returns first value)
+- **Backward Compatibility**: `createServer()` still available
+
+### Tests: 27 passing
 
 ---
 
-### Phase 6: Client Integration ⬜
+## Phase 4: Client Integration 🟡 In Progress
 
-**Goal:** Type-safe client with operation access
+### Current State
 
-**API:**
+The existing client (`@lens/client`) uses CRUD-based API:
+- `client.user.get({ id })`
+- `client.user.list()`
+- `client.user.create(input)`
+
+### New Client API
+
 ```typescript
 const client = createClient({
   queries,
@@ -236,65 +128,72 @@ const client = createClient({
   links: [websocketLink({ url: '...' })],
 })
 
+// Type-safe operation access
 const me = await client.whoami()
 const results = await client.searchUsers({ query: 'john' })
+const post = await client.createPost({ title: 'Hello', content: 'World' })
 ```
 
-**Tasks:**
-- [ ] Update `createClient()` to accept operations
-- [ ] Generate type-safe accessors from operations
-- [ ] Implement optimistic update handling
-- [ ] Support `.select()` for nested data
-- [ ] Write tests
+### Changes Required
+
+1. **Client Generation**
+   - Generate client methods from query/mutation definitions
+   - Type-safe input/output inference
+
+2. **Optimistic Updates**
+   - Execute `optimistic()` function on mutation call
+   - Apply to local cache
+   - Replace/rollback on server response
+
+3. **Multi-Entity Handling**
+   - Handle mutations returning `{ users: [User], notifications: [Notification] }`
+   - Update cache for multiple entity types
 
 ---
 
-### Phase 7: React Hooks ⬜
+## Phase 5: React Hooks Update ⬜ Pending
 
-**Goal:** React integration with new API
+### New Hooks API
 
-**API:**
 ```tsx
-const { data, loading } = useQuery(client.whoami)
-const { mutate } = useMutation(client.createPost)
+function UserProfile() {
+  const { data, loading, error } = useQuery(client.whoami)
+  // ...
+}
+
+function CreatePost() {
+  const { mutate, loading } = useMutation(client.createPost)
+  // ...
+}
 ```
 
-**Tasks:**
-- [ ] Update `useQuery()` hook
-- [ ] Update `useMutation()` hook
-- [ ] Support dependency arrays for reactive queries
-- [ ] Write tests
+### Changes Required
+
+1. Update `useQuery()` to accept operation references
+2. Update `useMutation()` to handle optimistic updates
+3. Support dependency arrays for reactive queries
 
 ---
 
-## Test Coverage Goals
+## Test Coverage
 
-| Package | Target |
-|---------|--------|
-| @lens/core | 90%+ |
-| @lens/server | 85%+ |
-| @lens/client | 85%+ |
-| @lens/react | 80%+ |
-
----
-
-## Migration from V2
-
-The current V2 codebase has CRUD-only design. Migration strategy:
-
-1. **Keep existing tests** where possible (rename to _old if conflicting)
-2. **Implement new API** alongside existing code
-3. **Migrate tests** to new API as features are implemented
-4. **Remove old code** when new implementation is complete
+| Package | Tests | Status |
+|---------|-------|--------|
+| @lens/core | 191 | ✅ |
+| @lens/server | 124 | ✅ (+27 new) |
+| @lens/client | 167 | ✅ |
+| **Total** | **482** | ✅ |
 
 ---
 
-## Next Steps
+## Commits (Recent)
 
-1. Run existing tests to understand current state
-2. Start Phase 1: Implement `entity()` and `t.*` type builders
-3. Follow TDD: Write test → Implement → Refactor
-4. Document progress in this file
+| Hash | Description |
+|------|-------------|
+| `2311c15` | feat(server): add createServerV2 for operations-based API |
+| `f2c46e6` | feat(core): add AsyncLocalStorage context system |
+| `07f1960` | feat(core): add entityResolvers for nested data handling |
+| `92b823b` | feat(core): add new schema and operations API |
 
 ---
 
@@ -339,8 +238,12 @@ const user = useCurrentUser()
 .returns({ users: [User], notifications: [Notification] })
 ```
 
-### Why Zod for Input?
+---
 
-**Problem:** Need runtime validation, but schema uses our type system.
+## Next Steps
 
-**Decision:** Zod for operation inputs (powerful, familiar), our types for schema.
+1. ~~**Create `createServerV2()`** - New server accepting operations~~ ✅
+2. ~~**Update ExecutionEngine** - Add `executeQuery()`, `executeMutation()`~~ ✅
+3. ~~**Integrate Context** - Wrap execution in `runWithContext()`~~ ✅
+4. **Create `createClientV2()`** - Client with operations-based API
+5. **Update React Hooks** - Accept operation references
