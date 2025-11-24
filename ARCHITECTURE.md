@@ -429,17 +429,126 @@ const client = createClient({
 
 ### Custom Types
 
-```typescript
-// Define custom type with serialization
-const Product = defineEntity('Product', {
-  price: t.decimal(),  // Built-in Decimal type
+**Design Rationale**: Reusable type definitions instead of inline configuration.
 
-  // Or custom serialization
+**Why `defineType()` instead of inline?**
+1. **Reusability**: Define once, use in multiple entities
+2. **Type Safety**: Strong TypeScript inference for serialize/deserialize
+3. **Type Libraries**: Create shareable type definition packages
+4. **Consistency**: Same serialization logic across entire schema
+5. **Validation**: Centralized validation logic
+
+```typescript
+import { defineType } from '@lens/core'
+
+// ============================================================================
+// Define reusable custom type
+// ============================================================================
+
+class Point {
+  constructor(public lat: number, public lng: number) {}
+}
+
+const PointType = defineType({
+  name: 'Point',
+
+  // Runtime type (for validation)
+  baseType: 'object',
+
+  // TypeScript type
+  type: {} as Point,
+
+  // Serialize for transport (Point → JSON)
+  serialize: (point: Point) => ({
+    lat: point.lat,
+    lng: point.lng,
+  }),
+
+  // Deserialize from transport (JSON → Point)
+  deserialize: (data: { lat: number; lng: number }) => {
+    return new Point(data.lat, data.lng)
+  },
+
+  // Optional: validation
+  validate: (value: unknown) => {
+    if (!(value instanceof Point)) {
+      throw new Error('Expected Point instance')
+    }
+    if (typeof value.lat !== 'number' || typeof value.lng !== 'number') {
+      throw new Error('Point coordinates must be numbers')
+    }
+    return true
+  },
+})
+
+// ============================================================================
+// Use in schema - t.custom(Type) instead of inline config
+// ============================================================================
+
+const Product = defineEntity('Product', {
+  price: t.decimal(),      // Built-in type
+  location: t.custom(PointType),  // ✅ Reusable custom type
+})
+
+const Store = defineEntity('Store', {
+  name: t.string(),
+  location: t.custom(PointType),  // ✅ Reuse same type definition
+})
+
+// ============================================================================
+// Type libraries - share types across projects
+// ============================================================================
+
+// @my-company/lens-types package:
+export const AddressType = defineType({ ... })
+export const PhoneType = defineType({ ... })
+export const CurrencyType = defineType({ ... })
+
+// In your app:
+import { AddressType, PhoneType } from '@my-company/lens-types'
+
+const User = defineEntity('User', {
+  address: t.custom(AddressType),
+  phone: t.custom(PhoneType),
+})
+```
+
+**Implementation Details**:
+
+1. **Server**: `ExecutionEngine` auto-calls `serialize()` before sending response
+2. **Client**: `deserializeLink` auto-calls `deserialize()` when receiving data
+3. **Type Safety**: TypeScript infers `Point` type from `PointType.type`
+4. **Validation**: Optional `validate()` runs before serialization (catches bugs early)
+
+**Comparison with inline approach**:
+
+```typescript
+// ❌ OLD: Inline (not reusable, repetitive)
+const Product = defineEntity('Product', {
   location: t.custom({
     type: 'Point',
     serialize: (p: Point) => ({ lat: p.lat, lng: p.lng }),
     deserialize: (p: any) => new Point(p.lat, p.lng),
   }),
+})
+
+const Store = defineEntity('Store', {
+  location: t.custom({  // 🔴 Duplicate serialization logic!
+    type: 'Point',
+    serialize: (p: Point) => ({ lat: p.lat, lng: p.lng }),
+    deserialize: (p: any) => new Point(p.lat, p.lng),
+  }),
+})
+
+// ✅ NEW: Reusable (DRY, type-safe, shareable)
+const PointType = defineType({ ... })  // Define once
+
+const Product = defineEntity('Product', {
+  location: t.custom(PointType),  // ✅ Reuse
+})
+
+const Store = defineEntity('Store', {
+  location: t.custom(PointType),  // ✅ Reuse
 })
 ```
 
