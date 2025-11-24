@@ -78,6 +78,13 @@ export {
 	type InProcessResolvers,
 } from "./in-process";
 
+export {
+	inProcessLinkV2,
+	createInProcessLinkV2,
+	type InProcessLinkV2Options,
+	type InProcessServerV2,
+} from "./in-process-v2";
+
 // =============================================================================
 // Subscription Transport (WebSocket)
 // =============================================================================

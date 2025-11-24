@@ -133,6 +133,11 @@ export {
 	createInProcessLink,
 	type InProcessLinkOptions,
 	type InProcessResolvers,
+	// In-process V2 (operations protocol)
+	inProcessLinkV2,
+	createInProcessLinkV2,
+	type InProcessLinkV2Options,
+	type InProcessServerV2,
 	// WebSocket subscription transport
 	WebSocketSubscriptionTransport,
 	createWebSocketTransport,
