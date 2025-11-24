@@ -133,6 +133,25 @@ describe("WhereInput type safety", () => {
 		expect(where).toBeDefined();
 	});
 
+	it("allows null filtering on nullable fields", () => {
+		const where: WhereInput<UserDef> = {
+			age: { equals: null }, // Filter for users with no age
+		};
+		expect(where).toBeDefined();
+
+		const where2: WhereInput<UserDef> = {
+			age: { not: null }, // Filter for users with age set
+		};
+		expect(where2).toBeDefined();
+	});
+
+	it("allows direct null value for nullable fields", () => {
+		const where: WhereInput<UserDef> = {
+			age: null, // Direct null value
+		};
+		expect(where).toBeDefined();
+	});
+
 	it("allows complex nested filters", () => {
 		const where: WhereInput<UserDef> = {
 			AND: [

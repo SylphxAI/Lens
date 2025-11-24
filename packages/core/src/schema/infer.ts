@@ -291,8 +291,8 @@ export type DeepPartial<T> = T extends object
 
 /** String field filter operations */
 export type StringFilter = {
-	equals?: string;
-	not?: string | StringFilter;
+	equals?: string | null;
+	not?: string | null | StringFilter;
 	in?: string[];
 	notIn?: string[];
 	contains?: string;
@@ -303,8 +303,8 @@ export type StringFilter = {
 
 /** Number field filter operations (int/float) */
 export type NumberFilter = {
-	equals?: number;
-	not?: number | NumberFilter;
+	equals?: number | null;
+	not?: number | null | NumberFilter;
 	in?: number[];
 	notIn?: number[];
 	lt?: number;
@@ -315,14 +315,14 @@ export type NumberFilter = {
 
 /** Boolean field filter operations */
 export type BooleanFilter = {
-	equals?: boolean;
-	not?: boolean | BooleanFilter;
+	equals?: boolean | null;
+	not?: boolean | null | BooleanFilter;
 };
 
 /** DateTime field filter operations */
 export type DateTimeFilter = {
-	equals?: Date | string;
-	not?: Date | string | DateTimeFilter;
+	equals?: Date | string | null;
+	not?: Date | string | null | DateTimeFilter;
 	in?: (Date | string)[];
 	notIn?: (Date | string)[];
 	lt?: Date | string;
@@ -333,8 +333,8 @@ export type DateTimeFilter = {
 
 /** Enum field filter operations */
 export type EnumFilter<T extends string> = {
-	equals?: T;
-	not?: T | EnumFilter<T>;
+	equals?: T | null;
+	not?: T | null | EnumFilter<T>;
 	in?: T[];
 	notIn?: T[];
 };
