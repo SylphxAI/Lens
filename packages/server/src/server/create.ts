@@ -4,13 +4,20 @@
  * Factory for creating a Lens server.
  */
 
-import type { Schema, SchemaDefinition, createUpdate } from "@lens/core";
+import type { Schema, SchemaDefinition, createUpdate, UnifiedPlugin, ServerHandshake } from "@lens/core";
 import type { Resolvers, BaseContext } from "../resolvers/types";
 import { ExecutionEngine } from "../execution/engine";
+import { createServerPluginManager, type ServerPluginManager } from "../plugins";
 
 // =============================================================================
 // Types
 // =============================================================================
+
+/** Plugin entry for server config */
+export interface PluginEntry<T = unknown> {
+	plugin: UnifiedPlugin<T>;
+	config?: T;
+}
 
 export interface ServerConfig<S extends SchemaDefinition, Ctx extends BaseContext> {
 	/** Schema definition */
@@ -19,6 +26,10 @@ export interface ServerConfig<S extends SchemaDefinition, Ctx extends BaseContex
 	resolvers: Resolvers<S, Ctx>;
 	/** Context factory */
 	context?: (req?: unknown) => Ctx;
+	/** Plugins */
+	plugins?: Array<UnifiedPlugin | PluginEntry>;
+	/** Server version (for handshake) */
+	version?: string;
 }
 
 export interface LensServer<S extends SchemaDefinition, Ctx extends BaseContext> {
@@ -80,7 +91,13 @@ interface QueryMessage {
 	input?: Record<string, unknown>;
 }
 
-type ClientMessage = SubscribeMessage | UnsubscribeMessage | MutateMessage | QueryMessage;
+interface HandshakeMessage {
+	type: "handshake";
+	id: string;
+	clientVersion?: string;
+}
+
+type ClientMessage = SubscribeMessage | UnsubscribeMessage | MutateMessage | QueryMessage | HandshakeMessage;
 
 // =============================================================================
 // Server Implementation
@@ -92,10 +109,27 @@ class LensServerImpl<S extends SchemaDefinition, Ctx extends BaseContext>
 	engine: ExecutionEngine<S, Ctx>;
 	private subscriptions = new Map<string, { entityName: string; entityId: string; ws: WebSocketLike }>();
 	private server: unknown = null;
+	private pluginManager: ServerPluginManager;
+	private version: string;
 
 	constructor(config: ServerConfig<S, Ctx>) {
 		const contextFactory = config.context ?? (() => ({} as Ctx));
 		this.engine = new ExecutionEngine(config.resolvers, contextFactory);
+		this.version = config.version ?? "1.0.0";
+
+		// Initialize plugin manager
+		this.pluginManager = createServerPluginManager();
+
+		// Register plugins
+		if (config.plugins) {
+			for (const entry of config.plugins) {
+				if ("plugin" in entry) {
+					this.pluginManager.register(entry.plugin, entry.config);
+				} else {
+					this.pluginManager.register(entry);
+				}
+			}
+		}
 	}
 
 	handleWebSocket(ws: WebSocketLike): void {
@@ -129,6 +163,9 @@ class LensServerImpl<S extends SchemaDefinition, Ctx extends BaseContext>
 		connectionSubs: Set<string>,
 	): Promise<void> {
 		switch (message.type) {
+			case "handshake":
+				this.handleHandshake(ws, message);
+				break;
 			case "subscribe":
 				await this.handleSubscribe(ws, message, connectionSubs);
 				break;
@@ -142,6 +179,21 @@ class LensServerImpl<S extends SchemaDefinition, Ctx extends BaseContext>
 				await this.handleMutate(ws, message);
 				break;
 		}
+	}
+
+	private handleHandshake(ws: WebSocketLike, message: HandshakeMessage): void {
+		const handshake: ServerHandshake = {
+			version: this.version,
+			plugins: this.pluginManager.getHandshakeInfo(),
+		};
+
+		ws.send(
+			JSON.stringify({
+				type: "handshake",
+				id: message.id,
+				...handshake,
+			}),
+		);
 	}
 
 	private async handleSubscribe(
@@ -365,6 +417,9 @@ class LensServerImpl<S extends SchemaDefinition, Ctx extends BaseContext>
 	}
 
 	async listen(port: number): Promise<void> {
+		// Initialize plugins
+		await this.pluginManager.init();
+
 		// Use Bun's built-in server
 		this.server = Bun.serve({
 			port,
@@ -403,6 +458,9 @@ class LensServerImpl<S extends SchemaDefinition, Ctx extends BaseContext>
 	}
 
 	async close(): Promise<void> {
+		// Destroy plugins
+		await this.pluginManager.destroy();
+
 		if (this.server && typeof (this.server as { stop?: () => void }).stop === "function") {
 			(this.server as { stop: () => void }).stop();
 		}
