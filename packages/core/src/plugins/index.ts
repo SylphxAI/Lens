@@ -36,3 +36,21 @@ export {
 	type AuthClientAPI,
 	type AuthServerAPI,
 } from "./auth";
+
+export {
+	cachePlugin,
+	type CachePluginConfig,
+	type CacheClientAPI,
+	type CacheServerAPI,
+	type CascadeRule,
+} from "./cache";
+
+export {
+	paginationPlugin,
+	type PaginationPluginConfig,
+	type PaginationClientAPI,
+	type PaginationServerAPI,
+	type PageInfo,
+	type PaginatedResult,
+	type PaginationInput,
+} from "./pagination";
