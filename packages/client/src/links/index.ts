@@ -63,6 +63,7 @@ export {
 // =============================================================================
 
 export { httpLink, httpBatchLink, type HttpLinkOptions } from "./http";
+export { httpLinkV2, type HttpLinkV2Options } from "./http-v2";
 export {
 	sseLink,
 	SSESubscriptionTransport,

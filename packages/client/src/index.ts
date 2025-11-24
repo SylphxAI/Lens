@@ -121,6 +121,9 @@ export {
 	httpLink,
 	httpBatchLink,
 	type HttpLinkOptions,
+	// HTTP V2 (operations protocol)
+	httpLinkV2,
+	type HttpLinkV2Options,
 	sseLink,
 	SSESubscriptionTransport,
 	createSSETransport,
