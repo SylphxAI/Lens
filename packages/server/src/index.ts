@@ -47,6 +47,9 @@ export {
 	DataLoader,
 	// Errors
 	ExecutionError,
+	// Types
+	type ExecutionEngineConfig,
+	type ReactiveSubscription,
 } from "./execution/engine";
 
 // =============================================================================

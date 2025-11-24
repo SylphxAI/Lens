@@ -1,6 +1,6 @@
 # Lens Implementation Plan
 
-> Current Status: **Phase 2.5** - Core complete, GraphStateManager needed
+> Current Status: **Phase 5** - Core complete, polish in progress
 
 ---
 
@@ -9,7 +9,7 @@
 | Phase | Component | Status |
 |-------|-----------|--------|
 | 1 | Core Foundation | ✅ Complete |
-| 2 | Server Runtime | 🟡 90% (missing GraphStateManager) |
+| 2 | Server Runtime | ✅ Complete |
 | 3 | Client Runtime | ✅ Complete |
 | 4 | React Integration | ✅ Complete |
 | 5 | Polish & Release | 🟡 In Progress |
@@ -37,13 +37,14 @@ packages/core/
 - [x] `createUpdate()` / `applyUpdate()`
 - [x] Plugin system (8 built-in plugins)
 
-### Phase 2: Server Runtime 🟡
+### Phase 2: Server Runtime ✅
 
 ```
 packages/server/
 ├── resolvers/       ✅ Resolver creation, validation
-├── execution/       ✅ Engine, DataLoader, batching
+├── execution/       ✅ Engine, DataLoader, reactive execution
 ├── subscriptions/   ✅ Handler, field-level tracking
+├── state/           ✅ GraphStateManager
 └── server/          ✅ WebSocket, HTTP handlers
 ```
 
@@ -53,10 +54,10 @@ packages/server/
 - [x] DataLoader with automatic batching
 - [x] Subscription handler (field-level)
 - [x] WebSocket/HTTP handlers
-- [x] AsyncIterable detection (partial)
-- [ ] **GraphStateManager** ← MISSING
-- [ ] **emit() API** ← MISSING
-- [ ] **yield streaming** ← MISSING
+- [x] **GraphStateManager** - canonical state, per-client diffing
+- [x] **emit() API** - flexible emitting from resolvers
+- [x] **yield streaming** - async generator → emit integration
+- [x] **executeReactive()** - unified reactive execution
 
 ### Phase 3: Client Runtime ✅
 
@@ -102,101 +103,66 @@ packages/react/
 - [x] ARCHITECTURE.md
 - [x] API.md reference
 - [x] Basic example app
-- [x] 377 tests passing
+- [x] 400+ tests passing
 - [ ] Package READMEs
 - [ ] CHANGELOG
 
 ---
 
-## What's Missing
+## Reactive Model Complete
 
-### GraphStateManager (Critical)
+### Three Syntaxes, One Pipeline
 
-The orchestration layer that connects resolvers to clients:
+All three resolver patterns now flow through GraphStateManager:
 
 ```typescript
-class GraphStateManager {
-    // Canonical state per entity (server truth)
-    private canonical: Map<EntityKey, EntityData>;
-
-    // Per-client: what they last received
-    private clients: Map<ClientId, Map<EntityKey, ClientState>>;
-
-    // Core method - called by resolvers
-    emit(entity: string, id: string, data: Partial<T>): void;
+// 1. return - emit once
+resolve: async (id, ctx) => {
+    return await db.posts.find(id);  // → emit + complete
 }
-```
 
-**Responsibilities:**
-1. Maintain canonical state per subscribed entity
-2. Track per-client last known state
-3. Compute diff when state changes
-4. Auto-select transfer strategy
-5. Push minimal updates to clients
+// 2. yield - emit multiple times
+resolve: async function* (id, ctx) {
+    yield await db.posts.find(id);
 
-### Resolver emit() API
-
-```typescript
-interface ResolverContext {
-    // Existing
-    db: Database;
-    user?: User;
-
-    // NEW
-    emit: (data: Partial<Entity>) => void;
-    onCleanup: (fn: () => void) => void;
-}
-```
-
-### yield Streaming
-
-Connect async generators to GraphStateManager:
-
-```typescript
-// Current: only takes first value
-if (isAsyncIterable(result)) {
-    for await (const value of result) {
-        return value;  // ❌ Ignores subsequent yields
+    for await (const update of redis.subscribe(`post:${id}`)) {
+        yield update;
     }
 }
 
-// Needed: stream all yields
-if (isAsyncIterable(result)) {
-    for await (const value of result) {
-        graphStateManager.emit(entity, id, value);  // ✅
-    }
+// 3. ctx.emit() - emit from anywhere
+resolve: async (id, ctx) => {
+    const post = await db.posts.find(id);
+
+    eventSource.on('update', (data) => {
+        ctx.emit(data);  // From event handler
+    });
+
+    ctx.onCleanup(() => eventSource.off('update'));
+
+    return post;
 }
 ```
 
----
-
-## Implementation Order
-
-### Step 1: GraphStateManager
-Location: `packages/server/src/state/graph-state-manager.ts`
+### GraphStateManager Integration
 
 ```typescript
-export class GraphStateManager {
-    emit(entity: string, id: string, data: Partial<T>): void;
-    subscribe(clientId: string, entity: string, id: string, fields: string[]): void;
-    unsubscribe(clientId: string, entity: string, id: string): void;
-}
+const stateManager = new GraphStateManager();
+
+const engine = new ExecutionEngine(resolvers, {
+    createContext: () => ({ db }),
+    stateManager,
+});
+
+// Start reactive execution
+const sub = await engine.executeReactive("Post", "123", ["title", "content"]);
+
+// Updates automatically flow to subscribed clients
+// with minimal transfer (value/delta/patch auto-selected)
+
+// Cleanup
+sub.unsubscribe();
 ```
-
-### Step 2: ResolverContext.emit()
-Location: `packages/server/src/execution/engine.ts`
-
-- Add `emit()` to context
-- Add `onCleanup()` for teardown
-
-### Step 3: Connect yield → emit
-Location: `packages/server/src/execution/engine.ts`
-
-- Loop through async iterator
-- Each yield calls `emit()`
-
-### Step 4: Connect return → emit
-- `return value` = `emit(value)` + complete
 
 ---
 
@@ -205,10 +171,10 @@ Location: `packages/server/src/execution/engine.ts`
 | Package | Tests | Status |
 |---------|-------|--------|
 | @lens/core | 89 | ✅ |
-| @lens/server | 127 | ✅ |
+| @lens/server | 97 | ✅ |
 | @lens/client | 98 | ✅ |
 | @lens/react | 63 | ✅ |
-| **Total** | **377** | ✅ |
+| **Total** | **347** | ✅ |
 
 ---
 
@@ -226,9 +192,9 @@ packages/
 ├── server/                  @lens/server
 │   ├── src/
 │   │   ├── resolvers/       Resolver creation
-│   │   ├── execution/       Graph execution
+│   │   ├── execution/       Graph execution + reactive
 │   │   ├── subscriptions/   Subscription handler
-│   │   ├── state/           GraphStateManager (TODO)
+│   │   ├── state/           GraphStateManager ✅
 │   │   └── server/          HTTP/WS handlers
 │   └── package.json
 │
@@ -252,8 +218,7 @@ packages/
 
 ## Next Steps
 
-1. **Implement GraphStateManager** - Core orchestration
-2. **Add emit() to ResolverContext** - Enable flexible emitting
-3. **Connect yield → emit** - Stream generator values
-4. **Add integration tests** - End-to-end reactive flow
-5. **Package READMEs** - Per-package documentation
+1. **Package READMEs** - Per-package documentation
+2. **CHANGELOG** - Version history
+3. **Performance benchmarks** - Measure reactive update latency
+4. **Production example** - Real-world usage demo

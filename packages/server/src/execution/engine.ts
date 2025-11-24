@@ -2,10 +2,20 @@
  * @lens/server - Execution Engine
  *
  * Executes resolvers with field selection and batching.
+ * Supports reactive execution with GraphStateManager integration.
  */
 
 import type { SchemaDefinition, InferEntity, Select } from "@lens/core";
-import type { Resolvers, BaseContext, ListInput, PaginatedResult, PageInfo } from "../resolvers/types";
+import type {
+	Resolvers,
+	BaseContext,
+	ListInput,
+	PaginatedResult,
+	PageInfo,
+	EmitContext,
+	ResolverContext,
+} from "../resolvers/types";
+import type { GraphStateManager } from "../state/graph-state-manager";
 
 // =============================================================================
 // DataLoader for N+1 Elimination
@@ -76,19 +86,69 @@ export class DataLoader<K, V> {
 }
 
 // =============================================================================
+// Execution Engine Configuration
+// =============================================================================
+
+export interface ExecutionEngineConfig<Ctx extends BaseContext> {
+	/** Function to create user context */
+	createContext: () => Ctx;
+	/** Optional GraphStateManager for reactive updates */
+	stateManager?: GraphStateManager;
+}
+
+// =============================================================================
+// Reactive Subscription Handle
+// =============================================================================
+
+export interface ReactiveSubscription {
+	/** Unique subscription ID */
+	id: string;
+	/** Entity type */
+	entity: string;
+	/** Entity ID */
+	entityId: string;
+	/** Unsubscribe and cleanup */
+	unsubscribe: () => void;
+}
+
+// =============================================================================
 // Execution Engine
 // =============================================================================
 
 /**
- * Execution engine for running queries
+ * Execution engine for running queries with optional reactive support.
+ *
+ * @example
+ * ```typescript
+ * // Basic usage (no streaming)
+ * const engine = new ExecutionEngine(resolvers, { createContext: () => ({}) });
+ * const post = await engine.executeGet("Post", "123");
+ *
+ * // Reactive usage (with GraphStateManager)
+ * const stateManager = new GraphStateManager();
+ * const engine = new ExecutionEngine(resolvers, { createContext: () => ({}), stateManager });
+ * const sub = await engine.executeReactive("Post", "123", ["title", "content"]);
+ * // Updates automatically flow to subscribed clients via stateManager
+ * ```
  */
 export class ExecutionEngine<S extends SchemaDefinition, Ctx extends BaseContext> {
 	private loaders = new Map<string, DataLoader<string, unknown>>();
+	private resolvers: Resolvers<S, Ctx>;
+	private createContext: () => Ctx;
+	private stateManager?: GraphStateManager;
+	private activeSubscriptions = new Map<string, { cleanup: () => void }>();
+	private subscriptionCounter = 0;
 
-	constructor(
-		private resolvers: Resolvers<S, Ctx>,
-		private createContext: () => Ctx,
-	) {}
+	constructor(resolvers: Resolvers<S, Ctx>, config: ExecutionEngineConfig<Ctx> | (() => Ctx)) {
+		this.resolvers = resolvers;
+		if (typeof config === "function") {
+			// Legacy: direct createContext function
+			this.createContext = config;
+		} else {
+			this.createContext = config.createContext;
+			this.stateManager = config.stateManager;
+		}
+	}
 
 	/**
 	 * Execute a single entity query
@@ -263,7 +323,7 @@ export class ExecutionEngine<S extends SchemaDefinition, Ctx extends BaseContext
 	}
 
 	/**
-	 * Subscribe to entity updates (streaming)
+	 * Subscribe to entity updates (streaming via AsyncIterable)
 	 */
 	async *subscribe<K extends keyof S & string>(
 		entityName: K,
@@ -290,6 +350,150 @@ export class ExecutionEngine<S extends SchemaDefinition, Ctx extends BaseContext
 		// Handle single promise (emit once)
 		const result = await resolveResult;
 		yield this.applySelection(result, select) as InferEntity<S[K], S> | null;
+	}
+
+	// ===========================================================================
+	// Reactive Execution (GraphStateManager Integration)
+	// ===========================================================================
+
+	/**
+	 * Execute a reactive query that streams updates to GraphStateManager.
+	 *
+	 * Three resolver patterns are supported:
+	 * 1. `return value` - emit once, resolver completes
+	 * 2. `yield* values` - emit multiple times via async generator
+	 * 3. `ctx.emit(data)` - emit from anywhere (callbacks, events)
+	 *
+	 * @param entityName - Entity type
+	 * @param id - Entity ID
+	 * @param fields - Fields to track (array or "*" for all)
+	 * @returns Subscription handle with unsubscribe function
+	 *
+	 * @example
+	 * ```typescript
+	 * // Start reactive execution
+	 * const sub = await engine.executeReactive("Post", "123", ["title", "content"]);
+	 *
+	 * // Later: stop receiving updates
+	 * sub.unsubscribe();
+	 * ```
+	 */
+	async executeReactive<K extends keyof S & string>(
+		entityName: K,
+		id: string,
+		fields: string[] | "*" = "*",
+	): Promise<ReactiveSubscription> {
+		if (!this.stateManager) {
+			throw new ExecutionError(
+				"executeReactive requires a GraphStateManager. " +
+					"Pass stateManager in ExecutionEngine config.",
+			);
+		}
+
+		const resolver = this.resolvers.getResolver(entityName);
+		if (!resolver) {
+			throw new ExecutionError(`No resolver found for entity: ${entityName}`);
+		}
+
+		// Generate unique subscription ID
+		const subscriptionId = `${entityName}:${id}:${++this.subscriptionCounter}`;
+
+		// Track cleanup functions from ctx.onCleanup()
+		const cleanupFns: (() => void)[] = [];
+		let isActive = true;
+
+		// Create emit-enabled context
+		const emitContext: EmitContext<InferEntity<S[K], S>> = {
+			emit: (data) => {
+				if (!isActive) return;
+				this.stateManager!.emit(entityName, id, data as Record<string, unknown>);
+			},
+			onCleanup: (fn) => {
+				cleanupFns.push(fn);
+				return () => {
+					const idx = cleanupFns.indexOf(fn);
+					if (idx >= 0) cleanupFns.splice(idx, 1);
+				};
+			},
+		};
+
+		// Merge user context with emit context
+		const userCtx = this.createContext();
+		const ctx = { ...userCtx, ...emitContext } as ResolverContext<InferEntity<S[K], S>, Ctx>;
+
+		// Execute resolver
+		const resolveResult = resolver.resolve(id, ctx as Ctx);
+
+		// Process resolver result
+		if (isAsyncIterable(resolveResult)) {
+			// Async generator: loop all yields through emit
+			this.processAsyncIterable(entityName, id, resolveResult, subscriptionId, () => isActive);
+		} else {
+			// Single promise: emit once
+			resolveResult.then((value) => {
+				if (isActive && value) {
+					this.stateManager!.emit(entityName, id, value as Record<string, unknown>);
+				}
+			});
+		}
+
+		// Cleanup function
+		const cleanup = () => {
+			isActive = false;
+			cleanupFns.forEach((fn) => fn());
+			this.activeSubscriptions.delete(subscriptionId);
+		};
+
+		this.activeSubscriptions.set(subscriptionId, { cleanup });
+
+		return {
+			id: subscriptionId,
+			entity: entityName,
+			entityId: id,
+			unsubscribe: cleanup,
+		};
+	}
+
+	/**
+	 * Process async iterable, emitting each value to state manager
+	 */
+	private async processAsyncIterable<K extends keyof S & string>(
+		entityName: K,
+		id: string,
+		iterable: AsyncIterable<InferEntity<S[K], S>>,
+		subscriptionId: string,
+		isActive: () => boolean,
+	): Promise<void> {
+		try {
+			for await (const value of iterable) {
+				if (!isActive()) break;
+				if (value) {
+					this.stateManager!.emit(entityName, id, value as Record<string, unknown>);
+				}
+			}
+		} catch (error) {
+			// Log error but don't throw - subscription just ends
+			console.error(`[ExecutionEngine] Error in reactive resolver ${subscriptionId}:`, error);
+		}
+	}
+
+	/**
+	 * Cancel a reactive subscription
+	 */
+	cancelSubscription(subscriptionId: string): boolean {
+		const sub = this.activeSubscriptions.get(subscriptionId);
+		if (sub) {
+			sub.cleanup();
+			return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Get count of active subscriptions
+	 */
+	getActiveSubscriptionCount(): number {
+		return this.activeSubscriptions.size;
 	}
 
 	/**

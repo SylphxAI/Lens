@@ -331,3 +331,252 @@ describe("ExecutionEngine", () => {
 		});
 	});
 });
+
+// =============================================================================
+// Reactive Execution Tests
+// =============================================================================
+
+import { GraphStateManager, type StateClient, type StateUpdateMessage } from "../state/graph-state-manager";
+
+describe("ExecutionEngine Reactive", () => {
+	// Test schema
+	const reactiveSchema = createSchema({
+		Post: {
+			id: t.id(),
+			title: t.string(),
+			content: t.string(),
+		},
+	});
+
+	describe("executeReactive", () => {
+		test("throws without GraphStateManager", async () => {
+			const resolvers = createResolvers(reactiveSchema, {
+				Post: {
+					resolve: async (id) => ({ id, title: "Test", content: "Content" }),
+				},
+			});
+			const engine = new ExecutionEngine(resolvers, () => ({}));
+
+			await expect(engine.executeReactive("Post", "1")).rejects.toThrow(
+				"executeReactive requires a GraphStateManager",
+			);
+		});
+
+		test("emits return value to state manager", async () => {
+			const stateManager = new GraphStateManager();
+			const mockClient = createMockClient("c1");
+			stateManager.addClient(mockClient);
+			stateManager.subscribe("c1", "Post", "123", "*");
+			mockClient.messages = [];
+
+			const resolvers = createResolvers(reactiveSchema, {
+				Post: {
+					resolve: async (id) => ({ id, title: "Hello", content: "World" }),
+				},
+			});
+
+			const engine = new ExecutionEngine(resolvers, {
+				createContext: () => ({}),
+				stateManager,
+			});
+
+			const sub = await engine.executeReactive("Post", "123");
+
+			// Wait for async emit
+			await sleep(10);
+
+			expect(mockClient.messages.length).toBe(1);
+			expect(mockClient.messages[0].updates.title.data).toBe("Hello");
+			expect(mockClient.messages[0].updates.content.data).toBe("World");
+
+			sub.unsubscribe();
+		});
+
+		test("emits all yields from async generator", async () => {
+			const stateManager = new GraphStateManager();
+			const mockClient = createMockClient("c1");
+			stateManager.addClient(mockClient);
+			stateManager.subscribe("c1", "Post", "123", "*");
+			mockClient.messages = [];
+
+			const resolvers = createResolvers(reactiveSchema, {
+				Post: {
+					resolve: async function* (id) {
+						yield { id, title: "First", content: "Content 1" };
+						await sleep(5);
+						yield { id, title: "Second", content: "Content 2" };
+						await sleep(5);
+						yield { id, title: "Third", content: "Content 3" };
+					},
+				},
+			});
+
+			const engine = new ExecutionEngine(resolvers, {
+				createContext: () => ({}),
+				stateManager,
+			});
+
+			await engine.executeReactive("Post", "123");
+
+			// Wait for all yields
+			await sleep(50);
+
+			// Should have received updates (only changed fields after initial)
+			expect(mockClient.messages.length).toBeGreaterThanOrEqual(3);
+			expect(mockClient.messages[0].updates.title.data).toBe("First");
+		});
+
+		test("supports ctx.emit() from resolver", async () => {
+			const stateManager = new GraphStateManager();
+			const mockClient = createMockClient("c1");
+			stateManager.addClient(mockClient);
+			stateManager.subscribe("c1", "Post", "123", "*");
+			mockClient.messages = [];
+
+			let emitFn: ((data: unknown) => void) | null = null;
+
+			const resolvers = createResolvers(reactiveSchema, {
+				Post: {
+					resolve: async (id, ctx) => {
+						// Capture emit function for external use
+						emitFn = (ctx as any).emit;
+						return { id, title: "Initial", content: "Start" };
+					},
+				},
+			});
+
+			const engine = new ExecutionEngine(resolvers, {
+				createContext: () => ({}),
+				stateManager,
+			});
+
+			await engine.executeReactive("Post", "123");
+			await sleep(10);
+
+			// Use captured emit function
+			expect(emitFn).not.toBeNull();
+			emitFn!({ title: "Updated via emit" });
+
+			await sleep(10);
+
+			// Should have initial + update
+			expect(mockClient.messages.length).toBe(2);
+			expect(mockClient.messages[1].updates.title.data).toBe("Updated via emit");
+		});
+
+		test("onCleanup is called on unsubscribe", async () => {
+			const stateManager = new GraphStateManager();
+			const cleanupCalled = mock(() => {});
+
+			const resolvers = createResolvers(reactiveSchema, {
+				Post: {
+					resolve: async (id, ctx) => {
+						(ctx as any).onCleanup(cleanupCalled);
+						return { id, title: "Test", content: "Content" };
+					},
+				},
+			});
+
+			const engine = new ExecutionEngine(resolvers, {
+				createContext: () => ({}),
+				stateManager,
+			});
+
+			const sub = await engine.executeReactive("Post", "123");
+			await sleep(10);
+
+			expect(cleanupCalled).not.toHaveBeenCalled();
+
+			sub.unsubscribe();
+
+			expect(cleanupCalled).toHaveBeenCalledTimes(1);
+		});
+
+		test("stops emitting after unsubscribe", async () => {
+			const stateManager = new GraphStateManager();
+			const mockClient = createMockClient("c1");
+			stateManager.addClient(mockClient);
+			stateManager.subscribe("c1", "Post", "123", "*");
+
+			let emitFn: ((data: unknown) => void) | null = null;
+
+			const resolvers = createResolvers(reactiveSchema, {
+				Post: {
+					resolve: async (id, ctx) => {
+						emitFn = (ctx as any).emit;
+						return { id, title: "Initial", content: "Start" };
+					},
+				},
+			});
+
+			const engine = new ExecutionEngine(resolvers, {
+				createContext: () => ({}),
+				stateManager,
+			});
+
+			const sub = await engine.executeReactive("Post", "123");
+			await sleep(10);
+			mockClient.messages = [];
+
+			sub.unsubscribe();
+
+			// Try to emit after unsubscribe
+			emitFn!({ title: "Should not appear" });
+			await sleep(10);
+
+			// No new messages should be received
+			expect(mockClient.messages.length).toBe(0);
+		});
+
+		test("cancelSubscription works", async () => {
+			const stateManager = new GraphStateManager();
+			const cleanupCalled = mock(() => {});
+
+			const resolvers = createResolvers(reactiveSchema, {
+				Post: {
+					resolve: async (id, ctx) => {
+						(ctx as any).onCleanup(cleanupCalled);
+						return { id, title: "Test", content: "Content" };
+					},
+				},
+			});
+
+			const engine = new ExecutionEngine(resolvers, {
+				createContext: () => ({}),
+				stateManager,
+			});
+
+			const sub = await engine.executeReactive("Post", "123");
+			await sleep(10);
+
+			expect(engine.getActiveSubscriptionCount()).toBe(1);
+
+			const result = engine.cancelSubscription(sub.id);
+			expect(result).toBe(true);
+			expect(cleanupCalled).toHaveBeenCalledTimes(1);
+			expect(engine.getActiveSubscriptionCount()).toBe(0);
+
+			// Second cancel should return false
+			expect(engine.cancelSubscription(sub.id)).toBe(false);
+		});
+	});
+});
+
+// =============================================================================
+// Test Helpers
+// =============================================================================
+
+function createMockClient(id: string): StateClient & { messages: StateUpdateMessage[] } {
+	const client: StateClient & { messages: StateUpdateMessage[] } = {
+		id,
+		messages: [],
+		send: (msg) => {
+			client.messages.push(msg);
+		},
+	};
+	return client;
+}
+
+function sleep(ms: number): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, ms));
+}
