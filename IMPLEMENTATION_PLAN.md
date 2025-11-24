@@ -193,10 +193,10 @@ function CreatePost() {
 | Package | Tests | Status |
 |---------|-------|--------|
 | @lens/core | 191 | ✅ |
-| @lens/server | 124 | ✅ (+27 new) |
-| @lens/client | 183 | ✅ (+16 new) |
+| @lens/server | 139 | ✅ (+42 new) |
+| @lens/client | 205 | ✅ (+38 new) |
 | @lens/react | 17 | ✅ (+17 new) |
-| **Total** | **515** | ✅ |
+| **Total** | **535** | ✅ |
 
 ---
 
@@ -204,6 +204,8 @@ function CreatePost() {
 
 | Hash | Description |
 |------|-------------|
+| `9478c32` | feat: add httpLinkV2 and E2E tests for V2 API |
+| `42cf889` | feat(client): add websocketLinkV2 for operations protocol |
 | `bd01ba9` | feat(react): add V2 hooks for operations-based API |
 | `d1c4d98` | feat(client): add createClientV2 for operations-based API |
 | `2311c15` | feat(server): add createServerV2 for operations-based API |
