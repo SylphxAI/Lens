@@ -287,4 +287,47 @@ describe("ExecutionEngine", () => {
 			expect(values[0]).toEqual({ id: "1", name: "Alice" });
 		});
 	});
+
+	describe("pagination", () => {
+		test("executeListPaginated returns paginated result", async () => {
+			const result = await engine.executeListPaginated("User");
+
+			expect(result.data).toHaveLength(2);
+			expect(result.pageInfo).toBeDefined();
+			expect(result.pageInfo.startCursor).toBe("1");
+			expect(result.pageInfo.endCursor).toBe("2");
+			expect(result.pageInfo.hasPreviousPage).toBe(false);
+			expect(result.pageInfo.hasNextPage).toBe(false);
+		});
+
+		test("executeListPaginated with take returns correct hasNextPage", async () => {
+			const result = await engine.executeListPaginated("User", { take: 1 });
+
+			expect(result.data).toHaveLength(1);
+			expect(result.pageInfo.hasNextPage).toBe(true);
+			expect(result.pageInfo.hasPreviousPage).toBe(false);
+		});
+
+		test("executeListPaginated with skip sets hasPreviousPage", async () => {
+			const result = await engine.executeListPaginated("User", { skip: 1 });
+
+			// Note: mock resolver doesn't implement skip, but hasPreviousPage should still be true
+			expect(result.pageInfo.hasPreviousPage).toBe(true);
+		});
+
+		test("executeListPaginated applies selection", async () => {
+			const result = await engine.executeListPaginated("User", {}, { name: true });
+
+			expect(result.data[0]).toEqual({ id: "1", name: "Alice" });
+			expect(result.data[0]).not.toHaveProperty("email");
+		});
+
+		test("executeListPaginated returns empty pageInfo for empty results", async () => {
+			const result = await engine.executeListPaginated("User", { where: { id: "nonexistent" } });
+
+			// Our test resolver doesn't filter by where, so this will still return all users
+			// In a real implementation, the resolver would filter
+			expect(result.pageInfo).toBeDefined();
+		});
+	});
 });

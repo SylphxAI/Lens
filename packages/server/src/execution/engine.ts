@@ -5,7 +5,7 @@
  */
 
 import type { SchemaDefinition, InferEntity, Select } from "@lens/core";
-import type { Resolvers, BaseContext, ListInput } from "../resolvers/types";
+import type { Resolvers, BaseContext, ListInput, PaginatedResult, PageInfo } from "../resolvers/types";
 
 // =============================================================================
 // DataLoader for N+1 Elimination
@@ -148,6 +148,61 @@ export class ExecutionEngine<S extends SchemaDefinition, Ctx extends BaseContext
 
 		const results = await resolver.list(input ?? {}, ctx);
 		return results.map((r) => this.applySelection(r, select)) as InferEntity<S[K], S>[];
+	}
+
+	/**
+	 * Execute a paginated list query with cursor support
+	 */
+	async executeListPaginated<K extends keyof S & string>(
+		entityName: K,
+		input?: ListInput,
+		select?: Select<S[K], S>,
+	): Promise<PaginatedResult<InferEntity<S[K], S>>> {
+		const ctx = this.createContext();
+		const resolver = this.resolvers.getResolver(entityName);
+
+		// Try paginated resolver first
+		if (resolver?.listPaginated) {
+			const result = await resolver.listPaginated(input ?? {}, ctx);
+			return {
+				...result,
+				data: result.data.map((r) => this.applySelection(r, select)) as InferEntity<S[K], S>[],
+			};
+		}
+
+		// Fall back to regular list resolver with synthetic pagination
+		if (!resolver?.list) {
+			throw new ExecutionError(`No list resolver found for entity: ${entityName}`);
+		}
+
+		// Request one extra to determine hasNextPage
+		const take = input?.take ?? 20;
+		const inputWithExtra = { ...input, take: take + 1 };
+		const results = await resolver.list(inputWithExtra, ctx);
+		const hasNextPage = results.length > take;
+		const data = hasNextPage ? results.slice(0, take) : results;
+
+		const pageInfo: PageInfo = {
+			startCursor: data.length > 0 ? this.getCursor(data[0]) : null,
+			endCursor: data.length > 0 ? this.getCursor(data[data.length - 1]) : null,
+			hasPreviousPage: !!(input?.skip && input.skip > 0) || !!input?.cursor,
+			hasNextPage,
+		};
+
+		return {
+			data: data.map((r) => this.applySelection(r, select)) as InferEntity<S[K], S>[],
+			pageInfo,
+		};
+	}
+
+	/**
+	 * Get cursor from entity (uses id by default)
+	 */
+	private getCursor(entity: unknown): string {
+		if (entity && typeof entity === "object" && "id" in entity) {
+			return String((entity as Record<string, unknown>).id);
+		}
+		return "";
 	}
 
 	/**

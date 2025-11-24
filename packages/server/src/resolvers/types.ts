@@ -51,12 +51,44 @@ export type ListResolver<T, Ctx extends BaseContext = BaseContext> = (
 	ctx: Ctx,
 ) => Promise<T[]>;
 
+/**
+ * Paginated list resolver - returns paginated results with page info
+ */
+export type PaginatedListResolver<T, Ctx extends BaseContext = BaseContext> = (
+	input: ListInput,
+	ctx: Ctx,
+) => Promise<PaginatedResult<T>>;
+
 /** List input options */
 export interface ListInput {
 	where?: Record<string, unknown>;
 	orderBy?: Record<string, "asc" | "desc">;
 	take?: number;
 	skip?: number;
+	/** Cursor for cursor-based pagination (id or unique field value) */
+	cursor?: { id: string } | Record<string, unknown>;
+}
+
+/** Paginated result with page info */
+export interface PaginatedResult<T> {
+	/** The data items */
+	data: T[];
+	/** Pagination metadata */
+	pageInfo: PageInfo;
+	/** Total count (if requested) */
+	totalCount?: number;
+}
+
+/** Page info for cursor-based pagination */
+export interface PageInfo {
+	/** Cursor of first item */
+	startCursor: string | null;
+	/** Cursor of last item */
+	endCursor: string | null;
+	/** Whether there are more items before */
+	hasPreviousPage: boolean;
+	/** Whether there are more items after */
+	hasNextPage: boolean;
 }
 
 // =============================================================================
@@ -102,6 +134,9 @@ export interface EntityResolverDef<
 	/** List resolver (optional) */
 	list?: ListResolver<InferEntity<E, S>, Ctx>;
 
+	/** Paginated list resolver (optional) - returns results with pageInfo */
+	listPaginated?: PaginatedListResolver<InferEntity<E, S>, Ctx>;
+
 	/** Create mutation (optional) */
 	create?: CreateResolver<InferEntity<E, S>, Partial<InferEntity<E, S>>, Ctx>;
 
@@ -116,6 +151,7 @@ export interface EntityResolverDef<
 		| EntityResolver<InferEntity<E, S>, Ctx>
 		| BatchResolver<InferEntity<E, S>, Ctx>
 		| ListResolver<InferEntity<E, S>, Ctx>
+		| PaginatedListResolver<InferEntity<E, S>, Ctx>
 		| CreateResolver<InferEntity<E, S>, Partial<InferEntity<E, S>>, Ctx>
 		| UpdateResolver<InferEntity<E, S>, Partial<InferEntity<E, S>> & { id: string }, Ctx>
 		| DeleteResolver<Ctx>
