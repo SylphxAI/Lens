@@ -264,3 +264,26 @@ export {
 	type BatchResolverFn,
 } from "./resolvers/index";
 
+// =============================================================================
+// Context System (AsyncLocalStorage)
+// =============================================================================
+
+export {
+	// Core functions
+	createContext,
+	useContext,
+	tryUseContext,
+	runWithContext,
+	runWithContextAsync,
+	// Composable helpers
+	createComposable,
+	createComposables,
+	// Utilities
+	hasContext,
+	getContextStore,
+	extendContext,
+	// Types
+	type ContextStore,
+	type ContextValue,
+} from "./context/index";
+
