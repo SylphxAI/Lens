@@ -154,8 +154,11 @@ async function executeOperation<T>(op: OperationContext, executeLink: NextLink):
  *
  * Note: Links decide how to handle subscriptions:
  * - httpLink with polling → polls at interval
- * - sseLink → opens SSE connection
- * - websocketLink → opens WebSocket
+ * - sseLink → opens SSE connection and returns observable
+ * - websocketLink → opens WebSocket and returns observable
+ *
+ * If link returns observable in meta, we subscribe to it.
+ * Otherwise, we just send the data once and complete.
  */
 async function executeSubscription<T>(
 	op: OperationContext,
@@ -163,9 +166,6 @@ async function executeSubscription<T>(
 	observer: Observer<T>,
 	signal: AbortSignal,
 ): Promise<void> {
-	// For now, simple implementation: execute once
-	// Links will handle streaming (SSE/WebSocket) or polling (HTTP)
-
 	try {
 		// Execute operation
 		const result = await executeLink(op);
@@ -175,10 +175,43 @@ async function executeSubscription<T>(
 			return;
 		}
 
-		// Handle result
+		// Handle error
 		if (result.error) {
 			observer.error(result.error);
+			return;
+		}
+
+		// Check if link provided an observable (for streaming)
+		const observable = result.meta?.observable as
+			| { subscribe: (obs: Observer<T>) => { unsubscribe: () => void } }
+			| undefined;
+
+		if (observable) {
+			// Link provided observable - subscribe to it for streaming
+			const subscription = observable.subscribe({
+				next: (value: T) => {
+					if (!signal.aborted) {
+						observer.next(value);
+					}
+				},
+				error: (error: Error) => {
+					if (!signal.aborted) {
+						observer.error(error);
+					}
+				},
+				complete: () => {
+					if (!signal.aborted) {
+						observer.complete();
+					}
+				},
+			});
+
+			// Handle abort
+			signal.addEventListener("abort", () => {
+				subscription.unsubscribe();
+			});
 		} else {
+			// No observable - just send data once and complete
 			observer.next(result.data as T);
 			observer.complete();
 		}

@@ -395,7 +395,12 @@ export function createSSETransport(options: SSELinkOptions): SSESubscriptionTran
 // =============================================================================
 
 /**
- * SSE link - uses Server-Sent Events for real-time subscriptions
+ * SSE link - uses Server-Sent Events for both queries and subscriptions
+ *
+ * Self-sufficient transport that handles all operation types:
+ * - Queries: Open SSE, get first value, close
+ * - Subscriptions: Open SSE, stream values, keep alive
+ * - Mutations: HTTP POST
  *
  * @example
  * ```typescript
@@ -404,146 +409,150 @@ export function createSSETransport(options: SSELinkOptions): SSESubscriptionTran
  *     loggerLink(),
  *     sseLink({
  *       url: "http://localhost:3000/api",
- *       sseUrl: "http://localhost:3000/stream",
  *     }),
  *   ],
+ * });
+ *
+ * // Query via SSE (get first value)
+ * const user = await client.User.get("123");
+ *
+ * // Subscription via SSE (streaming)
+ * client.User.get("123").subscribe(user => {
+ *   console.log("Updated:", user);
  * });
  * ```
  */
 export function sseLink(options: SSELinkOptions): Link {
 	const {
 		url,
-		sseUrl = `${url}/stream`,
 		headers = {},
 		fetch: customFetch = fetch,
 	} = options;
-
-	let eventSource: EventSource | null = null;
-	const subscriptions = new Map<string, Observer<unknown>>();
-
-	function ensureConnection() {
-		if (eventSource) return;
-
-		eventSource = new EventSource(sseUrl);
-
-		eventSource.addEventListener("data", (event) => {
-			try {
-				const data = JSON.parse((event as MessageEvent).data) as {
-					subscriptionId: string;
-					data: unknown;
-				};
-				const observer = subscriptions.get(data.subscriptionId);
-				if (observer) {
-					observer.next(data.data);
-				}
-			} catch {
-				// Ignore parse errors
-			}
-		});
-
-		// Also handle new protocol update events
-		eventSource.addEventListener("update", (event) => {
-			try {
-				const data = JSON.parse((event as MessageEvent).data) as UpdateMessage;
-				// Map to subscriptions by entity:id
-				const key = `${data.entity}:${data.id}`;
-				const observer = subscriptions.get(key);
-				if (observer) {
-					observer.next(data);
-				}
-			} catch {
-				// Ignore parse errors
-			}
-		});
-
-		eventSource.addEventListener("error", () => {
-			// Notify all subscriptions of error
-			for (const observer of subscriptions.values()) {
-				observer.error(new Error("SSE connection error"));
-			}
-		});
-	}
 
 	return (): LinkFn => {
 		return async (op, _next): Promise<OperationResult> => {
 			const resolvedHeaders =
 				typeof headers === "function" ? await headers() : headers;
 
-			// Subscriptions use SSE
-			if (op.type === "subscription") {
-				ensureConnection();
-
-				// Register subscription with server
-				const response = await customFetch(`${url}/subscribe`, {
+			// Mutations use HTTP POST
+			if (op.type === "mutation") {
+				const response = await customFetch(url, {
 					method: "POST",
 					headers: {
 						"Content-Type": "application/json",
 						...resolvedHeaders,
 					},
 					body: JSON.stringify({
-						subscriptionId: op.id,
 						entity: op.entity,
 						operation: op.op,
+						type: op.type,
 						input: op.input,
 					}),
 				});
 
 				if (!response.ok) {
-					return { error: new Error(`Subscription failed: HTTP ${response.status}`) };
+					const errorData = (await response.json().catch(() => ({}))) as { message?: string };
+					return { error: new Error(errorData.message || `HTTP ${response.status}`) };
 				}
 
 				const result = (await response.json()) as { data: unknown };
+				return { data: result.data };
+			}
 
-				// Return observable in meta
+			// Queries and Subscriptions use SSE
+			// Build SSE URL with operation details
+			const params = new URLSearchParams({
+				entity: op.entity,
+				operation: op.op,
+				type: op.type,
+				input: JSON.stringify(op.input),
+				operationId: op.id,
+			});
+
+			const sseUrl = `${url}?${params.toString()}`;
+
+			// For queries: Get first value and close
+			if (op.type === "query") {
+				return new Promise((resolve, reject) => {
+					const eventSource = new EventSource(sseUrl);
+					let resolved = false;
+
+					const cleanup = () => {
+						if (!resolved) {
+							resolved = true;
+							eventSource.close();
+						}
+					};
+
+					// Set timeout for query
+					const timeout = setTimeout(() => {
+						cleanup();
+						reject(new Error("SSE query timeout"));
+					}, 30000);
+
+					eventSource.addEventListener("data", (event) => {
+						try {
+							const data = JSON.parse((event as MessageEvent).data) as { data: unknown };
+							clearTimeout(timeout);
+							cleanup();
+							resolve({ data: data.data });
+						} catch (error) {
+							clearTimeout(timeout);
+							cleanup();
+							reject(error);
+						}
+					});
+
+					eventSource.addEventListener("error", (event) => {
+						clearTimeout(timeout);
+						cleanup();
+						reject(new Error("SSE connection error"));
+					});
+				});
+			}
+
+			// For subscriptions: Return observable that streams values
+			if (op.type === "subscription") {
+				// We need to return data immediately (for compatibility)
+				// The observable will be used by QueryResult.subscribe()
+
+				// Create observable that opens SSE connection
 				const observable: Observable<unknown> = {
 					subscribe(observer: Observer<unknown>): Unsubscribable {
-						subscriptions.set(op.id, observer);
+						const eventSource = new EventSource(sseUrl);
+						let active = true;
 
-						// Send initial data
-						observer.next(result.data);
+						eventSource.addEventListener("data", (event) => {
+							if (!active) return;
+							try {
+								const data = JSON.parse((event as MessageEvent).data) as { data: unknown };
+								observer.next(data.data);
+							} catch (error) {
+								observer.error(error as Error);
+							}
+						});
+
+						eventSource.addEventListener("error", () => {
+							if (!active) return;
+							observer.error(new Error("SSE connection error"));
+						});
 
 						return {
 							unsubscribe() {
-								subscriptions.delete(op.id);
-								// Notify server
-								customFetch(`${url}/unsubscribe`, {
-									method: "POST",
-									headers: {
-										"Content-Type": "application/json",
-										...resolvedHeaders,
-									},
-									body: JSON.stringify({ subscriptionId: op.id }),
-								}).catch(() => {});
+								active = false;
+								eventSource.close();
+								observer.complete();
 							},
 						};
 					},
 				};
 
-				return { data: result.data, meta: { observable } };
+				// For subscriptions, we return empty data and the observable
+				// The QueryResult will use the observable for streaming
+				return { data: null, meta: { observable } };
 			}
 
-			// Queries and mutations use HTTP
-			const response = await customFetch(url, {
-				method: "POST",
-				headers: {
-					"Content-Type": "application/json",
-					...resolvedHeaders,
-				},
-				body: JSON.stringify({
-					entity: op.entity,
-					operation: op.op,
-					type: op.type,
-					input: op.input,
-				}),
-			});
-
-			if (!response.ok) {
-				const errorData = (await response.json().catch(() => ({}))) as { message?: string };
-				return { error: new Error(errorData.message || `HTTP ${response.status}`) };
-			}
-
-			const result = (await response.json()) as { data: unknown };
-			return { data: result.data };
+			return { error: new Error(`Unsupported operation type: ${op.type}`) };
 		};
 	};
 }
