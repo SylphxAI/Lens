@@ -101,3 +101,46 @@ export {
 	type InProcessLinkOptions,
 	type InProcessResolvers,
 } from "./links";
+
+// =============================================================================
+// Reactive System (Fine-grained reactivity)
+// =============================================================================
+
+export {
+	// EntitySignal (field-level signals)
+	EntitySignal,
+	createEntitySignal,
+	deriveEntitySignal,
+	type FieldSignals,
+	type EntitySignalOptions,
+	type DisposeCallback,
+	// SubscriptionManager (field-level subscriptions)
+	SubscriptionManager,
+	createSubscriptionManager,
+	type EntityKey as SubscriptionEntityKey,
+	type FieldSubscription,
+	type EntitySubscription,
+	type SubscribeMessage,
+	type UnsubscribeMessage,
+	type UpdateMessage,
+	type ServerMessage,
+	type SubscriptionTransport,
+	// QueryResolver (query deduplication)
+	QueryResolver,
+	createQueryResolver,
+	type QueryDef,
+	type QueryResult,
+	type ListQueryResult,
+	type QueryTransport,
+	// ReactiveClient (new reactive client)
+	createReactiveClient,
+	type ReactiveClient,
+	type ReactiveClientConfig,
+	type ReactiveEntityAccessor,
+	type EntityResult,
+	type ListResult,
+	type ReactiveMutationResult,
+	type ReactiveQueryOptions,
+	type ReactiveListOptions,
+	type ReactiveInferQueryResult,
+} from "./reactive";

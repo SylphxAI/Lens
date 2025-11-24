@@ -71,3 +71,24 @@ export {
 	type SSESubscription,
 	type SSEHandlerConfig,
 } from "./sse/handler";
+
+// =============================================================================
+// Subscriptions (Field-level real-time updates)
+// =============================================================================
+
+export {
+	// Class
+	SubscriptionHandler,
+	// Factory
+	createSubscriptionHandler,
+	// Types
+	type SubscriptionClient,
+	type ClientSubscribeMessage,
+	type ClientUnsubscribeMessage,
+	type ClientMessage,
+	type ServerUpdateMessage,
+	type EntityKey as SubscriptionEntityKey,
+	type FieldSubscriptionState,
+	type EntitySubscriptionState,
+	type SubscriptionHandlerConfig,
+} from "./subscriptions";
