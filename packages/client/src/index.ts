@@ -60,6 +60,24 @@ export {
 	type InferQueryResult,
 } from "./client/client";
 
+export {
+	// Factory (V2 - Operations-based)
+	createClientV2,
+	// Types
+	type ClientV2,
+	type ClientV2Config,
+	type QueriesMap,
+	type MutationsMap,
+	type QueryAccessor,
+	type MutationAccessor,
+	type QueryAccessors,
+	type MutationAccessors,
+	type MutationV2Options,
+	type MutationV2Result,
+	type InferInput,
+	type InferOutput,
+} from "./client/client-v2";
+
 // =============================================================================
 // Links (tRPC-style middleware chain)
 // =============================================================================
