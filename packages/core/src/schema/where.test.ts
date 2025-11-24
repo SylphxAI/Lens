@@ -12,6 +12,9 @@ import type {
 	WhereInput,
 	OrderByInput,
 	InferEntity,
+	Select,
+	CreateInput,
+	UpdateInput,
 } from "./infer";
 
 // =============================================================================
@@ -206,6 +209,172 @@ describe("OrderByInput type safety", () => {
 // const badOrderBy: OrderByInput<UserDef> = {
 //   posts: 'asc'
 // };
+
+// =============================================================================
+// Nested Relation Select Type Tests
+// =============================================================================
+
+describe("Nested relation select type safety", () => {
+	it("allows type-safe where in nested relation select", () => {
+		type UserSelect = Select<UserDef, typeof schema.definition>;
+
+		const select: UserSelect = {
+			id: true,
+			name: true,
+			posts: {
+				select: { title: true, views: true },
+				where: { title: { contains: "Hello" } }, // Type-safe!
+				orderBy: { views: "desc" }, // Type-safe!
+				take: 10,
+			},
+		};
+
+		expect(select).toBeDefined();
+	});
+
+	it("allows nested select on belongsTo relations", () => {
+		type PostSelect = Select<PostDef, typeof schema.definition>;
+
+		const select: PostSelect = {
+			title: true,
+			author: {
+				select: { id: true, name: true },
+				// author is belongsTo, so no where/orderBy needed (single result)
+			},
+		};
+
+		expect(select).toBeDefined();
+	});
+
+	it("type-checks nested where filters", () => {
+		type UserSelect = Select<UserDef, typeof schema.definition>;
+
+		const select: UserSelect = {
+			posts: {
+				where: {
+					views: { gt: 100 }, // NumberFilter on Post.views
+					published: true, // BooleanFilter on Post.published
+				},
+				orderBy: [{ views: "desc" }, { title: "asc" }],
+			},
+		};
+
+		expect(select).toBeDefined();
+	});
+});
+
+// =============================================================================
+// CreateInput Type Tests
+// =============================================================================
+
+describe("CreateInput type safety", () => {
+	it("makes nullable fields optional", () => {
+		type UserCreate = CreateInput<UserDef>;
+
+		// Required fields (not nullable, not id)
+		const create: UserCreate = {
+			name: "John",
+			email: "john@example.com",
+			score: 0,
+			isActive: true,
+			createdAt: new Date(),
+			role: "user",
+			// age is nullable, so it's optional
+		};
+
+		expect(create).toBeDefined();
+	});
+
+	it("allows nullable fields to be provided", () => {
+		type UserCreate = CreateInput<UserDef>;
+
+		const create: UserCreate = {
+			name: "John",
+			email: "john@example.com",
+			score: 0,
+			isActive: true,
+			createdAt: new Date(),
+			role: "user",
+			age: 30, // Optional but can be provided
+		};
+
+		expect(create).toBeDefined();
+	});
+
+	it("allows nullable fields to be null", () => {
+		type UserCreate = CreateInput<UserDef>;
+
+		const create: UserCreate = {
+			name: "John",
+			email: "john@example.com",
+			score: 0,
+			isActive: true,
+			createdAt: new Date(),
+			role: "user",
+			age: null, // Can be null
+		};
+
+		expect(create).toBeDefined();
+	});
+
+	it("handles belongsTo relations as string IDs", () => {
+		type PostCreate = CreateInput<PostDef>;
+
+		const create: PostCreate = {
+			title: "Hello World",
+			content: "My first post",
+			views: 0,
+			published: true,
+			author: "user-123", // Foreign key as string
+		};
+
+		expect(create).toBeDefined();
+	});
+
+	it("omits id field from create input", () => {
+		type UserCreate = CreateInput<UserDef>;
+
+		// id should not be present in UserCreate
+		const create: UserCreate = {
+			name: "John",
+			email: "john@example.com",
+			score: 0,
+			isActive: true,
+			createdAt: new Date(),
+			role: "user",
+		};
+
+		// @ts-expect-error - id should not exist in CreateInput
+		create.id = "123";
+
+		expect(create).toBeDefined();
+	});
+});
+
+describe("UpdateInput type safety", () => {
+	it("requires id and makes everything else optional", () => {
+		type UserUpdate = UpdateInput<UserDef>;
+
+		const update: UserUpdate = {
+			id: "user-123",
+			// Everything else is optional
+		};
+
+		expect(update).toBeDefined();
+	});
+
+	it("allows partial updates", () => {
+		type UserUpdate = UpdateInput<UserDef>;
+
+		const update: UserUpdate = {
+			id: "user-123",
+			name: "New Name",
+			// Only updating name, not other fields
+		};
+
+		expect(update).toBeDefined();
+	});
+});
 
 describe("Runtime behavior", () => {
 	it("where objects are plain JavaScript objects", () => {

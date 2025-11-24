@@ -141,20 +141,30 @@ export type InferRelationType<F extends FieldDefinition, S extends SchemaDefinit
 // Field Selection Type Inference
 // =============================================================================
 
-/** Selection object type */
+/** Nested relation selection options */
+export type RelationSelectOptions<
+	Target extends string,
+	S extends SchemaDefinition,
+> = Target extends keyof S
+	? {
+			/** Nested field selection */
+			select?: Select<S[Target], S>;
+			/** Limit results */
+			take?: number;
+			/** Skip results */
+			skip?: number;
+			/** Type-safe where filter for related entity */
+			where?: WhereInput<S[Target]>;
+			/** Type-safe orderBy for related entity */
+			orderBy?: OrderByInput<S[Target]> | OrderByInput<S[Target]>[];
+		}
+	: never;
+
+/** Selection object type with type-safe nested relations */
 export type Select<E extends EntityDefinition, S extends SchemaDefinition = never> = {
 	[K in keyof E]?: IsRelation<E[K]> extends true
 		? // For relations, allow nested selection or true
-			| true
-				| {
-						select?: InferRelationTarget<E[K]> extends keyof S
-							? Select<S[InferRelationTarget<E[K]>], S>
-							: never;
-						take?: number;
-						skip?: number;
-						where?: Record<string, unknown>;
-						orderBy?: Record<string, "asc" | "desc">;
-				  }
+			true | RelationSelectOptions<InferRelationTarget<E[K]> & string, S>
 		: // For scalars, just true
 			true;
 };
@@ -214,14 +224,39 @@ export type EntityType<S extends SchemaDefinition, Name extends keyof S> = Infer
 // Input Types (for mutations)
 // =============================================================================
 
-/** Create input type (omit id, relations optional) */
-export type CreateInput<E extends EntityDefinition, S extends SchemaDefinition = never> = {
-	[K in ScalarFields<E> as K extends "id" ? never : K]: InferScalarWithNullable<E[K]>;
-} & {
-	[K in RelationFields<E>]?: E[K] extends BelongsToType<string>
-		? string // Foreign key ID
-		: never;
+/** Check if a field is nullable or has a default */
+type IsOptionalField<F extends FieldDefinition> = F extends { _nullable: true }
+	? true
+	: F extends { _default: unknown }
+		? true
+		: false;
+
+/** Extract required scalar fields (not id, not nullable, no default) */
+type RequiredScalarFields<E extends EntityDefinition> = {
+	[K in ScalarFields<E> as K extends "id"
+		? never
+		: IsOptionalField<E[K]> extends true
+			? never
+			: K]: InferScalar<E[K]>;
 };
+
+/** Extract optional scalar fields (nullable or has default) */
+type OptionalScalarFields<E extends EntityDefinition> = {
+	[K in ScalarFields<E> as K extends "id"
+		? never
+		: IsOptionalField<E[K]> extends true
+			? K
+			: never]?: InferScalarWithNullable<E[K]>;
+};
+
+/** Create input type with proper optional handling */
+export type CreateInput<E extends EntityDefinition, S extends SchemaDefinition = never> =
+	RequiredScalarFields<E> &
+		OptionalScalarFields<E> & {
+			[K in RelationFields<E>]?: E[K] extends BelongsToType<string>
+				? string // Foreign key ID
+				: never;
+		};
 
 /** Update input type (id required, all else optional) */
 export type UpdateInput<E extends EntityDefinition, S extends SchemaDefinition = never> = {

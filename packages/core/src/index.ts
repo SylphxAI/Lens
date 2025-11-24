@@ -84,6 +84,7 @@ export {
 	type InferRelationType,
 	// Selection inference
 	type Select,
+	type RelationSelectOptions,
 	type InferSelected,
 	// Schema inference
 	type InferSchemaEntities,
