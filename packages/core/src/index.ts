@@ -66,6 +66,23 @@ export {
 } from "./schema/create";
 
 // =============================================================================
+// Two-Phase Schema Definition (Drizzle-style)
+// =============================================================================
+
+export {
+	// Entity definition
+	defineEntity,
+	isEntityDef,
+	type EntityDef,
+	// Schema creation
+	createSchemaFrom,
+	// Relation helpers (no strings!)
+	hasMany,
+	hasOne,
+	belongsTo,
+} from "./schema/define";
+
+// =============================================================================
 // Type Inference
 // =============================================================================
 
