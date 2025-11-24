@@ -247,8 +247,8 @@ class OptimisticTracker {
 			const sub = this.subscriptions.getOrCreateSubscription(entry.entity, entry.id, entry.previousData);
 			sub.signal.setFields(entry.previousData);
 		} else if (entry.operation === "create") {
-			// Was a create - remove the optimistic entity
-			// TODO: Add method to remove from subscription manager
+			// Was a create - remove the optimistic entity completely
+			this.subscriptions.unsubscribeAll(entry.entity, entry.id);
 		}
 
 		this.pending.delete(optId);
