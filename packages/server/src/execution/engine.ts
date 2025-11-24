@@ -590,9 +590,24 @@ export class ExecutionEngine<S extends SchemaDefinition, Ctx extends BaseContext
 
 			// Handle arrays of scalar values
 			if (Array.isArray(value) && fieldType._type === "array") {
-				// For now, just pass through array values
-				// TODO: If itemType has serialization, apply it
-				result[fieldName] = value;
+				// Apply serialization to each array item if itemType has serialize()
+				const arrayType = fieldType as { itemType: FieldType };
+				const itemType = arrayType.itemType;
+
+				if (itemType && typeof itemType.serialize === "function") {
+					try {
+						result[fieldName] = value.map((item) => {
+							if (item === null || item === undefined) return item;
+							return itemType.serialize(item);
+						});
+					} catch (error) {
+						console.warn(`Failed to serialize array items for ${String(entityName)}.${fieldName}:`, error);
+						result[fieldName] = value;
+					}
+				} else {
+					// No serialization needed
+					result[fieldName] = value;
+				}
 				continue;
 			}
 

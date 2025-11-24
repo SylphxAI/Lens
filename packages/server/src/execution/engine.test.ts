@@ -565,6 +565,137 @@ describe("ExecutionEngine Reactive", () => {
 	});
 });
 
+describe("Array serialization", () => {
+	test("serializes array of Date objects", async () => {
+		const schemaWithDates = createSchema({
+			Event: {
+				id: t.id(),
+				name: t.string(),
+				dates: t.array(t.datetime()),
+			},
+		});
+
+		const date1 = new Date("2024-01-01T00:00:00Z");
+		const date2 = new Date("2024-12-31T23:59:59Z");
+
+		const resolvers = createResolvers(schemaWithDates, {
+			Event: {
+				resolve: async (id) => ({
+					id,
+					name: "Conference",
+					dates: [date1, date2],
+				}),
+			},
+		});
+
+		const engine = new ExecutionEngine(resolvers, {
+			schema: schemaWithDates,
+			createContext: () => ({}),
+		});
+
+		const result = await engine.executeGet("Event", "1");
+
+		expect(result).toBeDefined();
+		expect(result?.name).toBe("Conference");
+		expect(result?.dates).toBeInstanceOf(Array);
+		expect(result?.dates).toHaveLength(2);
+		// Dates should be serialized to ISO strings
+		expect(result?.dates[0]).toBe("2024-01-01T00:00:00.000Z");
+		expect(result?.dates[1]).toBe("2024-12-31T23:59:59.000Z");
+	});
+
+	test("handles null values in date arrays", async () => {
+		const schemaWithDates = createSchema({
+			Event: {
+				id: t.id(),
+				name: t.string(),
+				dates: t.array(t.datetime()),
+			},
+		});
+
+		const date1 = new Date("2024-01-01T00:00:00Z");
+
+		const resolvers = createResolvers(schemaWithDates, {
+			Event: {
+				resolve: async (id) => ({
+					id,
+					name: "Conference",
+					dates: [date1, null, undefined],
+				}),
+			},
+		});
+
+		const engine = new ExecutionEngine(resolvers, {
+			schema: schemaWithDates,
+			createContext: () => ({}),
+		});
+
+		const result = await engine.executeGet("Event", "1");
+
+		expect(result?.dates).toEqual(["2024-01-01T00:00:00.000Z", null, undefined]);
+	});
+
+	test("passes through arrays without serialization", async () => {
+		const schemaWithStrings = createSchema({
+			Post: {
+				id: t.id(),
+				title: t.string(),
+				tags: t.array(t.string()),
+			},
+		});
+
+		const resolvers = createResolvers(schemaWithStrings, {
+			Post: {
+				resolve: async (id) => ({
+					id,
+					title: "Test Post",
+					tags: ["javascript", "typescript", "lens"],
+				}),
+			},
+		});
+
+		const engine = new ExecutionEngine(resolvers, {
+			schema: schemaWithStrings,
+			createContext: () => ({}),
+		});
+
+		const result = await engine.executeGet("Post", "1");
+
+		expect(result?.tags).toEqual(["javascript", "typescript", "lens"]);
+	});
+
+	test("handles serialization errors gracefully", async () => {
+		const schemaWithDates = createSchema({
+			Event: {
+				id: t.id(),
+				name: t.string(),
+				dates: t.array(t.datetime()),
+			},
+		});
+
+		const resolvers = createResolvers(schemaWithDates, {
+			Event: {
+				resolve: async (id) => ({
+					id,
+					name: "Conference",
+					// Invalid date values
+					dates: [new Date("invalid"), "not a date" as any],
+				}),
+			},
+		});
+
+		const engine = new ExecutionEngine(resolvers, {
+			schema: schemaWithDates,
+			createContext: () => ({}),
+		});
+
+		// Should not throw, but return original values or handle error
+		const result = await engine.executeGet("Event", "1");
+		expect(result).toBeDefined();
+		expect(result?.name).toBe("Conference");
+	});
+});
+
 // =============================================================================
 // Test Helpers
 // =============================================================================
