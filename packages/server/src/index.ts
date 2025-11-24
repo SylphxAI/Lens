@@ -65,6 +65,19 @@ export {
 	type WebSocketLike,
 } from "./server/create";
 
+export {
+	// Factory (V2 - Operations-based)
+	createServerV2,
+	// Types
+	type ServerV2Config,
+	type LensServerV2,
+	type EntitiesMap,
+	type RelationsArray,
+	type QueriesMap,
+	type MutationsMap,
+	type WebSocketLike as WebSocketLikeV2,
+} from "./server/create-v2";
+
 // =============================================================================
 // State Management (Single source of truth)
 // =============================================================================
