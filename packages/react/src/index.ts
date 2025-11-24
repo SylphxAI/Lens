@@ -65,3 +65,27 @@ export {
 // =============================================================================
 
 export { useSignal, useComputed, useSignalEffect } from "@preact/signals-react";
+
+// =============================================================================
+// V2 Hooks (Operations-based API)
+// =============================================================================
+
+export {
+	// Context & Provider
+	LensProviderV2,
+	useLensClientV2,
+	type LensProviderV2Props,
+} from "./context-v2";
+
+export {
+	// Query hooks
+	useQuery,
+	useLazyQuery,
+	// Mutation hook
+	useMutation as useMutationV2,
+	// Types
+	type UseQueryResult,
+	type UseLazyQueryResult,
+	type UseMutationV2Result,
+	type UseQueryOptions,
+} from "./hooks-v2";
