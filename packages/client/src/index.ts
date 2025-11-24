@@ -92,6 +92,13 @@ export {
 	type SplitLinkOptions,
 	queryOptimizerLink,
 	type QueryOptimizerOptions,
+	compressionLink,
+	type CompressionLinkOptions,
+	msgpackLink,
+	serializeMsgpack,
+	deserializeMsgpack,
+	compareSizes,
+	type MsgpackLinkOptions,
 	// Terminal links
 	httpLink,
 	httpBatchLink,
