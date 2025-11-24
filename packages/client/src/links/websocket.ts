@@ -24,6 +24,10 @@ export interface WebSocketLinkOptions {
 	heartbeatInterval?: number;
 	/** Connection timeout in ms (default: 5000) */
 	connectionTimeout?: number;
+	/** Called when reconnected - use to refetch stale data */
+	onReconnect?: () => void;
+	/** Called when connection is lost */
+	onDisconnect?: () => void;
 }
 
 /** WebSocket connection state */
@@ -87,7 +91,10 @@ type ServerMessageWS =
  */
 export class WebSocketSubscriptionTransport implements SubscriptionTransport {
 	private ws: WebSocket | null = null;
-	private options: Required<WebSocketLinkOptions>;
+	private options: Required<Omit<WebSocketLinkOptions, "onReconnect" | "onDisconnect">> & {
+		onReconnect?: () => void;
+		onDisconnect?: () => void;
+	};
 	private state: WebSocketState = "disconnected";
 	private reconnectAttempts = 0;
 	private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -99,6 +106,12 @@ export class WebSocketSubscriptionTransport implements SubscriptionTransport {
 	/** State change listeners */
 	private stateListeners = new Set<(state: WebSocketState) => void>();
 
+	/** Track active subscriptions for recovery */
+	private activeSubscriptions = new Map<string, ServerMessage>();
+
+	/** Whether this is a reconnection (vs initial connect) */
+	private isReconnection = false;
+
 	constructor(options: WebSocketLinkOptions) {
 		this.options = {
 			url: options.url,
@@ -106,6 +119,8 @@ export class WebSocketSubscriptionTransport implements SubscriptionTransport {
 			maxReconnectAttempts: options.maxReconnectAttempts ?? 10,
 			heartbeatInterval: options.heartbeatInterval ?? 30000,
 			connectionTimeout: options.connectionTimeout ?? 5000,
+			onReconnect: options.onReconnect,
+			onDisconnect: options.onDisconnect,
 		};
 	}
 
@@ -117,6 +132,9 @@ export class WebSocketSubscriptionTransport implements SubscriptionTransport {
 	 * Send message to server
 	 */
 	send(message: ServerMessage): void {
+		// Track subscriptions for recovery
+		this.trackSubscription(message);
+
 		if (this.state !== "connected" || !this.ws) {
 			// Queue message for when connected
 			this.pendingMessages.push(message);
@@ -124,6 +142,24 @@ export class WebSocketSubscriptionTransport implements SubscriptionTransport {
 		}
 
 		this.ws.send(JSON.stringify(message));
+	}
+
+	/**
+	 * Track subscription for recovery after reconnect
+	 */
+	private trackSubscription(message: ServerMessage): void {
+		if (message.type === "subscribe") {
+			const key = `${message.entity}:${message.id}`;
+			this.activeSubscriptions.set(key, message);
+		} else if (message.type === "unsubscribe") {
+			const key = `${message.entity}:${message.id}`;
+			// If unsubscribing all fields, remove tracking
+			if (message.fields === "*") {
+				this.activeSubscriptions.delete(key);
+			}
+			// For partial unsubscribe, we'd need more sophisticated tracking
+			// For now, keep the subscription tracked (server handles field-level)
+		}
 	}
 
 	/**
@@ -162,6 +198,14 @@ export class WebSocketSubscriptionTransport implements SubscriptionTransport {
 					this.reconnectAttempts = 0;
 					this.startHeartbeat();
 					this.flushPendingMessages();
+
+					// Handle reconnection: resync subscriptions and notify
+					if (this.isReconnection) {
+						this.resyncSubscriptions();
+						this.options.onReconnect?.();
+					}
+					this.isReconnection = true;
+
 					resolve();
 				};
 
@@ -266,6 +310,9 @@ export class WebSocketSubscriptionTransport implements SubscriptionTransport {
 		this.stopHeartbeat();
 		this.ws = null;
 
+		// Notify disconnect
+		this.options.onDisconnect?.();
+
 		if (event.wasClean) {
 			this.setState("disconnected");
 			return;
@@ -337,6 +384,31 @@ export class WebSocketSubscriptionTransport implements SubscriptionTransport {
 			this.ws.send(JSON.stringify(message));
 		}
 		this.pendingMessages = [];
+	}
+
+	/**
+	 * Resync all active subscriptions after reconnection
+	 */
+	private resyncSubscriptions(): void {
+		if (!this.ws || this.state !== "connected") return;
+
+		for (const message of this.activeSubscriptions.values()) {
+			this.ws.send(JSON.stringify(message));
+		}
+	}
+
+	/**
+	 * Clear all tracked subscriptions (useful for testing or reset)
+	 */
+	clearSubscriptions(): void {
+		this.activeSubscriptions.clear();
+	}
+
+	/**
+	 * Get count of tracked subscriptions
+	 */
+	getSubscriptionCount(): number {
+		return this.activeSubscriptions.size;
 	}
 }
 

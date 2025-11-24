@@ -81,6 +81,9 @@ export class EntitySignal<T extends Record<string, unknown>> {
 	/** Field access tracking (for subscription management) */
 	private readonly accessedFields = new Set<keyof T>();
 
+	/** Version signal - bumped when fields are added to trigger computed re-evaluation */
+	private readonly _version: WritableSignal<number>;
+
 	constructor(initialData: T, options: EntitySignalOptions = {}) {
 		this.options = options;
 
@@ -89,6 +92,9 @@ export class EntitySignal<T extends Record<string, unknown>> {
 		for (const [key, val] of Object.entries(initialData)) {
 			this._fields[key as keyof T] = signal(val as T[keyof T]);
 		}
+
+		// Version signal for tracking structural changes
+		this._version = signal(0);
 
 		// Create proxy for field access tracking
 		this.$ = new Proxy(this._fields as FieldSignals<T>, {
@@ -105,8 +111,11 @@ export class EntitySignal<T extends Record<string, unknown>> {
 			},
 		});
 
-		// Computed value from all fields
+		// Computed value from all fields (depends on _version for structural changes)
 		this.value = computed(() => {
+			// Read version to create dependency
+			this._version.value;
+
 			const result = {} as T;
 			for (const key of Object.keys(this._fields)) {
 				result[key as keyof T] = this._fields[key as keyof T].value;
@@ -149,16 +158,29 @@ export class EntitySignal<T extends Record<string, unknown>> {
 	}
 
 	/**
-	 * Set multiple fields at once
+	 * Set multiple fields at once (also adds new fields if they don't exist)
 	 */
 	setFields(data: Partial<T>): void {
 		if (this._disposed) return;
 
+		let hasNewFields = false;
+
 		for (const [key, value] of Object.entries(data)) {
+			if (value === undefined) continue;
+
 			const fieldSignal = this._fields[key as keyof T];
-			if (fieldSignal && value !== undefined) {
+			if (fieldSignal) {
 				fieldSignal.value = value as T[keyof T];
+			} else {
+				// Add new field dynamically
+				(this._fields as Record<string, WritableSignal<unknown>>)[key] = signal(value);
+				hasNewFields = true;
 			}
+		}
+
+		// Bump version to trigger computed re-evaluation when structure changes
+		if (hasNewFields) {
+			this._version.value++;
 		}
 	}
 
@@ -170,6 +192,19 @@ export class EntitySignal<T extends Record<string, unknown>> {
 
 		if (!(field in this._fields)) {
 			(this._fields as Record<string, WritableSignal<unknown>>)[field] = signal(value);
+			this._version.value++;
+		}
+	}
+
+	/**
+	 * Remove a field (for cleanup of dynamic fields)
+	 */
+	removeField(field: string): void {
+		if (this._disposed) return;
+
+		if (field in this._fields) {
+			delete (this._fields as Record<string, WritableSignal<unknown>>)[field];
+			this._version.value++;
 		}
 	}
 

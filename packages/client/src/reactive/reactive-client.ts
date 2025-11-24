@@ -21,6 +21,7 @@ import type {
 import { EntitySignal } from "./entity-signal";
 import { SubscriptionManager, type SubscriptionTransport } from "./subscription-manager";
 import { QueryResolver, type QueryTransport } from "./query-resolver";
+import { OptimisticManager, type OptimisticManagerConfig } from "./optimistic-manager";
 import { type Signal, computed } from "../signals/signal";
 import {
 	type Link,
@@ -40,6 +41,8 @@ export interface ReactiveClientConfig<S extends SchemaDefinition = SchemaDefinit
 	links: Link[];
 	/** WebSocket URL for real-time subscriptions */
 	subscriptionUrl?: string;
+	/** Optimistic update configuration */
+	optimistic?: OptimisticManagerConfig;
 }
 
 /** Query options with optional select */
@@ -155,6 +158,8 @@ export type ReactiveClient<S extends SchemaDefinition> = {
 	$subscriptions: SubscriptionManager;
 	/** Query resolver */
 	$resolver: QueryResolver;
+	/** Optimistic update manager */
+	$optimistic: OptimisticManager;
 	/** Set real-time transport */
 	$setSubscriptionTransport: (transport: SubscriptionTransport) => void;
 	/** Execute raw operation */
@@ -180,6 +185,7 @@ function createReactiveEntityAccessor<
 	entityName: E,
 	subscriptions: SubscriptionManager,
 	resolver: QueryResolver,
+	optimistic: OptimisticManager,
 	execute: (type: "query" | "mutation", op: string, input: unknown) => Promise<OperationResult>,
 ): ReactiveEntityAccessor<S, E> {
 	type Entity = InferEntity<S[E], S> & Record<string, unknown>;
@@ -337,45 +343,90 @@ function createReactiveEntityAccessor<
 		},
 
 		async create(data: CreateInput<S[E], S>): Promise<MutationResult<Entity>> {
-			const result = await execute("mutation", "create", { data });
-			if (result.error) throw result.error;
+			const entityData = data as unknown as Entity;
+			const id = (entityData as { id?: string }).id;
 
-			const entity = result.data as Entity;
-
-			// Update subscription
-			const id = (entity as { id?: string }).id;
+			// Apply optimistic update if we have an ID
+			let optId = "";
 			if (id) {
-				const sub = subscriptions.getOrCreateSubscription(entityName, id, entity);
-				sub.signal.setFields(entity);
+				optId = optimistic.applyOptimistic(entityName, id, "create", entityData);
 			}
 
-			return { data: entity };
+			try {
+				const result = await execute("mutation", "create", { data });
+				if (result.error) throw result.error;
+
+				const entity = result.data as Entity;
+				const serverId = (entity as { id?: string }).id;
+
+				// Confirm optimistic update
+				if (optId) {
+					optimistic.confirm(optId, entity);
+				} else if (serverId) {
+					// No optimistic update, just update subscription
+					const sub = subscriptions.getOrCreateSubscription(entityName, serverId, entity);
+					sub.signal.setFields(entity);
+				}
+
+				return {
+					data: entity,
+					rollback: optId ? () => optimistic.rollback(optId) : undefined,
+				};
+			} catch (error) {
+				// Rollback on failure
+				if (optId) {
+					optimistic.rollback(optId);
+				}
+				throw error;
+			}
 		},
 
 		async update(
 			id: string,
 			data: Partial<Omit<CreateInput<S[E], S>, "id">>,
 		): Promise<MutationResult<Entity>> {
-			const result = await execute("mutation", "update", { id, ...data });
-			if (result.error) throw result.error;
+			// Apply optimistic update
+			const optId = optimistic.applyOptimistic(entityName, id, "update", data as Partial<Entity>);
 
-			const entity = result.data as Entity;
+			try {
+				const result = await execute("mutation", "update", { id, ...data });
+				if (result.error) throw result.error;
 
-			// Update existing subscription
-			const existingSignal = subscriptions.getSignal<Entity>(entityName, id);
-			if (existingSignal) {
-				existingSignal.setFields(entity);
+				const entity = result.data as Entity;
+
+				// Confirm optimistic update with server data
+				optimistic.confirm(optId, entity);
+
+				return {
+					data: entity,
+					rollback: optId ? () => optimistic.rollback(optId) : undefined,
+				};
+			} catch (error) {
+				// Rollback on failure
+				if (optId) {
+					optimistic.rollback(optId);
+				}
+				throw error;
 			}
-
-			return { data: entity };
 		},
 
 		async delete(id: string): Promise<void> {
-			const result = await execute("mutation", "delete", { id });
-			if (result.error) throw result.error;
+			// Apply optimistic delete
+			const optId = optimistic.applyOptimistic(entityName, id, "delete", {});
 
-			// Remove subscription
-			subscriptions.unsubscribeAll(entityName, id);
+			try {
+				const result = await execute("mutation", "delete", { id });
+				if (result.error) throw result.error;
+
+				// Confirm optimistic delete
+				optimistic.confirm(optId);
+			} catch (error) {
+				// Rollback on failure
+				if (optId) {
+					optimistic.rollback(optId);
+				}
+				throw error;
+			}
 		},
 
 		async createMany(args: { data: CreateInput<S[E], S>[]; skipDuplicates?: boolean }): Promise<CreateManyResult> {
@@ -434,9 +485,10 @@ export function createReactiveClient<S extends SchemaDefinition>(
 	// Initialize links
 	const initializedLinks: LinkFn[] = links.map((link) => link());
 
-	// Create subscription manager and query resolver
+	// Create subscription manager, query resolver, and optimistic manager
 	const subscriptions = new SubscriptionManager();
 	const resolver = new QueryResolver(subscriptions);
+	const optimisticManager = new OptimisticManager(subscriptions, config.optimistic);
 
 	// Compose link chain
 	const terminalLink = initializedLinks[initializedLinks.length - 1];
@@ -481,6 +533,7 @@ export function createReactiveClient<S extends SchemaDefinition>(
 	const client = {
 		$subscriptions: subscriptions,
 		$resolver: resolver,
+		$optimistic: optimisticManager,
 		$setSubscriptionTransport: (transport: SubscriptionTransport) => {
 			subscriptions.setTransport(transport);
 		},
@@ -500,6 +553,7 @@ export function createReactiveClient<S extends SchemaDefinition>(
 				prop,
 				subscriptions,
 				resolver,
+				optimisticManager,
 				(type, op, input) => execute(type, prop, op, input),
 			);
 		},

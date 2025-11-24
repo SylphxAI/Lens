@@ -53,7 +53,13 @@ export { splitLink, splitByType, type SplitLinkOptions } from "./split";
 // =============================================================================
 
 export { httpLink, httpBatchLink, type HttpLinkOptions } from "./http";
-export { sseLink, type SSELinkOptions } from "./sse";
+export {
+	sseLink,
+	SSESubscriptionTransport,
+	createSSETransport,
+	type SSELinkOptions,
+	type SSEState,
+} from "./sse";
 export {
 	inProcessLink,
 	createInProcessLink,

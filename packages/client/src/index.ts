@@ -38,7 +38,7 @@ export {
 	// Types
 	type EntityKey,
 	type EntityState,
-	type OptimisticEntry,
+	type OptimisticEntry as StoreOptimisticEntry,
 	type StoreConfig,
 } from "./store/reactive-store";
 
@@ -95,7 +95,10 @@ export {
 	httpBatchLink,
 	type HttpLinkOptions,
 	sseLink,
+	SSESubscriptionTransport,
+	createSSETransport,
 	type SSELinkOptions,
+	type SSEState,
 	inProcessLink,
 	createInProcessLink,
 	type InProcessLinkOptions,
@@ -149,4 +152,9 @@ export {
 	type ReactiveQueryOptions,
 	type ReactiveListOptions,
 	type ReactiveInferQueryResult,
+	// OptimisticManager (optimistic updates)
+	OptimisticManager,
+	createOptimisticManager,
+	type OptimisticEntry,
+	type OptimisticManagerConfig,
 } from "./reactive";

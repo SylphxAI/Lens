@@ -47,3 +47,10 @@ export {
 	type ListOptions as ReactiveListOptions,
 	type InferQueryResult as ReactiveInferQueryResult,
 } from "./reactive-client";
+
+export {
+	OptimisticManager,
+	createOptimisticManager,
+	type OptimisticEntry,
+	type OptimisticManagerConfig,
+} from "./optimistic-manager";
