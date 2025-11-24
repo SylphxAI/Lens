@@ -57,7 +57,9 @@ export function createPluginManager(): PluginManager {
 
 			if (initialized && context) {
 				// Initialize immediately if manager is already initialized
-				instance.onInit?.(context);
+				// Note: We can't await here since register() is sync, but onInit
+				// should complete quickly for hot-registered plugins
+				void instance.onInit?.(context);
 				plugins.set(plugin.name, instance);
 			} else {
 				// Queue for later initialization
