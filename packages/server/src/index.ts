@@ -2,7 +2,7 @@
  * @lens/server
  *
  * Server runtime for Lens API framework.
- * Resolvers, execution engine, GraphStateManager, and WebSocket handler.
+ * Resolvers, execution engine, GraphStateManager, and transport adapters.
  */
 
 // =============================================================================
@@ -66,7 +66,7 @@ export {
 } from "./server/create";
 
 // =============================================================================
-// State Management (Single source of truth for subscriptions)
+// State Management (Single source of truth)
 // =============================================================================
 
 export {
@@ -84,32 +84,18 @@ export {
 } from "./state";
 
 // =============================================================================
-// Deprecated (kept for backward compatibility, will be removed)
+// SSE Transport Adapter
 // =============================================================================
 
-/**
- * @deprecated Use GraphStateManager instead. SSEHandler will be removed in next major version.
- */
 export {
+	// Class
 	SSEHandler,
+	// Factory
 	createSSEHandler,
+	// Types
+	type SSEHandlerConfig,
+	type SSEClientInfo,
+	// Legacy (deprecated)
 	type SSEClient,
 	type SSESubscription,
-	type SSEHandlerConfig,
 } from "./sse/handler";
-
-/**
- * @deprecated Use GraphStateManager instead. SubscriptionHandler will be removed in next major version.
- */
-export {
-	SubscriptionHandler,
-	createSubscriptionHandler,
-	type SubscriptionClient,
-	type ClientSubscribeMessage,
-	type ClientUnsubscribeMessage,
-	type ClientMessage,
-	type ServerUpdateMessage,
-	type FieldSubscriptionState,
-	type EntitySubscriptionState,
-	type SubscriptionHandlerConfig,
-} from "./subscriptions";

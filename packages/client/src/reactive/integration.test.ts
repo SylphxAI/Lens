@@ -2,10 +2,10 @@
  * @lens/client - Reactive Integration Tests
  *
  * End-to-end tests for the reactive architecture.
- * Tests: client → subscription manager → server handler → push update → client
+ * Tests: client → subscription manager → server (GraphStateManager) → push update → client
  */
 
-import { describe, it, expect, beforeEach } from "bun:test";
+import { describe, it, expect } from "bun:test";
 import {
 	createSubscriptionManager,
 	createQueryResolver,
@@ -13,7 +13,7 @@ import {
 	type UpdateMessage,
 	type ServerMessage,
 } from "./index";
-import { createSubscriptionHandler, type SubscriptionClient } from "@lens/server";
+import { GraphStateManager, type StateClient } from "@lens/server";
 
 describe("Reactive Integration", () => {
 	describe("Client ↔ Server Subscription Flow", () => {
@@ -22,19 +22,22 @@ describe("Reactive Integration", () => {
 			const clientManager = createSubscriptionManager();
 			const resolver = createQueryResolver(clientManager);
 
-			// Create server-side handler
-			const serverHandler = createSubscriptionHandler();
+			// Create server-side state manager
+			const stateManager = new GraphStateManager();
 
 			// Track messages between client and server
 			const clientToServer: ServerMessage[] = [];
-			const serverToClient: UpdateMessage[] = [];
 
 			// Set up mock transport (simulates WebSocket)
 			const clientTransport: SubscriptionTransport = {
 				send: (msg) => {
 					clientToServer.push(msg);
-					// Simulate server receiving message
-					serverHandler.handleMessage("client-1", msg);
+					// Simulate server processing message
+					if (msg.type === "subscribe") {
+						stateManager.subscribe("client-1", msg.entity, msg.id, msg.fields);
+					} else if (msg.type === "unsubscribe") {
+						stateManager.unsubscribe("client-1", msg.entity, msg.id);
+					}
 				},
 				onUpdate: (handler) => {
 					// Store handler for server to call
@@ -43,18 +46,27 @@ describe("Reactive Integration", () => {
 			};
 
 			// Set up server client
-			serverHandler.addClient({
+			const serverClient: StateClient = {
 				id: "client-1",
 				send: (msg) => {
-					serverToClient.push(msg);
-					// Simulate client receiving update
-					const handler = (clientTransport as { _handler?: (msg: UpdateMessage) => void })._handler;
-					if (handler) {
-						handler(msg);
+					// Convert GraphStateManager message format to client UpdateMessage format
+					const updates = msg.updates;
+					for (const [field, update] of Object.entries(updates)) {
+						const updateMsg: UpdateMessage = {
+							type: "update",
+							entity: msg.entity,
+							id: msg.id,
+							field,
+							update,
+						};
+						const handler = (clientTransport as { _handler?: (msg: UpdateMessage) => void })._handler;
+						if (handler) {
+							handler(updateMsg);
+						}
 					}
 				},
-				close: () => {},
-			});
+			};
+			stateManager.addClient(serverClient);
 
 			// Connect transport
 			clientManager.setTransport(clientTransport);
@@ -81,13 +93,10 @@ describe("Reactive Integration", () => {
 			await new Promise((resolve) => setTimeout(resolve, 20));
 
 			// Step 2: Verify server received subscription
-			expect(serverHandler.hasSubscribers("User", "123")).toBe(true);
+			expect(stateManager.hasSubscribers("User", "123")).toBe(true);
 
-			// Step 3: Server pushes update
-			serverHandler.pushUpdate("User", "123", "name", {
-				strategy: "value",
-				data: "Updated Name",
-			});
+			// Step 3: Server pushes update via emit
+			stateManager.emit("User", "123", { name: "Updated Name" });
 
 			// Step 4: Verify client received update
 			expect(result.signal.$.name.value).toBe("Updated Name");
@@ -95,23 +104,36 @@ describe("Reactive Integration", () => {
 
 		it("field-level subscription: only subscribed fields updated", async () => {
 			const clientManager = createSubscriptionManager();
-			const serverHandler = createSubscriptionHandler();
+			const stateManager = new GraphStateManager();
 
 			// Set up transport
 			const clientTransport: SubscriptionTransport = {
-				send: (msg) => serverHandler.handleMessage("client-1", msg),
+				send: (msg) => {
+					if (msg.type === "subscribe") {
+						stateManager.subscribe("client-1", msg.entity, msg.id, msg.fields);
+					}
+				},
 				onUpdate: () => {},
 			};
 
 			let lastUpdate: UpdateMessage | null = null;
-			serverHandler.addClient({
+			const serverClient: StateClient = {
 				id: "client-1",
 				send: (msg) => {
-					lastUpdate = msg;
-					clientManager.handleServerUpdate(msg);
+					for (const [field, update] of Object.entries(msg.updates)) {
+						const updateMsg: UpdateMessage = {
+							type: "update",
+							entity: msg.entity,
+							id: msg.id,
+							field,
+							update,
+						};
+						lastUpdate = updateMsg;
+						clientManager.handleServerUpdate(updateMsg);
+					}
 				},
-				close: () => {},
-			});
+			};
+			stateManager.addClient(serverClient);
 
 			clientManager.setTransport(clientTransport);
 
@@ -127,42 +149,44 @@ describe("Reactive Integration", () => {
 
 			await new Promise((resolve) => setTimeout(resolve, 20));
 
-			// Server pushes update to 'name' - should be received
-			serverHandler.pushUpdate("User", "123", "name", {
-				strategy: "value",
-				data: "Jane",
-			});
+			// Server pushes update - GraphStateManager will only send subscribed fields
+			stateManager.emit("User", "123", { name: "Jane", bio: "New bio" });
 
 			expect(sub.signal.$.name.value).toBe("Jane");
 			expect(lastUpdate?.field).toBe("name");
-
-			// Server pushes update to 'bio' - should NOT be received (not subscribed)
-			lastUpdate = null;
-			serverHandler.pushUpdate("User", "123", "bio", {
-				strategy: "value",
-				data: "New bio",
-			});
-
-			// Client is not subscribed to 'bio', so no update
-			expect(lastUpdate).toBe(null);
+			// bio should not have been sent since client only subscribed to 'name'
 			expect(sub.signal.$.bio.value).toBe("Hello"); // Original value
 		});
 
 		it("delta update for streaming text", async () => {
 			const clientManager = createSubscriptionManager();
-			const serverHandler = createSubscriptionHandler();
+			const stateManager = new GraphStateManager();
 
 			// Set up transport
 			const clientTransport: SubscriptionTransport = {
-				send: (msg) => serverHandler.handleMessage("client-1", msg),
+				send: (msg) => {
+					if (msg.type === "subscribe") {
+						stateManager.subscribe("client-1", msg.entity, msg.id, msg.fields);
+					}
+				},
 				onUpdate: () => {},
 			};
 
-			serverHandler.addClient({
+			const serverClient: StateClient = {
 				id: "client-1",
-				send: (msg) => clientManager.handleServerUpdate(msg),
-				close: () => {},
-			});
+				send: (msg) => {
+					for (const [field, update] of Object.entries(msg.updates)) {
+						clientManager.handleServerUpdate({
+							type: "update",
+							entity: msg.entity,
+							id: msg.id,
+							field,
+							update,
+						});
+					}
+				},
+			};
+			stateManager.addClient(serverClient);
 
 			clientManager.setTransport(clientTransport);
 
@@ -174,98 +198,78 @@ describe("Reactive Integration", () => {
 			clientManager.subscribeFullEntity("Message", "456");
 			await new Promise((resolve) => setTimeout(resolve, 20));
 
-			// Server pushes delta update (streaming text)
-			serverHandler.pushUpdate("Message", "456", "content", {
-				strategy: "delta",
-				data: [{ position: 5, insert: " World" }],
-			});
-
+			// Server pushes updates - GraphStateManager will auto-select strategy
+			stateManager.emit("Message", "456", { content: "Hello World" });
 			expect(sub.signal.$.content.value).toBe("Hello World");
 
-			// Another delta
-			serverHandler.pushUpdate("Message", "456", "content", {
-				strategy: "delta",
-				data: [{ position: 11, insert: "!" }],
-			});
-
+			stateManager.emit("Message", "456", { content: "Hello World!" });
 			expect(sub.signal.$.content.value).toBe("Hello World!");
 		});
 
 		it("multiple clients receive updates independently", async () => {
-			const serverHandler = createSubscriptionHandler();
+			const stateManager = new GraphStateManager();
 
 			// Create two clients
-			const client1Updates: UpdateMessage[] = [];
-			const client2Updates: UpdateMessage[] = [];
+			const client1Updates: string[] = [];
+			const client2Updates: string[] = [];
 
-			serverHandler.addClient({
+			stateManager.addClient({
 				id: "client-1",
-				send: (msg) => client1Updates.push(msg),
-				close: () => {},
+				send: (msg) => {
+					for (const field of Object.keys(msg.updates)) {
+						client1Updates.push(field);
+					}
+				},
 			});
 
-			serverHandler.addClient({
+			stateManager.addClient({
 				id: "client-2",
-				send: (msg) => client2Updates.push(msg),
-				close: () => {},
+				send: (msg) => {
+					for (const field of Object.keys(msg.updates)) {
+						client2Updates.push(field);
+					}
+				},
 			});
 
 			// Client 1 subscribes to 'name' only
-			serverHandler.handleMessage("client-1", {
-				type: "subscribe",
-				entity: "User",
-				id: "123",
-				fields: ["name"],
-			});
+			stateManager.subscribe("client-1", "User", "123", ["name"]);
 
 			// Client 2 subscribes to all fields
-			serverHandler.handleMessage("client-2", {
-				type: "subscribe",
-				entity: "User",
-				id: "123",
-				fields: "*",
-			});
+			stateManager.subscribe("client-2", "User", "123", "*");
 
-			// Push name update
-			serverHandler.pushUpdate("User", "123", "name", {
-				strategy: "value",
-				data: "New Name",
-			});
+			// Push updates
+			stateManager.emit("User", "123", { name: "New Name", bio: "New Bio" });
 
-			expect(client1Updates.length).toBe(1);
-			expect(client2Updates.length).toBe(1);
+			// Client 1 only gets 'name' (subscribed field)
+			expect(client1Updates).toContain("name");
+			expect(client1Updates).not.toContain("bio");
 
-			// Push bio update
-			serverHandler.pushUpdate("User", "123", "bio", {
-				strategy: "value",
-				data: "New Bio",
-			});
-
-			// Only client 2 should receive bio update
-			expect(client1Updates.length).toBe(1); // Still 1
-			expect(client2Updates.length).toBe(2); // Now 2
+			// Client 2 gets both (subscribed to *)
+			expect(client2Updates).toContain("name");
+			expect(client2Updates).toContain("bio");
 		});
 
 		it("refCount tracking: unsubscribe when no more refs", async () => {
 			const clientManager = createSubscriptionManager();
-			const serverHandler = createSubscriptionHandler();
+			const stateManager = new GraphStateManager();
 
 			const unsubscribeMessages: ServerMessage[] = [];
 
 			const clientTransport: SubscriptionTransport = {
 				send: (msg) => {
-					if (msg.type === "unsubscribe") {
+					if (msg.type === "subscribe") {
+						stateManager.subscribe("client-1", msg.entity, msg.id, msg.fields);
+					} else if (msg.type === "unsubscribe") {
 						unsubscribeMessages.push(msg);
+						stateManager.unsubscribe("client-1", msg.entity, msg.id);
 					}
-					serverHandler.handleMessage("client-1", msg);
 				},
 				onUpdate: () => {},
 			};
 
-			serverHandler.addClient({
+			stateManager.addClient({
 				id: "client-1",
 				send: () => {},
-				close: () => {},
 			});
 
 			clientManager.setTransport(clientTransport);
@@ -279,14 +283,14 @@ describe("Reactive Integration", () => {
 
 			await new Promise((resolve) => setTimeout(resolve, 20));
 
-			expect(serverHandler.hasSubscribers("User", "123")).toBe(true);
+			expect(stateManager.hasSubscribers("User", "123")).toBe(true);
 
 			// Unsubscribe once - still subscribed (refCount = 1)
 			clientManager.unsubscribeField("User", "123", "name");
 			await new Promise((resolve) => setTimeout(resolve, 20));
 
 			expect(unsubscribeMessages.length).toBe(0);
-			expect(serverHandler.hasSubscribers("User", "123")).toBe(true);
+			expect(stateManager.hasSubscribers("User", "123")).toBe(true);
 
 			// Unsubscribe again - now fully unsubscribed (refCount = 0)
 			clientManager.unsubscribeField("User", "123", "name");

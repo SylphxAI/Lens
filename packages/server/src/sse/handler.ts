@@ -1,111 +1,106 @@
 /**
- * @lens/server - SSE Handler
+ * @lens/server - SSE Transport Adapter
  *
- * Server-Sent Events handler for streaming entity updates.
+ * Thin transport adapter for Server-Sent Events.
+ * Connects SSE streams to GraphStateManager.
  */
+
+import { GraphStateManager, type StateClient } from "../state/graph-state-manager";
 
 // =============================================================================
 // Types
 // =============================================================================
 
-/** SSE client connection */
-export interface SSEClient {
-	id: string;
-	send: (event: string, data: unknown) => void;
-	close: () => void;
-}
-
-/** SSE subscription for entity updates */
-export interface SSESubscription {
-	subscriptionId: string;
-	entity: string;
-	entityId: string;
-	select?: Record<string, unknown>;
-}
-
 /** SSE handler configuration */
 export interface SSEHandlerConfig {
+	/** GraphStateManager instance (required) */
+	stateManager: GraphStateManager;
 	/** Heartbeat interval in ms (default: 30000) */
 	heartbeatInterval?: number;
 }
 
+/** SSE client info */
+export interface SSEClientInfo {
+	id: string;
+	connectedAt: number;
+}
+
 // =============================================================================
-// SSE Handler
+// SSE Handler (Transport Adapter)
 // =============================================================================
 
 /**
- * SSE handler for streaming entity updates
+ * SSE transport adapter for GraphStateManager.
+ *
+ * This is a thin adapter that:
+ * - Creates SSE connections
+ * - Registers clients with GraphStateManager
+ * - Forwards updates to SSE streams
+ *
+ * All state/subscription logic is handled by GraphStateManager.
  *
  * @example
  * ```typescript
- * const sseHandler = new SSEHandler();
+ * const stateManager = new GraphStateManager();
+ * const sse = new SSEHandler({ stateManager });
  *
  * // Handle SSE connection
- * app.get('/stream', (req) => sseHandler.handleConnection(req));
+ * app.get('/events', (req) => sse.handleConnection(req));
  *
- * // Subscribe client to entity
- * sseHandler.addSubscription(clientId, {
- *   subscriptionId: 'sub-1',
- *   entity: 'User',
- *   entityId: 'user-123',
- * });
- *
- * // Broadcast entity update
- * sseHandler.broadcastToEntity('User', 'user-123', updatedUser);
+ * // Subscribe via separate endpoint or message
+ * stateManager.subscribe(clientId, "Post", "123", "*");
  * ```
  */
 export class SSEHandler {
-	private clients = new Map<string, SSEClient>();
-	private subscriptions = new Map<string, SSESubscription[]>();
-	private heartbeatIntervals = new Map<string, ReturnType<typeof setInterval>>();
-	private config: Required<SSEHandlerConfig>;
+	private stateManager: GraphStateManager;
+	private heartbeatInterval: number;
+	private clients = new Map<string, { controller: ReadableStreamDefaultController; heartbeat: ReturnType<typeof setInterval> }>();
 	private clientCounter = 0;
 
-	constructor(config: SSEHandlerConfig = {}) {
-		this.config = {
-			heartbeatInterval: config.heartbeatInterval ?? 30000,
-		};
+	constructor(config: SSEHandlerConfig) {
+		this.stateManager = config.stateManager;
+		this.heartbeatInterval = config.heartbeatInterval ?? 30000;
 	}
-
-	// ===========================================================================
-	// Connection Management
-	// ===========================================================================
 
 	/**
 	 * Handle new SSE connection
+	 * Returns a Response with SSE stream
 	 */
-	handleConnection(req: Request): Response {
+	handleConnection(req?: Request): Response {
 		const clientId = `sse_${++this.clientCounter}_${Date.now()}`;
+		const encoder = new TextEncoder();
 
 		const stream = new ReadableStream({
 			start: (controller) => {
-				const encoder = new TextEncoder();
-
-				const client: SSEClient = {
+				// Register with GraphStateManager
+				const stateClient: StateClient = {
 					id: clientId,
-					send: (event: string, data: unknown) => {
-						const message = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
-						controller.enqueue(encoder.encode(message));
-					},
-					close: () => {
-						controller.close();
-						this.removeClient(clientId);
+					send: (msg) => {
+						try {
+							const data = `data: ${JSON.stringify(msg)}\n\n`;
+							controller.enqueue(encoder.encode(data));
+						} catch {
+							// Connection closed
+							this.removeClient(clientId);
+						}
 					},
 				};
+				this.stateManager.addClient(stateClient);
 
-				this.clients.set(clientId, client);
-				client.send("connected", { clientId });
+				// Send connected event
+				controller.enqueue(encoder.encode(`event: connected\ndata: ${JSON.stringify({ clientId })}\n\n`));
 
-				// Heartbeat
+				// Setup heartbeat
 				const heartbeat = setInterval(() => {
 					try {
-						client.send("heartbeat", { timestamp: Date.now() });
+						controller.enqueue(encoder.encode(`: heartbeat ${Date.now()}\n\n`));
 					} catch {
 						this.removeClient(clientId);
 					}
-				}, this.config.heartbeatInterval);
+				}, this.heartbeatInterval);
 
-				this.heartbeatIntervals.set(clientId, heartbeat);
+				// Track client
+				this.clients.set(clientId, { controller, heartbeat });
 			},
 			cancel: () => {
 				this.removeClient(clientId);
@@ -116,106 +111,36 @@ export class SSEHandler {
 			headers: {
 				"Content-Type": "text/event-stream",
 				"Cache-Control": "no-cache",
-				Connection: "keep-alive",
+				"Connection": "keep-alive",
 				"Access-Control-Allow-Origin": "*",
 			},
 		});
 	}
 
+	/**
+	 * Remove client and cleanup
+	 */
 	private removeClient(clientId: string): void {
-		const heartbeat = this.heartbeatIntervals.get(clientId);
-		if (heartbeat) {
-			clearInterval(heartbeat);
-			this.heartbeatIntervals.delete(clientId);
-		}
-		this.clients.delete(clientId);
-		this.subscriptions.delete(clientId);
-	}
-
-	// ===========================================================================
-	// Entity Subscriptions
-	// ===========================================================================
-
-	/**
-	 * Add subscription for entity updates
-	 */
-	addSubscription(clientId: string, subscription: SSESubscription): void {
-		const subs = this.subscriptions.get(clientId) ?? [];
-		subs.push(subscription);
-		this.subscriptions.set(clientId, subs);
-	}
-
-	/**
-	 * Remove subscription
-	 */
-	removeSubscription(clientId: string, subscriptionId: string): void {
-		const subs = this.subscriptions.get(clientId);
-		if (subs) {
-			const filtered = subs.filter((s) => s.subscriptionId !== subscriptionId);
-			this.subscriptions.set(clientId, filtered);
-		}
-	}
-
-	/**
-	 * Broadcast data to all subscribers of an entity
-	 */
-	broadcastToEntity(entity: string, entityId: string, data: unknown): void {
-		for (const [clientId, subs] of this.subscriptions) {
-			const client = this.clients.get(clientId);
-			if (!client) continue;
-
-			for (const sub of subs) {
-				if (sub.entity === entity && sub.entityId === entityId) {
-					client.send("data", {
-						type: "data",
-						subscriptionId: sub.subscriptionId,
-						data,
-					});
-				}
-			}
-		}
-	}
-
-	/**
-	 * Broadcast update to all subscribers of an entity
-	 */
-	broadcastUpdate(entity: string, entityId: string, update: unknown): void {
-		for (const [clientId, subs] of this.subscriptions) {
-			const client = this.clients.get(clientId);
-			if (!client) continue;
-
-			for (const sub of subs) {
-				if (sub.entity === entity && sub.entityId === entityId) {
-					client.send("update", {
-						type: "update",
-						subscriptionId: sub.subscriptionId,
-						data: update,
-					});
-				}
-			}
-		}
-	}
-
-	// ===========================================================================
-	// Utilities
-	// ===========================================================================
-
-	/**
-	 * Send message to specific client
-	 */
-	sendToClient(clientId: string, event: string, data: unknown): void {
 		const client = this.clients.get(clientId);
 		if (client) {
-			client.send(event, data);
+			clearInterval(client.heartbeat);
+			this.clients.delete(clientId);
 		}
+		this.stateManager.removeClient(clientId);
 	}
 
 	/**
-	 * Broadcast to all clients
+	 * Close specific client connection
 	 */
-	broadcast(event: string, data: unknown): void {
-		for (const client of this.clients.values()) {
-			client.send(event, data);
+	closeClient(clientId: string): void {
+		const client = this.clients.get(clientId);
+		if (client) {
+			try {
+				client.controller.close();
+			} catch {
+				// Already closed
+			}
+			this.removeClient(clientId);
 		}
 	}
 
@@ -227,26 +152,19 @@ export class SSEHandler {
 	}
 
 	/**
-	 * Check if client is connected
+	 * Get connected client IDs
 	 */
-	isClientConnected(clientId: string): boolean {
-		return this.clients.has(clientId);
+	getClientIds(): string[] {
+		return Array.from(this.clients.keys());
 	}
 
 	/**
 	 * Close all connections
 	 */
 	closeAll(): void {
-		for (const client of this.clients.values()) {
-			client.close();
+		for (const clientId of this.clients.keys()) {
+			this.closeClient(clientId);
 		}
-		this.clients.clear();
-		this.subscriptions.clear();
-
-		for (const heartbeat of this.heartbeatIntervals.values()) {
-			clearInterval(heartbeat);
-		}
-		this.heartbeatIntervals.clear();
 	}
 }
 
@@ -255,8 +173,27 @@ export class SSEHandler {
 // =============================================================================
 
 /**
- * Create SSE handler
+ * Create SSE handler (transport adapter)
  */
-export function createSSEHandler(config?: SSEHandlerConfig): SSEHandler {
+export function createSSEHandler(config: SSEHandlerConfig): SSEHandler {
 	return new SSEHandler(config);
+}
+
+// =============================================================================
+// Legacy exports (backward compatibility)
+// =============================================================================
+
+/** @deprecated Use SSEClientInfo instead */
+export interface SSEClient {
+	id: string;
+	send: (event: string, data: unknown) => void;
+	close: () => void;
+}
+
+/** @deprecated No longer used - subscriptions handled by GraphStateManager */
+export interface SSESubscription {
+	subscriptionId: string;
+	entity: string;
+	entityId: string;
+	select?: Record<string, unknown>;
 }
