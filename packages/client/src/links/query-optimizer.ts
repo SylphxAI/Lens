@@ -133,7 +133,7 @@ export function queryOptimizerLink(options: QueryOptimizerOptions = {}): Link {
 							},
 						};
 
-						const fetchPromise = next(modifiedOp);
+						const fetchPromise = Promise.resolve(next(modifiedOp));
 
 						if (deduplication) {
 							inFlight.set(makeDedupKey(op), fetchPromise);
@@ -177,7 +177,7 @@ export function queryOptimizerLink(options: QueryOptimizerOptions = {}): Link {
 			}
 
 			// Scenario 3: No cache or need full fetch
-			const fetchPromise = next(op);
+			const fetchPromise = Promise.resolve(next(op));
 
 			if (deduplication) {
 				inFlight.set(makeDedupKey(op), fetchPromise);
