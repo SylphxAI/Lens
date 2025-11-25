@@ -2,7 +2,7 @@
  * @sylphx/lens-client
  *
  * Reactive client for Lens API framework.
- * Signals, store, and Links for real-time data access.
+ * Transport system, plugins, signals, and store for real-time data access.
  */
 
 // =============================================================================
@@ -129,3 +129,47 @@ export {
 	type WebSocketLinkOptions,
 	type WebSocketState,
 } from "./links";
+
+// =============================================================================
+// Transport System (New Architecture)
+// =============================================================================
+
+export {
+	// Core types
+	type Transport as TransportV2,
+	type Operation as TransportOperation,
+	type Result as TransportResult,
+	type Metadata as TransportMetadata,
+	type OperationMeta,
+	type OptimisticDSL,
+	type RouteCondition,
+	type RouteEntry,
+	// Plugins
+	type Plugin,
+	logger,
+	type LoggerPluginOptions,
+	auth,
+	type AuthPluginOptions,
+	retry,
+	type RetryPluginOptions,
+	cache as cachePlugin,
+	type CachePluginOptions,
+	timeout,
+	type TimeoutPluginOptions,
+	// Transports
+	http,
+	type HttpTransportOptions,
+	type HttpServerTransportOptions,
+	ws,
+	type WsTransportOptions,
+	type WsServerTransportOptions,
+	inProcess,
+	type InProcessTransportOptions,
+	type LensServerInterface,
+	// Route transports
+	route,
+	routeByType,
+	type RouteByTypeConfig,
+	routeByPath,
+	type RouteByPathConfig,
+} from "./transport";

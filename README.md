@@ -2,31 +2,27 @@
 
 > **The Reactive Graph API Framework**
 
-TypeScript-first • Real-time Native • Zero Codegen
+TypeScript-first • Real-time Native • Multi-Server Ready • Zero Codegen
 
 ```typescript
-// Define schema (name derived from export key!)
-export const User = entity({
-  id: t.id(),
-  name: t.string(),
-  role: t.enum(['user', 'admin']),
+// Define operations with router
+export const appRouter = router({
+  user: {
+    get: query()
+      .input(z.object({ id: z.string() }))
+      .returns(User)
+      .resolve(({ input, ctx }) => ctx.db.user.find(input.id)),
+
+    create: mutation()
+      .input(z.object({ name: z.string() }))
+      .returns(User)
+      .resolve(({ input, ctx }) => ctx.db.user.create(input)),
+  },
 })
 
-// Define operations (ctx passed directly - tRPC style!)
-const whoami = query()
-  .returns(User)
-  .resolve(({ ctx }) => ctx.currentUser)
-
-const searchUsers = query()
-  .input(z.object({ query: z.string() }))
-  .returns([User])
-  .resolve(({ input, ctx }) => ctx.db.user.findMany({
-    where: { name: { contains: input.query } }
-  }))
-
-// Use on client
-const me = await api.whoami()
-const results = await api.searchUsers({ query: 'john' })
+// Type-safe client
+const user = await client.user.get({ id: '123' })
+await client.user.create({ name: 'John' })
 ```
 
 ---
@@ -53,26 +49,106 @@ Lens brings GraphQL concepts to TypeScript:
 | Nested Resolution | ✅ | ❌ | ✅ |
 | Real-time | Addon | Manual | **Native** |
 | Optimistic Updates | Manual | Manual | **Auto** |
+| Multi-Server | Federation | Manual | **Native** |
 | Codegen Required | Yes | No | **No** |
 
 ---
 
-## Core Concepts
+## ✨ Key Features
 
-### Three-Layer Architecture
+### 🔌 Pluggable Transport System
 
+Connect to any backend with composable transports:
+
+```typescript
+// Simple - single server
+const client = await createClient<Api>({
+  transport: http({ url: '/api' }),
+})
+
+// Real-time - WebSocket for subscriptions
+const client = await createClient<Api>({
+  transport: routeByType({
+    default: http({ url: '/api' }),
+    subscription: ws({ url: 'ws://localhost:3000' }),
+  }),
+})
 ```
-Operations        →  Entry points (any query/mutation)
-                     whoami, searchUsers, createPost, promoteBatch
 
-Entity Resolvers  →  Nested data handling (reused everywhere)
-                     User.posts, Post.author, Comment.replies
+### 🌐 Multi-Server Architecture
 
-Schema            →  Structure + Relations only
-                     Pure type definitions
+**First-class support for microservices** - connect to multiple backends with automatic metadata merging:
+
+```typescript
+import type { AuthRouter } from '@company/auth-server'
+import type { MainRouter } from '@company/main-server'
+import type { AnalyticsRouter } from '@company/analytics-server'
+
+// Merge types from different servers
+type Api = AuthRouter & MainRouter & AnalyticsRouter
+
+const client = await createClient<Api>({
+  transport: route([
+    // Auth operations → Auth server
+    [op => op.path.startsWith('auth.'), http({ url: '/auth-api' })],
+    // Analytics operations → Analytics server
+    [op => op.path.startsWith('analytics.'), http({ url: '/analytics-api' })],
+    // Everything else → Main server
+    http({ url: '/api' }),
+  ]),
+})
+
+// Full type safety across all servers!
+await client.auth.login({ email, password })     // → auth-server
+await client.analytics.track({ event: 'click' }) // → analytics-server
+await client.user.get({ id: '123' })             // → main-server
 ```
 
-**Why?** GraphQL separates Query/Mutation (operations) from type resolvers (nested handling). Lens does the same.
+Each transport automatically performs handshake with its server, and route transport merges all metadata. **Zero configuration for multi-server setups!**
+
+### 🔄 Automatic Optimistic Updates
+
+Server-defined optimistic DSL, client executes automatically:
+
+```typescript
+// Server defines optimistic behavior
+const updateUser = mutation()
+  .input(z.object({ id: z.string(), name: z.string() }))
+  .returns(User)
+  .optimistic('merge')  // DSL: merge input into cache
+  .resolve(({ input, ctx }) => ctx.db.user.update(input))
+
+// Client gets optimistic config via handshake
+// Updates are instant, rollback on error - zero client code!
+await client.user.update({ id: '123', name: 'New Name' })
+```
+
+### 🧩 Plugin System
+
+Extend functionality with lifecycle hooks:
+
+```typescript
+const client = await createClient<Api>({
+  transport: http({ url: '/api' }),
+  plugins: [
+    logger(),                    // Log requests/responses
+    auth({ getToken: () => token }), // Add auth headers
+    retry({ attempts: 3 }),      // Retry on failure
+    cache({ ttl: 60000 }),       // Cache responses
+  ],
+})
+```
+
+Plugins use hooks - **order doesn't matter**:
+
+```typescript
+interface Plugin {
+  name: string
+  beforeRequest?: (op: Operation) => Operation
+  afterResponse?: (result: Result) => Result
+  onError?: (error: Error, retry: () => Promise<Result>) => Result
+}
+```
 
 ---
 
@@ -98,45 +174,22 @@ bun add @sylphx/lens-svelte     # Svelte stores
 // schema/entities.ts
 import { entity, t } from '@sylphx/lens-core'
 
-// Name derived from export key (recommended)
 export const User = entity({
   id: t.id(),
   name: t.string(),
   email: t.string(),
-  role: t.enum(['user', 'admin', 'vip']),
-  createdAt: t.datetime().default(() => new Date()),
+  role: t.enum(['user', 'admin']),
 })
 
-// Or explicit name (for edge cases)
-export const Post = entity('Post', {
+export const Post = entity({
   id: t.id(),
   title: t.string(),
   content: t.string(),
   authorId: t.string(),
-  published: t.boolean().default(() => false),
 })
 ```
 
-### 2. Define Relations
-
-```typescript
-// schema/relations.ts
-import { relation, hasMany, belongsTo } from '@sylphx/lens-core'
-import { User, Post } from './entities'
-
-export const relations = [
-  relation(User, {
-    posts: hasMany(Post, e => e.authorId),  // Type-safe!
-  }),
-  relation(Post, {
-    author: belongsTo(User, e => e.authorId),
-  }),
-]
-```
-
-### 3. Define Operations (Router-based - Recommended)
-
-Use `router()` to organize operations into namespaces for better organization:
+### 2. Define Operations (Router)
 
 ```typescript
 // router.ts
@@ -145,41 +198,21 @@ import { z } from 'zod'
 import { User, Post } from './schema/entities'
 
 export const appRouter = router({
-  user: router({
-    // client.user.me()
+  user: {
     me: query()
       .returns(User)
       .resolve(({ ctx }) => ctx.currentUser),
 
-    // client.user.get({ id: "1" })
     get: query()
       .input(z.object({ id: z.string() }))
       .returns(User)
       .resolve(({ input, ctx }) => ctx.db.user.findUnique({
         where: { id: input.id }
       })),
+  },
 
-    // client.user.search({ query: "john" })
-    search: query()
-      .input(z.object({ query: z.string(), limit: z.number().optional() }))
-      .returns([User])
-      .resolve(({ input, ctx }) => ctx.db.user.findMany({
-        where: { name: { contains: input.query } },
-        take: input.limit ?? 10,
-      })),
-  }),
-
-  post: router({
-    // client.post.get({ id: "1" })
-    get: query()
-      .input(z.object({ id: z.string() }))
-      .returns(Post)
-      .resolve(({ input, ctx }) => ctx.db.post.findUnique({
-        where: { id: input.id }
-      })),
-
-    // client.post.create({ title: "Hello", content: "World" })
-    // "create" → auto 'create' optimistic (from naming convention!)
+  post: {
+    // "create" → auto 'create' optimistic
     create: mutation()
       .input(z.object({ title: z.string(), content: z.string() }))
       .returns(Post)
@@ -187,7 +220,6 @@ export const appRouter = router({
         data: { ...input, authorId: ctx.currentUser.id },
       })),
 
-    // client.post.update({ id: "1", title: "Updated" })
     // "update" → auto 'merge' optimistic
     update: mutation()
       .input(z.object({ id: z.string(), title: z.string().optional() }))
@@ -196,181 +228,295 @@ export const appRouter = router({
         where: { id: input.id },
         data: input,
       })),
-  }),
+  },
 })
 
 export type AppRouter = typeof appRouter
 ```
 
-<details>
-<summary>Flat Operations (Legacy)</summary>
-
-```typescript
-// operations/queries.ts
-import { query } from '@sylphx/lens-core'
-import { z } from 'zod'
-import { User, Post } from '../schema/entities'
-
-// No input required
-export const whoami = query()
-  .returns(User)
-  .resolve(({ ctx }) => ctx.currentUser)
-
-// With input
-export const user = query()
-  .input(z.object({ id: z.string() }))
-  .returns(User)
-  .resolve(({ input, ctx }) => ctx.db.user.findUnique({
-    where: { id: input.id }
-  }))
-```
-
-```typescript
-// operations/mutations.ts
-import { mutation } from '@sylphx/lens-core'
-import { z } from 'zod'
-import { Post } from '../schema/entities'
-
-export const createPost = mutation()
-  .input(z.object({ title: z.string(), content: z.string() }))
-  .returns(Post)
-  .resolve(({ input, ctx }) => ctx.db.post.create({
-    data: { ...input, authorId: ctx.currentUser.id },
-  }))
-```
-
-</details>
-
-### 4. Define Entity Resolvers
-
-```typescript
-// resolvers/index.ts
-import { entityResolvers } from '@sylphx/lens-core'
-
-export const resolvers = entityResolvers({
-  User: {
-    posts: (user) => ctx.db.post.findMany({
-      where: { authorId: user.id }
-    }),
-  },
-  Post: {
-    author: (post) => ctx.db.user.findUnique({
-      where: { id: post.authorId }
-    }),
-  },
-})
-```
-
-### 5. Create Server
+### 3. Create Server
 
 ```typescript
 // server.ts
-import { createServer } from '@sylphx/lens-server'
-import * as entities from './schema/entities'
-import { relations } from './schema/relations'
+import { createServer, http } from '@sylphx/lens-server'
 import { appRouter } from './router'
-import { resolvers } from './resolvers'
 
-export const server = createServer({
-  entities,
-  relations,
-  router: appRouter,  // Use router for namespaced operations
-  resolvers,
+const server = createServer({
+  transport: http.server({ port: 3000 }),
+  plugins: [logger(), auth()],
+  router: appRouter,
   context: async (req) => ({
     db: prisma,
     currentUser: await getUserFromToken(req.headers.authorization),
   }),
 })
 
-server.listen(3000)
+// Server exposes metadata endpoint automatically
+// GET /api/__lens/metadata → { operations, version }
 ```
 
-### 6. Create Client
+### 4. Create Client
 
 ```typescript
 // client.ts
-import { createClient, httpLink, websocketLink, RouterApiShape } from '@sylphx/lens-client'
+import { createClient, http } from '@sylphx/lens-client'
 import type { AppRouter } from './router'
 
-// Type-safe client with namespaced operations
-export const client = createClient<RouterApiShape<AppRouter>>({
-  links: [
-    httpLink({ url: '/api' }),
-    // Or for real-time:
-    // websocketLink({ url: 'ws://localhost:3000' }),
-  ],
+// Client auto-handshakes to get operation metadata
+export const client = await createClient<AppRouter>({
+  transport: http({ url: '/api' }),
+  plugins: [logger(), auth({ getToken: () => localStorage.token })],
 })
 
-// Namespaced usage (async/await)
+// Type-safe, optimistic by default
 const me = await client.user.me()
-const user = await client.user.get({ id: '123' })
 const post = await client.post.create({ title: 'Hello', content: 'World' })
 ```
 
-### 7. Use in React
+---
 
-```tsx
-// App.tsx
-import { createClient, httpLink } from '@sylphx/lens-client'
-import { LensProvider } from '@sylphx/lens-react'
-import type { AppRouter } from './server'
+## Transport System
 
-const client = createClient<AppRouter>({
-  links: [httpLink({ url: '/api' })],
-})
+Transports handle communication with servers. All transports implement the same interface:
 
-function App() {
-  return (
-    <LensProvider client={client}>
-      <UserProfile />
-    </LensProvider>
-  )
+```typescript
+interface Transport {
+  // Handshake - get operation metadata from server
+  connect(): Promise<Metadata>
+
+  // Execute operations
+  execute(op: Operation): Promise<Result> | Observable<Result>
 }
 ```
 
-```tsx
-// components/UserProfile.tsx
-import { useQuery, useMutation, useLensClient } from '@sylphx/lens-react'
-import type { AppRouter } from './server'
+### Built-in Transports
 
-function UserProfile() {
-  const client = useLensClient<AppRouter>()
-  const { data: me, loading, error } = useQuery(client.queries.whoami())
+```typescript
+// HTTP - queries/mutations via POST, subscriptions via polling
+http({ url: string, headers?: HeadersInit })
+http.server({ port: number, path?: string })
 
-  if (loading) return <div>Loading...</div>
-  if (error) return <div>Error: {error.message}</div>
+// WebSocket - native real-time
+ws({ url: string })
+ws.server({ port: number, path?: string })
 
-  return <div>Welcome, {me?.name}!</div>
+// SSE - Server-Sent Events for subscriptions
+sse({ url: string })
+sse.server({ port: number, path?: string })
+
+// In-Process - direct calls (testing, SSR)
+inProcess({ server: LensServer })
+```
+
+### Routing Transports
+
+```typescript
+// Route by operation type (common pattern)
+routeByType({
+  default: http({ url: '/api' }),
+  subscription: ws({ url: 'ws://localhost:3000' }),
+})
+
+// Route by custom condition
+route([
+  [op => op.path.startsWith('auth.'), http({ url: '/auth' })],
+  [op => op.path.startsWith('analytics.'), http({ url: '/analytics' })],
+  http({ url: '/api' }),  // fallback
+])
+```
+
+### Each Transport Handles All Operation Types
+
+```typescript
+// HTTP transport handles streaming via polling
+const http = {
+  execute(op) {
+    if (op.type === 'subscription') {
+      return createPollingObservable(url, op)
+    }
+    return fetch(url, { body: JSON.stringify(op) })
+  }
 }
 
-function SearchUsers() {
-  const client = useLensClient<AppRouter>()
-  const [query, setQuery] = useState('')
-  const { data: users } = useQuery(client.queries.searchUsers({ query }))
-
-  return (
-    <div>
-      <input value={query} onChange={e => setQuery(e.target.value)} />
-      <ul>
-        {users?.map(user => <li key={user.id}>{user.name}</li>)}
-      </ul>
-    </div>
-  )
+// WebSocket handles streaming natively
+const ws = {
+  execute(op) {
+    if (op.type === 'subscription') {
+      return createWsObservable(socket, op)
+    }
+    return sendAndWaitForResponse(socket, op)
+  }
 }
+```
 
-function CreatePost() {
-  const client = useLensClient<AppRouter>()
-  const { mutate, loading } = useMutation(client.mutations.createPost)
+---
 
-  return (
-    <button
-      disabled={loading}
-      onClick={() => mutate({ title: 'Hello', content: 'World' })}
-    >
-      Create Post
-    </button>
-  )
+## Multi-Server Architecture
+
+### The Challenge
+
+Microservices architecture means multiple backends:
+- Auth service
+- User service
+- Analytics service
+- Payment service
+
+Traditional approaches require manual routing and lose type safety.
+
+### Lens Solution
+
+**Each server exports its router type:**
+
+```typescript
+// @company/auth-server
+export const authRouter = router({
+  auth: {
+    login: mutation({ ... }),
+    logout: mutation({ ... }),
+    me: query({ ... }),
+  },
+})
+export type AuthRouter = typeof authRouter
+
+// @company/user-server
+export const userRouter = router({
+  user: {
+    get: query({ ... }),
+    update: mutation({ ... }),
+  },
+})
+export type UserRouter = typeof userRouter
+```
+
+**Client merges types and routes automatically:**
+
+```typescript
+import type { AuthRouter } from '@company/auth-server'
+import type { UserRouter } from '@company/user-server'
+
+type Api = AuthRouter & UserRouter
+
+const client = await createClient<Api>({
+  transport: route([
+    [op => op.path.startsWith('auth.'), http({ url: '/auth-api' })],
+    http({ url: '/user-api' }),
+  ]),
+})
+
+// Full type safety!
+await client.auth.login({ email, password })  // → auth-api
+await client.user.get({ id: '123' })          // → user-api
+```
+
+### How Handshake Works
+
+```
+createClient()
+     │
+     ▼
+transport.connect()  (route transport)
+     │
+     ├── http('/auth-api').connect()
+     │   └── GET /auth-api/__lens/metadata
+     │   └── Returns: { operations: { 'auth.login': { type: 'mutation' }, ... } }
+     │
+     └── http('/user-api').connect()
+         └── GET /user-api/__lens/metadata
+         └── Returns: { operations: { 'user.get': { type: 'query' }, ... } }
+     │
+     ▼
+Route transport merges all metadata:
+{
+  operations: {
+    'auth.login': { type: 'mutation' },
+    'auth.logout': { type: 'mutation' },
+    'user.get': { type: 'query' },
+    'user.update': { type: 'mutation', optimistic: 'merge' },
+  }
 }
+```
+
+**Client now knows:**
+- Which operations exist
+- Their types (query/mutation/subscription)
+- Optimistic update strategies
+
+---
+
+## Plugin System
+
+Plugins extend client and server with lifecycle hooks.
+
+### Plugin Interface
+
+```typescript
+interface Plugin {
+  name: string
+
+  // Before sending request
+  beforeRequest?: (op: Operation) => Operation | Promise<Operation>
+
+  // After receiving response
+  afterResponse?: (result: Result, op: Operation) => Result | Promise<Result>
+
+  // On error (can retry)
+  onError?: (error: Error, op: Operation, retry: () => Promise<Result>) => Result | Promise<Result>
+}
+```
+
+### Built-in Plugins
+
+```typescript
+// Logging
+logger({ level?: 'debug' | 'info' | 'warn' | 'error' })
+
+// Authentication
+auth({ getToken: () => string | Promise<string> })
+
+// Retry with exponential backoff
+retry({ attempts?: number, delay?: number, shouldRetry?: (err) => boolean })
+
+// Response caching
+cache({ ttl?: number, key?: (op) => string })
+
+// Request timeout
+timeout({ ms: number })
+```
+
+### Custom Plugin Example
+
+```typescript
+const metricsPlugin = (): Plugin => ({
+  name: 'metrics',
+
+  beforeRequest: (op) => {
+    op.meta.startTime = performance.now()
+    return op
+  },
+
+  afterResponse: (result, op) => {
+    const duration = performance.now() - op.meta.startTime
+    metrics.record(op.path, duration)
+    return result
+  },
+
+  onError: (error, op) => {
+    metrics.recordError(op.path, error)
+    throw error
+  },
+})
+```
+
+### Execution Order
+
+```
+1. All beforeRequest hooks (array order)
+        ↓
+2. transport.execute()
+        ↓
+3. All afterResponse hooks (array order)
+        ↓
+   (if error) → All onError hooks
 ```
 
 ---
@@ -380,80 +526,45 @@ function CreatePost() {
 ### React
 
 ```tsx
-import { createClient, httpLink } from '@sylphx/lens-client'
-import { LensProvider, useQuery, useMutation, useLazyQuery, useLensClient } from '@sylphx/lens-react'
-import type { AppRouter } from './server'
+import { LensProvider, useLensClient } from '@sylphx/lens-react'
 
-const client = createClient<AppRouter>({
-  links: [httpLink({ url: '/api' })],
-})
-
-// Wrap app with provider
 function App() {
   return (
     <LensProvider client={client}>
-      <MyComponent />
+      <UserProfile />
     </LensProvider>
   )
 }
 
-// Use hooks in components
-function MyComponent() {
+function UserProfile() {
   const client = useLensClient<AppRouter>()
+  const { data, loading } = useQuery(client.user.me())
 
-  // Query - executes immediately
-  const { data, loading, error, refetch } = useQuery(client.queries.whoami())
-
-  // Mutation - returns mutate function
-  const { mutate, loading: mutating } = useMutation(client.mutations.createPost)
-
-  // Lazy query - executes on demand
-  const { execute, data: searchData } = useLazyQuery(client.queries.searchUsers)
-
-  return (
-    <button onClick={() => execute({ query: 'john' })}>
-      Search
-    </button>
-  )
+  if (loading) return <div>Loading...</div>
+  return <div>Welcome, {data?.name}!</div>
 }
 ```
 
 ### SolidJS
 
 ```tsx
-import { createClient, httpLink } from '@sylphx/lens-client'
-import { LensProvider, createQuery, createMutation, createLazyQuery, useLensClient } from '@sylphx/lens-solid'
-import type { AppRouter } from './server'
+import { LensProvider, useLensClient } from '@sylphx/lens-solid'
 
-const client = createClient<AppRouter>({
-  links: [httpLink({ url: '/api' })],
-})
-
-// Wrap app with provider
 function App() {
   return (
     <LensProvider client={client}>
-      <MyComponent />
+      <UserProfile />
     </LensProvider>
   )
 }
 
-// Use primitives in components
-function MyComponent() {
+function UserProfile() {
   const client = useLensClient<AppRouter>()
-
-  // Query - reactive signals
-  const { data, loading, error, refetch } = createQuery(() => client.queries.whoami())
-
-  // Mutation
-  const { mutate, loading: mutating } = createMutation(() => client.mutations.createPost)
-
-  // Lazy query
-  const { execute, data: searchData } = createLazyQuery(() => client.queries.searchUsers)
+  const user = createQuery(() => client.user.me())
 
   return (
-    <Show when={!loading()} fallback={<div>Loading...</div>}>
-      <div>Welcome, {data()?.name}!</div>
+    <Show when={!user.loading} fallback={<div>Loading...</div>}>
+      <div>Welcome, {user.data?.name}!</div>
     </Show>
   )
 }
@@ -463,33 +574,10 @@ function MyComponent() {
 
 ```vue
 <script setup lang="ts">
-import { createClient, httpLink } from '@sylphx/lens-client'
-import { provideLensClient, useQuery, useMutation, useLazyQuery, useLensClient } from '@sylphx/lens-vue'
-import type { AppRouter } from './server'
-
-// In root component - provide client
-const client = createClient<AppRouter>({
-  links: [httpLink({ url: '/api' })],
-})
-provideLensClient(client)
-</script>
-```
-
-```vue
-<script setup lang="ts">
-import { useLensClient, useQuery, useMutation, useLazyQuery } from '@sylphx/lens-vue'
-import type { AppRouter } from './server'
+import { provideLensClient, useLensClient, useQuery } from '@sylphx/lens-vue'
 
 const client = useLensClient<AppRouter>()
-
-// Query - reactive refs
-const { data, loading, error, refetch } = useQuery(() => client.queries.whoami())
-
-// Mutation
-const { mutate, loading: mutating } = useMutation(() => client.mutations.createPost)
-
-// Lazy query
-const { execute, data: searchData } = useLazyQuery(() => client.queries.searchUsers)
+const { data, loading } = useQuery(() => client.user.me())
 </script>
 
 <template>
@@ -502,459 +590,56 @@ const { execute, data: searchData } = useLazyQuery(() => client.queries.searchUs
 
 ```svelte
 <script lang="ts">
-  import { createClient, httpLink } from '@sylphx/lens-client'
-  import { provideLensClient, query, mutation, lazyQuery, useLensClient } from '@sylphx/lens-svelte'
-  import type { AppRouter } from './server'
-
-  // In root component - provide client
-  const client = createClient<AppRouter>({
-    links: [httpLink({ url: '/api' })],
-  })
-  provideLensClient(client)
-</script>
-```
-
-```svelte
-<script lang="ts">
-  import { useLensClient, query, mutation, lazyQuery } from '@sylphx/lens-svelte'
-  import type { AppRouter } from './server'
+  import { provideLensClient, useLensClient, query } from '@sylphx/lens-svelte'
 
   const client = useLensClient<AppRouter>()
-
-  // Query - Svelte stores
-  const whoami = query(() => client.queries.whoami())
-
-  // Mutation
-  const createPost = mutation(() => client.mutations.createPost)
-
-  // Lazy query
-  const search = lazyQuery(() => client.queries.searchUsers)
+  const user = query(() => client.user.me())
 </script>
 
-{#if $whoami.loading}
+{#if $user.loading}
   <div>Loading...</div>
 {:else}
-  <div>Welcome, {$whoami.data?.name}!</div>
+  <div>Welcome, {$user.data?.name}!</div>
 {/if}
 ```
 
 ---
 
-## Links
+## Server Configuration
 
-Links are composable middleware for request/response processing (tRPC-style).
-
-### Available Links
+### Single Transport
 
 ```typescript
-import {
-  // Transport
-  httpLink,           // HTTP requests
-  websocketLink,      // WebSocket for real-time
-  sseLink,            // Server-Sent Events
-
-  // Middleware
-  loggerLink,         // Request/response logging
-  retryLink,          // Automatic retry with backoff
-  batchLink,          // Request batching
-  deserializeLink,    // Date/BigInt deserialization
-
-  // Optimization
-  dedupLink,          // Request deduplication
-  cacheLink,          // Response caching
-} from '@sylphx/lens-client'
-
-const client = createClient<AppRouter>({
-  links: [
-    loggerLink({ enabled: process.env.NODE_ENV === 'development' }),
-    retryLink({ maxRetries: 3 }),
-    deserializeLink(),
-    httpLink({ url: '/api' }),
-  ],
-})
-```
-
-### Custom Links
-
-```typescript
-import { Link, LinkFn } from '@sylphx/lens-client'
-
-const timingLink: Link = () => async (op, next) => {
-  const start = performance.now()
-  const result = await next(op)
-  console.log(`${op.path} took ${performance.now() - start}ms`)
-  return result
-}
-
-const client = createClient<AppRouter>({
-  links: [
-    timingLink,
-    httpLink({ url: '/api' }),
-  ],
-})
-```
-
----
-
-## Schema
-
-### Entity Definition
-
-```typescript
-import { entity, t } from '@sylphx/lens-core'
-
-// Name derived from export key (recommended)
-export const User = entity({
-  // Primitives
-  id: t.id(),                    // string (required)
-  name: t.string(),              // string
-  age: t.int(),                  // number (integer)
-  score: t.float(),              // number
-  active: t.boolean(),           // boolean
-
-  // Date/Time
-  createdAt: t.datetime(),       // Date (serialized as ISO string)
-  birthDate: t.date(),           // Date (serialized as YYYY-MM-DD)
-
-  // Large Numbers
-  balance: t.decimal(),          // number (serialized as string for precision)
-  bigValue: t.bigint(),          // bigint (serialized as string)
-
-  // Binary
-  avatar: t.bytes(),             // Uint8Array (serialized as base64)
-
-  // Enums
-  role: t.enum(['user', 'admin']),
-
-  // JSON (schemaless)
-  metadata: t.json(),            // unknown
-
-  // Typed object
-  settings: t.object<{ theme: string; notifications: boolean }>(),
-
-  // Modifiers
-  bio: t.string().nullable(),    // string | null (value can be null)
-  nickname: t.string().optional(), // string | undefined (field may not exist)
-
-  // Default value
-  createdAt: t.datetime().default(() => new Date()),
-})
-```
-
-### Custom Types
-
-Define reusable custom types with `defineType()`:
-
-```typescript
-import { defineType, t } from '@sylphx/lens-core'
-
-// Define a reusable custom type
-const Point = defineType({
-  name: 'Point',
-  // Serialize: runtime value → JSON-safe transport
-  serialize: (p: { lat: number; lng: number }) => ({ lat: p.lat, lng: p.lng }),
-  // Deserialize: transport → runtime value
-  deserialize: (data) => ({ lat: data.lat, lng: data.lng }),
-  // Optional validation
-  validate: (v) => typeof v === 'object' && 'lat' in v && 'lng' in v,
-})
-
-// Use in entity
-export const Store = entity({
-  id: t.id(),
-  name: t.string(),
-  location: t.custom(Point),  // ✅ Reusable!
-})
-
-export const Event = entity({
-  id: t.id(),
-  title: t.string(),
-  venue: t.custom(Point),     // ✅ Same type!
-})
-```
-
-**Why `defineType()`?**
-- Reusability - define once, use in multiple entities
-- Consistency - same serialization logic everywhere
-- Type safety - TypeScript infers correct types
-- Shareable - create type libraries as packages
-
-### Type-Safe Relations
-
-```typescript
-import { relation, hasMany, belongsTo, hasOne } from '@sylphx/lens-core'
-
-const relations = [
-  relation(User, {
-    posts: hasMany(Post, e => e.authorId),      // One-to-many
-    profile: hasOne(Profile, e => e.userId),    // One-to-one
-  }),
-
-  relation(Post, {
-    author: belongsTo(User, e => e.authorId),   // Many-to-one
-    comments: hasMany(Comment, e => e.postId),
-  }),
-]
-```
-
-**Why `e => e.authorId` instead of `'authorId'`?**
-- TypeScript validates the field exists
-- Refactoring works automatically
-- No typos possible
-
----
-
-## Operations
-
-Operations define entry points. They are NOT limited to CRUD.
-
-### Query
-
-```typescript
-import { query } from '@sylphx/lens-core'
-import { z } from 'zod'
-
-// No input
-export const whoami = query()
-  .returns(User)
-  .resolve(({ ctx }) => ctx.currentUser)
-
-// With input
-export const user = query()
-  .input(z.object({ id: z.string() }))
-  .returns(User)
-  .resolve(({ input, ctx }) => ctx.db.user.findUnique({
-    where: { id: input.id }
-  }))
-
-// Returns array
-export const recentPosts = query()
-  .input(z.object({ limit: z.number().default(10) }))
-  .returns([Post])
-  .resolve(({ input, ctx }) => ctx.db.post.findMany({
-    orderBy: { createdAt: 'desc' },
-    take: input.limit,
-  }))
-
-// Streaming (real-time)
-export const activeUsers = query()
-  .returns([User])
-  .resolve(async function* () {
-    yield await ctx.db.user.findMany({ where: { active: true } })
-
-    for await (const event of ctx.redis.subscribe('user:active')) {
-      yield event.users
-    }
-  })
-```
-
-### Mutation
-
-```typescript
-import { mutation } from '@sylphx/lens-core'
-import { z } from 'zod'
-
-// Simple mutation - auto 'create' optimistic from naming convention!
-export const createPost = mutation()
-  .input(z.object({ title: z.string(), content: z.string() }))
-  .returns(Post)
-  .resolve(({ input, ctx }) => ctx.db.post.create({ data: input }))
-
-// Multi-entity mutation
-export const promoteSomeUsers = mutation()
-  .input(z.object({
-    userIds: z.array(z.string()),
-    newRole: z.enum(['admin', 'vip']),
-  }))
-  .returns({
-    users: [User],
-    notifications: [Notification],
-  })
-  .optimistic(({ input }) => ({
-    users: input.userIds.map(id => ({ id, role: input.newRole })),
-    notifications: input.userIds.map(id => ({
-      id: tempId(),
-      userId: id,
-      message: `Promoted to ${input.newRole}!`,
-    })),
-  }))
-  .resolve(async ({ input, ctx }) => {
-    const users = await Promise.all(
-      input.userIds.map(id =>
-        ctx.db.user.update({ where: { id }, data: { role: input.newRole } })
-      )
-    )
-    const notifications = await Promise.all(
-      input.userIds.map(userId =>
-        ctx.db.notification.create({
-          data: { userId, message: `Promoted to ${input.newRole}!` }
-        })
-      )
-    )
-    return { users, notifications }
-  })
-```
-
----
-
-## Entity Resolvers
-
-Entity Resolvers handle nested data. They are **reused across ALL operations**.
-
-```typescript
-import { entityResolvers } from '@sylphx/lens-core'
-
-export const resolvers = entityResolvers({
-  User: {
-    posts: (user) => ctx.db.post.findMany({
-      where: { authorId: user.id }
-    }),
-    comments: (user) => ctx.db.comment.findMany({
-      where: { authorId: user.id }
-    }),
-  },
-
-  Post: {
-    author: (post) => ctx.db.user.findUnique({
-      where: { id: post.authorId }
-    }),
-    comments: (post) => ctx.db.comment.findMany({
-      where: { postId: post.id }
-    }),
-  },
-})
-```
-
-### Batching (N+1 Prevention)
-
-```typescript
-export const resolvers = entityResolvers({
-  Post: {
-    author: {
-      batch: async (posts) => {
-        const authorIds = [...new Set(posts.map(p => p.authorId))]
-        const authors = await ctx.db.user.findMany({
-          where: { id: { in: authorIds } }
-        })
-        const authorMap = new Map(authors.map(a => [a.id, a]))
-        return posts.map(p => authorMap.get(p.authorId))
-      },
-    },
-  },
-})
-```
-
-### Why Separate from Operations?
-
-**Reusability:**
-```typescript
-// All three use the SAME User.posts resolver
-const user = await api.user({ id: '1' }).select({ posts: true })
-const users = await api.searchUsers({ query: 'john' }).select({ posts: true })
-const me = await api.whoami().select({ posts: true })
-```
-
----
-
-## Context System
-
-### AsyncLocalStorage (Recommended)
-
-```typescript
-// Server setup
 const server = createServer({
+  transport: http.server({ port: 3000 }),
+  router: appRouter,
+})
+```
+
+### Multiple Transports
+
+```typescript
+const server = createServer({
+  transport: [
+    http.server({ port: 3000, path: '/api' }),
+    ws.server({ port: 3000, path: '/ws' }),
+  ],
+  plugins: [logger(), auth(), rateLimit()],
+  router: appRouter,
+})
+```
+
+### With Context
+
+```typescript
+const server = createServer({
+  transport: http.server({ port: 3000 }),
+  router: appRouter,
   context: async (req) => ({
     db: prisma,
     currentUser: await getUserFromToken(req.headers.authorization),
+    redis: redisClient,
   }),
-})
-
-// In operations - ctx is passed directly (tRPC style!)
-export const whoami = query()
-  .returns(User)
-  .resolve(({ ctx }) => ctx.currentUser)  // Clean!
-
-export const createPost = mutation()
-  .input(...)
-  .resolve(({ input, ctx }) => {
-    return ctx.db.post.create({ data: { ...input, authorId: ctx.currentUser.id } })
-  })
-```
-
-### Context Setup
-
-```typescript
-export const createPost = mutation()
-  .input(...)
-  .resolve(({ input, ctx }) => {  // ctx explicitly available
-    return ctx.db.post.create({
-      data: { ...input, authorId: ctx.currentUser.id }
-    })
-  })
-```
-
----
-
-## Client Usage
-
-### Queries
-
-```typescript
-// Single value
-const user = await client.queries.user({ id: '123' })
-
-// With nested data
-const user = await client.queries.user({ id: '123' }).select({
-  name: true,
-  posts: { title: true },
-})
-
-// Streaming
-client.queries.activeUsers().subscribe(users => {
-  console.log('Active users:', users.length)
-})
-```
-
-### Mutations
-
-```typescript
-// Optimistic by default
-await client.mutations.createPost({ title: 'Hello', content: 'World' })
-
-// Multi-entity
-const { users, notifications } = await client.mutations.promoteSomeUsers({
-  userIds: ['1', '2', '3'],
-  newRole: 'admin',
-})
-```
-
----
-
-## Reactive System
-
-### Three Resolver Patterns
-
-```typescript
-// 1. Return - Single value
-.resolve(({ input, ctx }) => ctx.db.user.findUnique({ where: { id: input.id } }))
-
-// 2. Generator - Sequential streaming
-.resolve(async function* ({ input }) {
-  yield await ctx.db.user.findUnique({ where: { id: input.id } })
-
-  for await (const event of ctx.redis.subscribe(`user:${input.id}`)) {
-    yield event
-  }
-})
-
-// 3. Emit - Event-driven
-.resolve(({ input, emit, onCleanup }) => {
-  emit(initialData)
-
-  const handler = (data) => emit(data)
-  ctx.redis.subscribe(`user:${input.id}`, handler)
-
-  onCleanup(() => ctx.redis.unsubscribe(`user:${input.id}`, handler))
 })
 ```
 
@@ -962,143 +647,104 @@ const { users, notifications } = await client.mutations.promoteSomeUsers({
 
 ## Optimistic Updates
 
-### Auto-Derived from Naming Convention (90% of cases!)
+### Auto-Derived from Naming Convention
 
 ```typescript
-// "updatePost" → auto 'merge' (no .optimistic() needed!)
-export const updatePost = mutation()
-  .input(z.object({ id: z.string(), title: z.string() }))
-  .returns(Post)
-  .resolve(({ input, ctx }) => ctx.db.post.update({
-    where: { id: input.id },
-    data: { title: input.title },
-  }))
+// "create" prefix → auto 'create' optimistic
+const createUser = mutation()
+  .input(z.object({ name: z.string() }))
+  .returns(User)
+  .resolve(({ input }) => db.user.create({ data: input }))
 
-// "createPost" → auto 'create' with tempId
-export const createPost = mutation()
-  .input(z.object({ title: z.string() }))
-  .returns(Post)
-  .resolve(({ input, ctx }) => ctx.db.post.create({ data: input }))
+// "update" prefix → auto 'merge' optimistic
+const updateUser = mutation()
+  .input(z.object({ id: z.string(), name: z.string() }))
+  .returns(User)
+  .resolve(({ input }) => db.user.update({ where: { id: input.id }, data: input }))
 
-// "deletePost" → auto 'delete'
-export const deletePost = mutation()
+// "delete" prefix → auto 'delete' optimistic
+const deleteUser = mutation()
   .input(z.object({ id: z.string() }))
-  .returns(Post)
-  .resolve(({ input, ctx }) => ctx.db.post.delete({ where: { id: input.id } }))
+  .returns(User)
+  .resolve(({ input }) => db.user.delete({ where: { id: input.id } }))
 ```
 
-### Explicit DSL (for edge cases)
+### Explicit DSL
 
 ```typescript
-// "publishPost" doesn't match convention, needs explicit DSL
-export const publishPost = mutation()
+// Custom optimistic behavior
+const publishPost = mutation()
   .input(z.object({ id: z.string() }))
   .returns(Post)
-  .optimistic({ merge: { published: true } })  // Set extra field
-  .resolve(({ input, ctx }) => ctx.db.post.update({
+  .optimistic({ merge: { published: true } })  // Set specific fields
+  .resolve(({ input }) => db.post.update({
     where: { id: input.id },
     data: { published: true },
   }))
 ```
 
-**Flow:**
-1. Client calls mutation
-2. Optimistic update predicts result → Update cache immediately
-3. Server executes `resolve()`
-4. Server response replaces optimistic data
-5. On error: Rollback to previous state
+### How It Works
+
+1. Server defines optimistic DSL in mutation
+2. Client receives DSL via handshake
+3. On mutation call:
+   - Apply optimistic update immediately
+   - Send request to server
+   - Replace with server response
+   - On error: rollback
 
 ---
 
 ## API Summary
 
 ```typescript
-// Schema (names derived from export keys!)
-entity(fields)                  // Define entity (name from export key)
-entity(name, fields)            // Define entity (explicit name)
-relation(entity, relations)     // Define relations
-hasMany(Entity, accessor)       // One-to-many
-belongsTo(Entity, accessor)     // Many-to-one
+// === Schema ===
+entity(fields)                    // Define entity
+relation(entity, relations)       // Define relations
+t.id(), t.string(), t.int(), ... // Field types
 
-// Field Types
-t.id()                          // string (primary key)
-t.string()                      // string
-t.int()                         // number (integer)
-t.float()                       // number (floating point)
-t.boolean()                     // boolean
-t.datetime()                    // Date ↔ ISO string
-t.date()                        // Date ↔ YYYY-MM-DD
-t.decimal()                     // number ↔ string (precision)
-t.bigint()                      // bigint ↔ string
-t.bytes()                       // Uint8Array ↔ base64
-t.enum(['a', 'b'])              // union type
-t.json()                        // unknown (schemaless)
-t.object<T>()                   // typed object
-t.array(t.string())             // array of type
-t.custom(definition)            // custom serialization
+// === Operations ===
+query()
+  .input(zodSchema)               // Optional input
+  .returns(Entity | [Entity])     // Return type
+  .resolve(fn)                    // Resolver
 
-// Modifiers
-.nullable()                     // T | null (value can be null)
-.optional()                     // T | undefined (field may not exist)
-.default(value)                 // Default value
+mutation()
+  .input(zodSchema)               // Required input
+  .returns(Entity | { ... })      // Return type
+  .optimistic(dsl)                // Optional (auto-derived)
+  .resolve(fn)                    // Resolver
 
-// Operations
-query()                         // Create query builder
-  .input(zodSchema)             // Input validation (optional)
-  .returns(Entity | [Entity])   // Return type
-  .resolve(fn)                  // Resolver function
+router({ ... })                   // Namespace operations
 
-mutation()                      // Create mutation builder
-  .input(zodSchema)             // Input validation
-  .returns(Entity | { ... })    // Return type
-  .optimistic(spec)             // Optimistic prediction (optional - auto-derived!)
-  .resolve(fn)                  // Resolver function
-
-// Router (namespaced operations - recommended!)
-router({                        // Create namespace
-  user: router({                // Nested namespace
-    get: query()...,            // client.user.get()
-    create: mutation()...,      // client.user.create()
-  }),
-  post: router({ ... }),
+// === Client ===
+createClient<Api>({
+  transport: Transport,
+  plugins?: Plugin[],
 })
 
-// Auto-Optimistic from Naming Convention
-// update → auto 'merge' (no .optimistic() needed)
-// create/add → auto 'create'
-// delete/remove → auto 'delete'
+// === Transports ===
+http({ url })                     // HTTP transport
+ws({ url })                       // WebSocket transport
+sse({ url })                      // SSE transport
+inProcess({ server })             // In-process transport
+route([...conditions, fallback])  // Conditional routing
+routeByType({ default, subscription?, ... })
 
-// Explicit Optimistic DSL (for edge cases)
-.optimistic('merge')                        // Merge input into entity
-.optimistic('create')                       // Create with auto tempId
-.optimistic('delete')                       // Mark as deleted
-.optimistic({ merge: { published: true } }) // Merge with extra fields
-.optimistic({ create: { status: 'draft' }}) // Create with extra fields
+// === Server ===
+createServer({
+  transport: Transport | Transport[],
+  plugins?: Plugin[],
+  router: Router,
+  context?: (req) => Context,
+})
 
-// Client (with router)
-createClient<RouterApiShape<AppRouter>>({ links: [...] })
-client.user.get({ id: '1' })               // Namespaced query
-client.post.create({ title: 'Hi' })        // Namespaced mutation
-
-// Links
-httpLink({ url })               // HTTP transport
-websocketLink({ url })          // WebSocket transport
-sseLink({ url })                // SSE transport
-loggerLink({ enabled })         // Request logging
-retryLink({ maxRetries })       // Automatic retry
-batchLink({ maxSize, delay })   // Request batching
-dedupLink()                     // Request deduplication
-
-// Entity Resolvers
-entityResolvers({ Entity: { field: resolver } })
-
-// Context (tRPC-style, passed directly to resolvers)
-({ ctx }) =>                   // Access context in resolver
-ctx.db                         // Get database
-ctx.currentUser                // Get current user
-
-// Helpers
-tempId()                        // Generate temporary ID for optimistic
+// === Plugins ===
+logger()                          // Request/response logging
+auth({ getToken })                // Authentication
+retry({ attempts })               // Retry on failure
+cache({ ttl })                    // Response caching
+timeout({ ms })                   // Request timeout
 ```
 
 ---
@@ -1108,8 +754,8 @@ tempId()                        // Generate temporary ID for optimistic
 | Package | Description |
 |---------|-------------|
 | `@sylphx/lens-core` | Schema, operations, types (zero deps) |
-| `@sylphx/lens-server` | Execution engine, GraphStateManager |
-| `@sylphx/lens-client` | Client API, links, reactive store |
+| `@sylphx/lens-server` | Server, transports, execution engine |
+| `@sylphx/lens-client` | Client, transports, reactive store |
 | `@sylphx/lens-react` | React hooks |
 | `@sylphx/lens-solid` | SolidJS primitives |
 | `@sylphx/lens-vue` | Vue composables |
@@ -1128,13 +774,13 @@ tempId()                        // Generate temporary ID for optimistic
 
 **TypeScript-first:** Same code runs on client and server. No SDL, no codegen.
 
-**Operations are free:** Define any query/mutation, not limited to CRUD.
+**Multi-server native:** Connect to multiple backends with full type safety.
 
-**Nested is automatic:** Entity resolvers handle nested data, reused everywhere.
+**Transport-agnostic:** HTTP, WebSocket, SSE, or custom - same API.
+
+**Plugin-based extension:** Add functionality without modifying core.
 
 **Reactive by default:** Every query can stream, optimistic is built-in.
-
-**Simple > Complex:** No plugins, no unnecessary abstractions.
 
 ---
 

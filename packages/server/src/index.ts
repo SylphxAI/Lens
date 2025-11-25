@@ -21,6 +21,10 @@ export {
 	type MutationsMap,
 	type WebSocketLike,
 	type SelectionObject,
+	// Metadata types (for transport handshake)
+	type ServerMetadata,
+	type OperationMeta,
+	type OperationsMap,
 	// Type inference utilities (tRPC-style)
 	type InferApi,
 	type InferInput,

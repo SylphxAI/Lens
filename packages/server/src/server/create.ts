@@ -88,8 +88,18 @@ export interface LensServerConfig<TContext extends ContextValue = ContextValue> 
 	version?: string;
 }
 
+/** Server metadata for transport handshake */
+export interface ServerMetadata {
+	/** Server version */
+	version: string;
+	/** Operations metadata map */
+	operations: OperationsMap;
+}
+
 /** Lens server interface */
 export interface LensServer {
+	/** Get server metadata for transport handshake */
+	getMetadata(): ServerMetadata;
 	/** Execute a query (one-time) */
 	executeQuery<TInput, TOutput>(name: string, input?: TInput): Promise<TOutput>;
 	/** Execute a mutation */
@@ -377,6 +387,17 @@ class LensServerImpl<
 
 	getStateManager(): GraphStateManager {
 		return this.stateManager;
+	}
+
+	/**
+	 * Get server metadata for transport handshake.
+	 * Used by inProcess transport for direct access.
+	 */
+	getMetadata(): ServerMetadata {
+		return {
+			version: this.version,
+			operations: this.buildOperationsMap(),
+		};
 	}
 
 	/**
@@ -902,15 +923,11 @@ class LensServerImpl<
 	async handleRequest(req: Request): Promise<Response> {
 		const url = new URL(req.url);
 
-		// GET /operations - Return operations metadata for client initialization
-		if (req.method === "GET" && url.pathname.endsWith("/operations")) {
-			return new Response(
-				JSON.stringify({
-					version: this.version,
-					operations: this.buildOperationsMap(),
-				}),
-				{ headers: { "Content-Type": "application/json" } },
-			);
+		// GET /__lens/metadata - Return operations metadata for client transport handshake
+		if (req.method === "GET" && url.pathname.endsWith("/__lens/metadata")) {
+			return new Response(JSON.stringify(this.getMetadata()), {
+				headers: { "Content-Type": "application/json" },
+			});
 		}
 
 		if (req.method === "POST") {
