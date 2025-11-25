@@ -6,17 +6,15 @@
  * Key concept: Operations are free-form, not locked to CRUD!
  * - whoami, searchUsers, promoteBatch (not just User.get/list/create)
  *
- * Optimistic Updates (simple DSL):
- * - 'merge'                     → UPDATE: merge input into entity
- * - 'create'                    → CREATE: auto tempId
- * - 'delete'                    → DELETE: mark deleted
- * - { merge: { field: value } } → UPDATE + set extra fields
- * - { updateMany: {...} }       → Cross-entity updates
+ * Optimistic Updates:
+ * - Auto-derived from naming convention (no .optimistic() needed!):
+ *   - updateX → 'merge'
+ *   - createX / addX → 'create'
+ *   - deleteX / removeX → 'delete'
  *
- * Future: Could auto-derive from naming convention:
- * - updateX → merge
- * - createX → create
- * - deleteX → delete
+ * - Explicit DSL (for edge cases):
+ *   - { merge: { field: value } } → UPDATE + set extra fields
+ *   - { updateMany: {...} }       → Cross-entity updates
  */
 
 import { query, mutation } from "@lens/core";
@@ -84,7 +82,7 @@ export const trendingPosts = query()
 /**
  * 更新用戶資料
  *
- * .optimistic('merge') - 將 input merge 入 entity
+ * "updateUser" → auto 'merge' (no .optimistic() needed!)
  */
 export const updateUser = mutation()
 	.input(
@@ -96,7 +94,7 @@ export const updateUser = mutation()
 		})
 	)
 	.returns(User)
-	.optimistic("merge")
+	// .optimistic('merge') ← auto-derived from "updateUser"
 	.resolve(({ input, ctx }) =>
 		ctx.db.user.update({
 			where: { id: input.id },
@@ -107,7 +105,7 @@ export const updateUser = mutation()
 /**
  * 建立新文章
  *
- * .optimistic('create') - 自動生成 tempId
+ * "createPost" → auto 'create' + set extra field
  */
 export const createPost = mutation()
 	.input(
@@ -117,7 +115,7 @@ export const createPost = mutation()
 		})
 	)
 	.returns(Post)
-	.optimistic({ create: { published: false } })
+	.optimistic({ create: { published: false } }) // explicit: set extra field
 	.resolve(({ input, ctx }) =>
 		ctx.db.post.create({
 			data: {
@@ -129,6 +127,8 @@ export const createPost = mutation()
 
 /**
  * 更新文章
+ *
+ * "updatePost" → auto 'merge'
  */
 export const updatePost = mutation()
 	.input(
@@ -139,7 +139,7 @@ export const updatePost = mutation()
 		})
 	)
 	.returns(Post)
-	.optimistic("merge")
+	// .optimistic('merge') ← auto-derived
 	.resolve(({ input, ctx }) =>
 		ctx.db.post.update({
 			where: { id: input.id },
@@ -150,12 +150,12 @@ export const updatePost = mutation()
 /**
  * 發佈文章
  *
- * { merge: { published: true } } - merge + 額外設定 field
+ * "publishPost" doesn't match naming convention, explicit DSL needed
  */
 export const publishPost = mutation()
 	.input(z.object({ id: z.string() }))
 	.returns(Post)
-	.optimistic({ merge: { published: true } })
+	.optimistic({ merge: { published: true } }) // explicit: set extra field
 	.resolve(({ input, ctx }) =>
 		ctx.db.post.update({
 			where: { id: input.id },
@@ -203,6 +203,8 @@ export const bulkPromoteUsers = mutation()
 
 /**
  * 添加留言
+ *
+ * "addComment" → auto 'create' (no .optimistic() needed!)
  */
 export const addComment = mutation()
 	.input(
@@ -212,7 +214,7 @@ export const addComment = mutation()
 		})
 	)
 	.returns(Comment)
-	.optimistic("create")
+	// .optimistic('create') ← auto-derived from "addComment"
 	.resolve(({ input, ctx }) =>
 		ctx.db.comment.create({
 			data: {

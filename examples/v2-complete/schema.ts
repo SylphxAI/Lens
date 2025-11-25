@@ -2,15 +2,18 @@
  * V2 Complete Example - Schema
  *
  * Demonstrates: Entity definitions with relations
+ *
+ * Entity names are derived from export keys:
+ * - const User = entity({...}) + export { User } → name = "User"
  */
 
 import { entity, t, relation, hasMany, belongsTo } from "@lens/core";
 
 // =============================================================================
-// Entities
+// Entities (name derived from variable/export key)
 // =============================================================================
 
-export const User = entity("User", {
+export const User = entity({
 	id: t.id(),
 	name: t.string(),
 	email: t.string(),
@@ -19,7 +22,7 @@ export const User = entity("User", {
 	createdAt: t.datetime().default(() => new Date()),
 });
 
-export const Post = entity("Post", {
+export const Post = entity({
 	id: t.id(),
 	title: t.string(),
 	content: t.string(),
@@ -29,7 +32,7 @@ export const Post = entity("Post", {
 	createdAt: t.datetime().default(() => new Date()),
 });
 
-export const Comment = entity("Comment", {
+export const Comment = entity({
 	id: t.id(),
 	content: t.string(),
 	postId: t.string(),

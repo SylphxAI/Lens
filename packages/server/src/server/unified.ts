@@ -281,9 +281,46 @@ class UnifiedServerImpl<
 		this.contextFactory = config.context ?? (() => ({} as TContext));
 		this.version = config.version ?? "1.0.0";
 
+		// Inject entity names from keys (if not already set)
+		for (const [name, def] of Object.entries(this.entities)) {
+			if (def && typeof def === "object" && !def._name) {
+				(def as { _name?: string })._name = name;
+			}
+		}
+
+		// Inject mutation names and auto-derive optimistic from naming convention
+		for (const [name, def] of Object.entries(this.mutations)) {
+			if (def && typeof def === "object") {
+				// Inject name
+				(def as { _name?: string })._name = name;
+
+				// Auto-derive optimistic from naming convention if not explicitly set
+				// Future: Could auto-derive from naming convention:
+				// - updateX → merge
+				// - createX / addX → create
+				// - deleteX / removeX → delete
+				if (!def._optimistic) {
+					if (name.startsWith("update")) {
+						(def as { _optimistic?: string })._optimistic = "merge";
+					} else if (name.startsWith("create") || name.startsWith("add")) {
+						(def as { _optimistic?: string })._optimistic = "create";
+					} else if (name.startsWith("delete") || name.startsWith("remove")) {
+						(def as { _optimistic?: string })._optimistic = "delete";
+					}
+				}
+			}
+		}
+
+		// Inject query names
+		for (const [name, def] of Object.entries(this.queries)) {
+			if (def && typeof def === "object") {
+				(def as { _name?: string })._name = name;
+			}
+		}
+
 		// Initialize GraphStateManager
 		this.stateManager = new GraphStateManager({
-			onEntityUnsubscribed: (entity, id) => {
+			onEntityUnsubscribed: (_entity, _id) => {
 				// Optional: cleanup when entity has no subscribers
 			},
 		});
@@ -867,13 +904,24 @@ class UnifiedServerImpl<
 
 	private getEntityNameFromOutput(output: unknown): string {
 		if (!output) return "unknown";
-		if (typeof output === "object" && output !== null && "name" in output) {
-			return (output as { name: string }).name;
+		if (typeof output === "object" && output !== null) {
+			// Check for _name (new API) or name (backward compat)
+			if ("_name" in output) {
+				return (output as { _name: string })._name;
+			}
+			if ("name" in output) {
+				return (output as { name: string }).name;
+			}
 		}
 		if (Array.isArray(output) && output.length > 0) {
 			const first = output[0];
-			if (typeof first === "object" && first !== null && "name" in first) {
-				return (first as { name: string }).name;
+			if (typeof first === "object" && first !== null) {
+				if ("_name" in first) {
+					return (first as { _name: string })._name;
+				}
+				if ("name" in first) {
+					return (first as { name: string }).name;
+				}
 			}
 		}
 		return "unknown";

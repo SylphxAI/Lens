@@ -74,10 +74,10 @@ function extractFieldName<T>(accessor: (entity: T) => unknown): string {
 const ENTITY_SYMBOL = Symbol("lens:entity");
 
 /** Entity definition with name and fields */
-export interface EntityDef<Name extends string, Fields extends EntityDefinition> {
+export interface EntityDef<Name extends string = string, Fields extends EntityDefinition = EntityDefinition> {
 	[ENTITY_SYMBOL]: true;
-	/** Entity name */
-	readonly name: Name;
+	/** Entity name (injected from export key if not provided) */
+	_name?: Name;
 	/** Entity fields (without relations) */
 	readonly fields: Fields;
 	/** Combine with additional fields (relations) */
@@ -85,60 +85,89 @@ export interface EntityDef<Name extends string, Fields extends EntityDefinition>
 	/** Create hasOne relation to this entity */
 	hasOne<Target extends EntityDef<string, EntityDefinition>>(
 		target: Target,
-	): HasOneType<Target["name"]>;
+	): HasOneType<Target["_name"] & string>;
 	/** Create hasMany relation to this entity */
 	hasMany<Target extends EntityDef<string, EntityDefinition>>(
 		target: Target,
-	): HasManyType<Target["name"]>;
+	): HasManyType<Target["_name"] & string>;
 	/** Create belongsTo relation to this entity */
 	belongsTo<Target extends EntityDef<string, EntityDefinition>>(
 		target: Target,
-	): BelongsToType<Target["name"]>;
+	): BelongsToType<Target["_name"] & string>;
 }
 
 /**
  * Define an entity with its scalar fields.
  * Relations are added separately using `.with()` method.
  *
- * @param name - Entity name (used as key in schema)
- * @param fields - Entity fields (without relations)
+ * Name is optional - if not provided, it will be injected from the export key.
  *
  * @example
  * ```typescript
- * const User = defineEntity('User', {
+ * // Recommended: name derived from export key
+ * const User = entity({
  *   id: t.id(),
  *   name: t.string(),
- *   email: t.string(),
  * });
+ *
+ * // Explicit name (backward compatible)
+ * const User = entity('User', {
+ *   id: t.id(),
+ *   name: t.string(),
+ * });
+ *
+ * // Export - key becomes the name
+ * export const entities = { User, Post };
  * ```
  */
+export function defineEntity<Fields extends EntityDefinition>(fields: Fields): EntityDef<string, Fields>;
 export function defineEntity<Name extends string, Fields extends EntityDefinition>(
 	name: Name,
+	fields: Fields,
+): EntityDef<Name, Fields>;
+export function defineEntity<Name extends string, Fields extends EntityDefinition>(
+	nameOrFields: Name | Fields,
+	maybeFields?: Fields,
+): EntityDef<Name, Fields> | EntityDef<string, Fields> {
+	// Overload 1: entity({ fields }) - no name
+	if (typeof nameOrFields === "object" && maybeFields === undefined) {
+		const fields = nameOrFields as Fields;
+		return createEntityDef(undefined, fields);
+	}
+
+	// Overload 2: entity('Name', { fields }) - with name
+	const name = nameOrFields as Name;
+	const fields = maybeFields as Fields;
+	return createEntityDef(name, fields);
+}
+
+function createEntityDef<Name extends string, Fields extends EntityDefinition>(
+	name: Name | undefined,
 	fields: Fields,
 ): EntityDef<Name, Fields> {
 	return {
 		[ENTITY_SYMBOL]: true,
-		name,
+		_name: name,
 		fields,
 		with<R extends EntityDefinition>(relations: R): Fields & R {
 			return { ...this.fields, ...relations } as Fields & R;
 		},
 		hasOne<Target extends EntityDef<string, EntityDefinition>>(
 			target: Target,
-		): HasOneType<Target["name"]> {
-			return new HasOneType(target.name);
+		): HasOneType<Target["_name"] & string> {
+			return new HasOneType(target._name ?? "");
 		},
 		hasMany<Target extends EntityDef<string, EntityDefinition>>(
 			target: Target,
-		): HasManyType<Target["name"]> {
-			return new HasManyType(target.name);
+		): HasManyType<Target["_name"] & string> {
+			return new HasManyType(target._name ?? "");
 		},
 		belongsTo<Target extends EntityDef<string, EntityDefinition>>(
 			target: Target,
-		): BelongsToType<Target["name"]> {
-			return new BelongsToType(target.name);
+		): BelongsToType<Target["_name"] & string> {
+			return new BelongsToType(target._name ?? "");
 		},
-	};
+	} as EntityDef<Name, Fields>;
 }
 
 /**
@@ -147,10 +176,13 @@ export function defineEntity<Name extends string, Fields extends EntityDefinitio
  *
  * @example
  * ```typescript
- * const User = entity('User', {
+ * // Name derived from export key (recommended)
+ * const User = entity({
  *   id: t.id(),
  *   name: t.string(),
  * });
+ *
+ * export const entities = { User };  // "User" becomes the entity name
  * ```
  */
 export const entity = defineEntity;
@@ -216,9 +248,9 @@ export interface RelationTypeWithForeignKey {
 export function hasMany<Target extends EntityDef<string, EntityDefinition>>(
 	target: Target,
 	fieldAccessor?: (entity: unknown) => unknown,
-): HasManyType<Target["name"]> & { foreignKey?: string } {
+): HasManyType<Target["_name"] & string> & { foreignKey?: string } {
 	const foreignKey = fieldAccessor ? extractFieldName(fieldAccessor) : undefined;
-	return new HasManyType(target.name, foreignKey);
+	return new HasManyType(target._name ?? "", foreignKey);
 }
 
 /**
@@ -230,9 +262,9 @@ export function hasMany<Target extends EntityDef<string, EntityDefinition>>(
 export function hasOne<Target extends EntityDef<string, EntityDefinition>>(
 	target: Target,
 	fieldAccessor?: (entity: unknown) => unknown,
-): HasOneType<Target["name"]> & { foreignKey?: string } {
+): HasOneType<Target["_name"] & string> & { foreignKey?: string } {
 	const foreignKey = fieldAccessor ? extractFieldName(fieldAccessor) : undefined;
-	return new HasOneType(target.name, foreignKey);
+	return new HasOneType(target._name ?? "", foreignKey);
 }
 
 /**
@@ -244,9 +276,9 @@ export function hasOne<Target extends EntityDef<string, EntityDefinition>>(
 export function belongsTo<Target extends EntityDef<string, EntityDefinition>>(
 	target: Target,
 	fieldAccessor?: (entity: unknown) => unknown,
-): BelongsToType<Target["name"]> & { foreignKey?: string } {
+): BelongsToType<Target["_name"] & string> & { foreignKey?: string } {
 	const foreignKey = fieldAccessor ? extractFieldName(fieldAccessor) : undefined;
-	return new BelongsToType(target.name, foreignKey);
+	return new BelongsToType(target._name ?? "", foreignKey);
 }
 
 // =============================================================================
@@ -258,7 +290,7 @@ export interface RelationDef<
 	E extends EntityDef<string, EntityDefinition>,
 	R extends Record<string, RelationTypeWithForeignKey>,
 > {
-	entityName: E["name"];
+	entity: E;
 	relations: R;
 }
 
@@ -288,7 +320,7 @@ export function relation<
 	R extends Record<string, RelationTypeWithForeignKey>,
 >(entity: E, relations: R): RelationDef<E, R> {
 	return {
-		entityName: entity.name,
+		entity,
 		relations,
 	};
 }

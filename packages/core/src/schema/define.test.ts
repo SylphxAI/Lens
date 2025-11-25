@@ -21,7 +21,7 @@ describe("defineEntity", () => {
 			email: t.string(),
 		});
 
-		expect(User.name).toBe("User");
+		expect(User._name).toBe("User");
 		expect(User.fields.id).toBeDefined();
 		expect(User.fields.name).toBeDefined();
 		expect(User.fields.email).toBeDefined();
@@ -249,7 +249,7 @@ describe("entity() - simplified API", () => {
 			name: t.string(),
 		});
 
-		expect(User.name).toBe("User");
+		expect(User._name).toBe("User");
 		expect(User.fields.id).toBeDefined();
 		expect(User.fields.name).toBeDefined();
 	});
@@ -380,12 +380,12 @@ describe("relation() - separate relation definition", () => {
 			author: belongsToNew(User, (e: any) => e.authorId),
 		});
 
-		expect(userRelations.entityName).toBe("User");
+		expect(userRelations.entity._name).toBe("User");
 		expect(userRelations.relations.posts._type).toBe("hasMany");
 		expect(userRelations.relations.posts.target).toBe("Post");
 		expect(userRelations.relations.posts.foreignKey).toBe("authorId");
 
-		expect(postRelations.entityName).toBe("Post");
+		expect(postRelations.entity._name).toBe("Post");
 		expect(postRelations.relations.author._type).toBe("belongsTo");
 		expect(postRelations.relations.author.foreignKey).toBe("authorId");
 	});
@@ -421,7 +421,7 @@ describe("relation() - separate relation definition", () => {
 		];
 
 		expect(relations).toHaveLength(2);
-		expect(relations[0].entityName).toBe("User");
-		expect(relations[1].entityName).toBe("Post");
+		expect(relations[0].entity._name).toBe("User");
+		expect(relations[1].entity._name).toBe("Post");
 	});
 });
