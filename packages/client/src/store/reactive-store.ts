@@ -1,11 +1,11 @@
 /**
- * @sylphx/client - Reactive Store
+ * @sylphx/lens-client - Reactive Store
  *
  * Manages entity signals, caching, and optimistic updates.
  */
 
-import type { Update, EntityKey } from "@sylphx/core";
-import { applyUpdate, makeEntityKey } from "@sylphx/core";
+import type { Update, EntityKey } from "@sylphx/lens-core";
+import { applyUpdate, makeEntityKey } from "@sylphx/lens-core";
 import { signal, type WritableSignal, type Signal, batch } from "../signals/signal";
 
 // Re-export for convenience
@@ -659,7 +659,7 @@ export class ReactiveStore {
 	// ===========================================================================
 
 	/**
-	 * Create cache key (delegates to @sylphx/core)
+	 * Create cache key (delegates to @sylphx/lens-core)
 	 */
 	private makeKey(entityName: string, entityId: string): EntityKey {
 		return makeEntityKey(entityName, entityId);

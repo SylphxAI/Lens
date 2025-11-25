@@ -1,5 +1,5 @@
 /**
- * @sylphx/client - Shared Request Deduplication
+ * @sylphx/lens-client - Shared Request Deduplication
  *
  * Prevents duplicate concurrent requests for the same key.
  */

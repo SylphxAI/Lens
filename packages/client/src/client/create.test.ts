@@ -1,12 +1,12 @@
 /**
- * @sylphx/client - Lens Client Tests
+ * @sylphx/lens-client - Lens Client Tests
  *
  * Tests for Lens client.
  */
 
 import { describe, it, expect, beforeEach } from "bun:test";
 import { z } from "zod";
-import { entity, t, query, mutation, type Update } from "@sylphx/core";
+import { entity, t, query, mutation, type Update } from "@sylphx/lens-core";
 import { createClient, type Transport, type QueriesMap, type MutationsMap } from "./create";
 
 // =============================================================================

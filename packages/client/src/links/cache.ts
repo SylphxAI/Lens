@@ -1,5 +1,5 @@
 /**
- * @sylphx/client - Cache Link
+ * @sylphx/lens-client - Cache Link
  *
  * In-memory cache for query results.
  */

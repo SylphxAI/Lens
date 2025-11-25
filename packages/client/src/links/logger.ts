@@ -1,5 +1,5 @@
 /**
- * @sylphx/client - Logger Link
+ * @sylphx/lens-client - Logger Link
  *
  * Logs all operations for debugging.
  */

@@ -1,5 +1,5 @@
 /**
- * @sylphx/server - State Management
+ * @sylphx/lens-server - State Management
  *
  * Server-side state management for reactive data sync.
  */

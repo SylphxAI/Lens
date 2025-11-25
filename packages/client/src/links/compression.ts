@@ -1,5 +1,5 @@
 /**
- * @sylphx/client - Compression Link
+ * @sylphx/lens-client - Compression Link
  *
  * Middleware that compresses request/response bodies using gzip or brotli.
  * Reduces bandwidth usage for large payloads.
@@ -52,7 +52,7 @@ export interface CompressionLinkOptions {
  *
  * @example
  * ```typescript
- * import { createClient, compressionLink, httpLink } from '@sylphx/client';
+ * import { createClient, compressionLink, httpLink } from '@sylphx/lens-client';
  *
  * const client = createClient({
  *   links: [

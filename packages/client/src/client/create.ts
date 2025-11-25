@@ -1,5 +1,5 @@
 /**
- * @sylphx/client - Lens Client
+ * @sylphx/lens-client - Lens Client
  *
  * Primary client for Lens API framework:
  * - Flat namespace (client.whoami() instead of client.query.whoami())
@@ -9,8 +9,8 @@
  * - Request batching
  */
 
-import type { QueryDef, MutationDef, Update, OptimisticDSL } from "@sylphx/core";
-import { applyUpdate, isOptimisticDSL, normalizeOptimisticDSL } from "@sylphx/core";
+import type { QueryDef, MutationDef, Update, OptimisticDSL } from "@sylphx/lens-core";
+import { applyUpdate, isOptimisticDSL, normalizeOptimisticDSL } from "@sylphx/lens-core";
 import { ReactiveStore, type EntityState } from "../store/reactive-store";
 import { signal, computed, type Signal, type WritableSignal } from "../signals/signal";
 import {

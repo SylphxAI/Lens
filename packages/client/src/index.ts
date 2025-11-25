@@ -1,5 +1,5 @@
 /**
- * @sylphx/client
+ * @sylphx/lens-client
  *
  * Reactive client for Lens API framework.
  * Signals, store, and Links for real-time data access.

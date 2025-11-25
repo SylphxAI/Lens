@@ -1,12 +1,12 @@
 /**
- * @sylphx/core - Operations API
+ * @sylphx/lens-core - Operations API
  *
  * Builder pattern for defining queries and mutations.
  * Inspired by tRPC but with entity-aware features.
  *
  * @example
  * ```typescript
- * import { query, mutation, tempId } from '@sylphx/core';
+ * import { query, mutation, tempId } from '@sylphx/lens-core';
  * import { z } from 'zod';
  *
  * // Query without input

@@ -1,5 +1,5 @@
 /**
- * @sylphx/svelte
+ * @sylphx/lens-svelte
  *
  * Svelte stores for Lens API framework.
  * Provides reactive stores that integrate with Svelte's reactivity system.

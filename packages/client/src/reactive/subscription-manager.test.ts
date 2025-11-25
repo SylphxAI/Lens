@@ -1,5 +1,5 @@
 /**
- * @sylphx/client - SubscriptionManager Tests
+ * @sylphx/lens-client - SubscriptionManager Tests
  */
 
 import { describe, it, expect, mock, beforeEach } from "bun:test";

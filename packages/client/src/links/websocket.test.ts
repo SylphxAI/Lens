@@ -1,5 +1,5 @@
 /**
- * @sylphx/client - WebSocket Transport Tests
+ * @sylphx/lens-client - WebSocket Transport Tests
  *
  * Tests for connection recovery and subscription resync.
  */

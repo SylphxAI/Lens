@@ -1,12 +1,12 @@
 /**
- * @sylphx/client - Links
+ * @sylphx/lens-client - Links
  *
  * Composable middleware for request/response processing.
  * Inspired by tRPC's link system.
  *
  * @example
  * ```typescript
- * import { createClient, loggerLink, retryLink, cacheLink, httpLink } from "@sylphx/client";
+ * import { createClient, loggerLink, retryLink, cacheLink, httpLink } from "@sylphx/lens-client";
  *
  * const client = createClient({
  *   schema,

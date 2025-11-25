@@ -1,12 +1,12 @@
 /**
- * @sylphx/svelte - Stores
+ * @sylphx/lens-svelte - Stores
  *
  * Svelte stores that wrap Lens QueryResult for reactive data access.
  * Integrates with Svelte's store contract (subscribe method).
  */
 
 import { readable, writable, type Readable, type Writable } from "svelte/store";
-import type { QueryResult, MutationResult } from "@sylphx/client";
+import type { QueryResult, MutationResult } from "@sylphx/lens-client";
 
 // =============================================================================
 // Types
@@ -54,7 +54,7 @@ export interface QueryStoreOptions {
  * @example
  * ```svelte
  * <script lang="ts">
- *   import { query } from '@sylphx/svelte';
+ *   import { query } from '@sylphx/lens-svelte';
  *   import { client } from './client';
  *
  *   const userStore = query(client.queries.getUser({ id: '123' }));
@@ -141,7 +141,7 @@ export type MutationFn<TInput, TOutput> = (
  * @example
  * ```svelte
  * <script lang="ts">
- *   import { mutation } from '@sylphx/svelte';
+ *   import { mutation } from '@sylphx/lens-svelte';
  *   import { client } from './client';
  *
  *   const createPost = mutation(client.mutations.createPost);
@@ -214,7 +214,7 @@ export type LazyQueryStore<T> = Readable<QueryStoreValue<T>> & {
  * @example
  * ```svelte
  * <script lang="ts">
- *   import { lazyQuery } from '@sylphx/svelte';
+ *   import { lazyQuery } from '@sylphx/lens-svelte';
  *   import { client } from './client';
  *
  *   let searchTerm = '';

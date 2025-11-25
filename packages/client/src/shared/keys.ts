@@ -1,8 +1,8 @@
 /**
- * @sylphx/client - Shared Key Utilities
+ * @sylphx/lens-client - Shared Key Utilities
  *
  * Key generation for queries.
- * Note: Entity keys are provided by @sylphx/core.
+ * Note: Entity keys are provided by @sylphx/lens-core.
  */
 
 // =============================================================================

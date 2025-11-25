@@ -1,11 +1,11 @@
 /**
- * @sylphx/svelte - Context
+ * @sylphx/lens-svelte - Context
  *
  * Svelte context for Lens client injection.
  */
 
 import { getContext, setContext } from "svelte";
-import type { LensClient } from "@sylphx/client";
+import type { LensClient } from "@sylphx/lens-client";
 
 // =============================================================================
 // Client Context
@@ -22,8 +22,8 @@ export const LENS_CLIENT_KEY = Symbol("lens-client");
  * @example
  * ```svelte
  * <script lang="ts">
- *   import { provideLensClient } from '@sylphx/svelte';
- *   import { createClient, httpLink } from '@sylphx/client';
+ *   import { provideLensClient } from '@sylphx/lens-svelte';
+ *   import { createClient, httpLink } from '@sylphx/lens-client';
  *   import type { AppRouter } from './server';
  *
  *   const client = createClient<AppRouter>({
@@ -46,7 +46,7 @@ export function provideLensClient(client: LensClient<any, any>): void {
  * @example
  * ```svelte
  * <script lang="ts">
- *   import { useLensClient } from '@sylphx/svelte';
+ *   import { useLensClient } from '@sylphx/lens-svelte';
  *   import type { AppRouter } from './server';
  *
  *   const client = useLensClient<AppRouter>();

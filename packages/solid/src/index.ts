@@ -1,5 +1,5 @@
 /**
- * @sylphx/solid
+ * @sylphx/lens-solid
  *
  * SolidJS bindings for Lens API framework.
  * Reactive primitives that integrate with SolidJS fine-grained reactivity.

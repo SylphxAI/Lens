@@ -1,5 +1,5 @@
 /**
- * @sylphx/server - Lens Server
+ * @sylphx/lens-server - Lens Server
  *
  * Core server implementation:
  * - Free Operations (query/mutation definitions)
@@ -26,7 +26,7 @@ import {
 	createContext,
 	runWithContext,
 	createUpdate,
-} from "@sylphx/core";
+} from "@sylphx/lens-core";
 
 /** Selection object type for nested field selection */
 export interface SelectionObject {

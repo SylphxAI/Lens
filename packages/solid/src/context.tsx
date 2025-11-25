@@ -1,11 +1,11 @@
 /**
- * @sylphx/solid - Context
+ * @sylphx/lens-solid - Context
  *
  * SolidJS context for Lens client injection.
  */
 
 import { createContext, useContext, type ParentComponent } from "solid-js";
-import type { LensClient } from "@sylphx/client";
+import type { LensClient } from "@sylphx/lens-client";
 
 // =============================================================================
 // Context
@@ -29,8 +29,8 @@ export interface LensProviderProps {
  *
  * @example
  * ```tsx
- * import { createClient, httpLink } from '@sylphx/client';
- * import { LensProvider } from '@sylphx/solid';
+ * import { createClient, httpLink } from '@sylphx/lens-client';
+ * import { LensProvider } from '@sylphx/lens-solid';
  * import type { AppRouter } from './server';
  *
  * const client = createClient<AppRouter>({

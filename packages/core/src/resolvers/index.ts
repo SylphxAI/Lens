@@ -1,12 +1,12 @@
 /**
- * @sylphx/core - Entity Resolvers API
+ * @sylphx/lens-core - Entity Resolvers API
  *
  * Define resolvers for nested data handling.
  * These resolvers are reused across ALL operations.
  *
  * @example
  * ```typescript
- * import { entityResolvers } from '@sylphx/core';
+ * import { entityResolvers } from '@sylphx/lens-core';
  *
  * export const resolvers = entityResolvers({
  *   User: {

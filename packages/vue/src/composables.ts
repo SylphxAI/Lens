@@ -1,12 +1,12 @@
 /**
- * @sylphx/vue - Composables
+ * @sylphx/lens-vue - Composables
  *
  * Vue composables for Lens queries and mutations.
  * Uses Vue's Composition API for reactive state management.
  */
 
 import { ref, shallowRef, onUnmounted, watch, type Ref, type ShallowRef } from "vue";
-import type { QueryResult, MutationResult } from "@sylphx/client";
+import type { QueryResult, MutationResult } from "@sylphx/lens-client";
 
 // =============================================================================
 // Types
@@ -74,7 +74,7 @@ export type MutationFn<TInput, TOutput> = (
  * @example
  * ```vue
  * <script setup lang="ts">
- * import { useQuery } from '@sylphx/vue';
+ * import { useQuery } from '@sylphx/lens-vue';
  *
  * const props = defineProps<{ userId: string }>();
  * const { data, loading, error } = useQuery(
@@ -183,7 +183,7 @@ export function useQuery<T>(
  * @example
  * ```vue
  * <script setup lang="ts">
- * import { useMutation } from '@sylphx/vue';
+ * import { useMutation } from '@sylphx/lens-vue';
  *
  * const { mutate, loading, error } = useMutation(client.mutations.createPost);
  *
@@ -255,7 +255,7 @@ export function useMutation<TInput, TOutput>(
  * ```vue
  * <script setup lang="ts">
  * import { ref } from 'vue';
- * import { useLazyQuery } from '@sylphx/vue';
+ * import { useLazyQuery } from '@sylphx/lens-vue';
  *
  * const searchTerm = ref('');
  * const { data, loading, execute } = useLazyQuery(

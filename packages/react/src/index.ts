@@ -1,5 +1,5 @@
 /**
- * @sylphx/react
+ * @sylphx/lens-react
  *
  * React bindings for Lens API framework.
  * Hooks and context provider for reactive data access.

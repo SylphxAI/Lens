@@ -4,7 +4,7 @@
 
 import { describe, expect, test, mock, beforeEach } from "bun:test";
 import { get } from "svelte/store";
-import { signal } from "@sylphx/client";
+import { signal } from "@sylphx/lens-client";
 import { entity, list } from "./stores";
 
 // No context mocking needed - we pass client directly to store functions

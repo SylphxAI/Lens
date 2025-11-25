@@ -1,5 +1,5 @@
 /**
- * @sylphx/client - Reactive Integration Tests
+ * @sylphx/lens-client - Reactive Integration Tests
  *
  * End-to-end tests for the reactive architecture.
  * Tests: client → subscription manager → server (GraphStateManager) → push update → client
@@ -13,7 +13,7 @@ import {
 	type UpdateMessage,
 	type ServerMessage,
 } from "./index";
-import { GraphStateManager, type StateClient } from "@sylphx/server";
+import { GraphStateManager, type StateClient } from "@sylphx/lens-server";
 
 describe("Reactive Integration", () => {
 	describe("Client ↔ Server Subscription Flow", () => {

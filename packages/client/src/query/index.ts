@@ -1,5 +1,5 @@
 /**
- * @sylphx/client - Query Module
+ * @sylphx/lens-client - Query Module
  *
  * QueryResult - API that is both Thenable (can await) and Subscribable (can subscribe).
  * Enables direct server communication with optional streaming.

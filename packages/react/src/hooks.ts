@@ -1,12 +1,12 @@
 /**
- * @sylphx/react - Hooks
+ * @sylphx/lens-react - Hooks
  *
  * React hooks for Lens queries and mutations.
- * Works with QueryResult from @sylphx/client.
+ * Works with QueryResult from @sylphx/lens-client.
  *
  * @example
  * ```tsx
- * import { useQuery, useMutation } from '@sylphx/react';
+ * import { useQuery, useMutation } from '@sylphx/lens-react';
  *
  * function UserProfile({ userId }: { userId: string }) {
  *   const { data: user, loading } = useQuery(api.getUser({ id: userId }));
@@ -23,7 +23,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import type { QueryResult, MutationResult } from "@sylphx/client";
+import type { QueryResult, MutationResult } from "@sylphx/lens-client";
 
 // =============================================================================
 // Types

@@ -1,11 +1,11 @@
 /**
- * @sylphx/vue - Context
+ * @sylphx/lens-vue - Context
  *
  * Vue provide/inject for Lens client.
  */
 
 import { inject, provide, type InjectionKey } from "vue";
-import type { LensClient } from "@sylphx/client";
+import type { LensClient } from "@sylphx/lens-client";
 
 // =============================================================================
 // Injection Key
@@ -25,8 +25,8 @@ export const LensClientKey: InjectionKey<LensClient<any, any>> =
  * @example
  * ```vue
  * <script setup lang="ts">
- * import { createClient, httpLink } from '@sylphx/client';
- * import { provideLensClient } from '@sylphx/vue';
+ * import { createClient, httpLink } from '@sylphx/lens-client';
+ * import { provideLensClient } from '@sylphx/lens-vue';
  * import type { AppRouter } from './server';
  *
  * const client = createClient<AppRouter>({
@@ -58,7 +58,7 @@ export function provideLensClient(client: LensClient<any, any>): void {
  * @example
  * ```vue
  * <script setup lang="ts">
- * import { useLensClient } from '@sylphx/vue';
+ * import { useLensClient } from '@sylphx/lens-vue';
  * import type { AppRouter } from './server';
  *
  * const client = useLensClient<AppRouter>();

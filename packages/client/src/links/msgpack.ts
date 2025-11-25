@@ -1,5 +1,5 @@
 /**
- * @sylphx/client - MessagePack Serialization Link
+ * @sylphx/lens-client - MessagePack Serialization Link
  *
  * Middleware that uses MessagePack for binary serialization instead of JSON.
  * Provides smaller payloads and better performance than JSON, especially for
@@ -43,7 +43,7 @@ export interface MsgpackLinkOptions {
  *
  * @example
  * ```typescript
- * import { createClient, msgpackLink, httpLink } from '@sylphx/client';
+ * import { createClient, msgpackLink, httpLink } from '@sylphx/lens-client';
  *
  * const client = createClient({
  *   links: [

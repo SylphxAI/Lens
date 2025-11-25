@@ -1,5 +1,5 @@
 /**
- * @sylphx/core - Update Strategies
+ * @sylphx/lens-core - Update Strategies
  *
  * Efficient transfer strategies for different data types.
  * Automatic selection based on data characteristics.
