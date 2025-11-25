@@ -360,7 +360,38 @@ export class WebSocketUnifiedTransport implements UnifiedTransport {
 				this.sendMessage({ type: "unsubscribe", id });
 			},
 			updateFields: (add?: string[], remove?: string[]) => {
-				if (sub.fields === "*") return;
+				// Handle 最大原則 (Maximum Principle) transitions:
+				// 1. Upgrade: specific fields → "*" (add contains ["*"])
+				// 2. Downgrade: "*" → specific fields (remove contains ["*"], add contains new fields)
+
+				// Check for upgrade to full subscription
+				if (add?.includes("*")) {
+					sub.fields = "*";
+					this.sendMessage({
+						type: "updateFields",
+						id,
+						addFields: ["*"],
+						removeFields: undefined,
+					});
+					return;
+				}
+
+				// Check for downgrade from full subscription
+				if (sub.fields === "*" && remove?.includes("*")) {
+					// Switching from "*" to specific fields
+					// The 'add' array contains the fields we want to subscribe to
+					sub.fields = add ? [...add] : [];
+					this.sendMessage({
+						type: "updateFields",
+						id,
+						// Tell server: switch from * to these specific fields
+						setFields: sub.fields,  // New message type for replacing all fields
+					});
+					return;
+				}
+
+				// Normal field add/remove (when not subscribed to "*")
+				if (sub.fields === "*") return;  // Already subscribed to all, no-op for regular adds
 
 				const fieldsSet = new Set(sub.fields);
 				add?.forEach((f) => fieldsSet.add(f));

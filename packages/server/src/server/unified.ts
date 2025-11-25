@@ -121,6 +121,8 @@ interface UpdateFieldsMessage {
 	id: string;
 	addFields?: string[];
 	removeFields?: string[];
+	/** Replace all fields with these (for 最大原則 downgrade from "*" to specific fields) */
+	setFields?: string[];
 }
 
 /** Unsubscribe */
@@ -508,12 +510,36 @@ class UnifiedServerImpl<TContext extends ContextValue> implements UnifiedServer 
 		const sub = conn.subscriptions.get(message.id);
 		if (!sub) return;
 
-		// Update fields
-		if (sub.fields === "*") {
-			// Already subscribing to all fields
+		// Handle 最大原則 (Maximum Principle) transitions:
+
+		// 1. Upgrade to full subscription ("*")
+		if (message.addFields?.includes("*")) {
+			sub.fields = "*";
+			// Update GraphStateManager subscriptions for all tracked entities
+			for (const entityKey of sub.entityKeys) {
+				const [entity, id] = entityKey.split(":");
+				this.stateManager.updateSubscription(conn.id, entity, id, "*");
+			}
 			return;
 		}
 
+		// 2. Downgrade from "*" to specific fields (setFields)
+		if (message.setFields !== undefined) {
+			sub.fields = message.setFields;
+			// Update GraphStateManager subscriptions for all tracked entities
+			for (const entityKey of sub.entityKeys) {
+				const [entity, id] = entityKey.split(":");
+				this.stateManager.updateSubscription(conn.id, entity, id, sub.fields);
+			}
+			return;
+		}
+
+		// 3. Already subscribing to all fields - no-op for regular add/remove
+		if (sub.fields === "*") {
+			return;
+		}
+
+		// 4. Normal field add/remove
 		const fields = new Set(sub.fields);
 
 		if (message.addFields) {

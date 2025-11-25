@@ -407,6 +407,18 @@ class UnifiedClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 			sub.fullRefs--;
 		}
 
+		// 最大原則 (Maximum Principle):
+		// When full subscription disposes but field subscriptions remain,
+		// reconfigure transport from "*" to specific fields only
+		if (sub.fullRefs === 0 && sub.fieldRefs.size > 0 && sub.transportSub) {
+			// Get the remaining subscribed fields
+			const remainingFields = Array.from(sub.fields);
+
+			// Tell transport to switch from "*" to specific fields
+			// This is a "downgrade" - we no longer need all fields
+			sub.transportSub.updateFields(remainingFields, ["*"]);
+		}
+
 		this.maybeCleanupSubscription(sub);
 	}
 
