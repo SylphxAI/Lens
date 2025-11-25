@@ -35,12 +35,12 @@ export interface LensProviderProps {
  *
  * @example
  * ```tsx
- * import { createClient, httpLink } from '@sylphx/lens-client';
+ * import { createClient, http } from '@sylphx/lens-client';
  * import { LensProvider } from '@sylphx/lens-react';
  * import type { AppRouter } from './server';
  *
  * const client = createClient<AppRouter>({
- *   links: [httpLink({ url: '/api' })],
+ *   transport: http({ url: '/api' }),
  * });
  *
  * function App() {
@@ -69,7 +69,7 @@ export function LensProvider({ client, children }: LensProviderProps) {
  * ```tsx
  * function UserProfile({ userId }: { userId: string }) {
  *   const client = useLensClient<AppRouter>();
- *   const { data } = useQuery(client.queries.getUser({ id: userId }));
+ *   const { data } = useQuery(client.user.get({ id: userId }));
  *   return <h1>{data?.name}</h1>;
  * }
  * ```

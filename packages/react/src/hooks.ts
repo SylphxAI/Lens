@@ -6,16 +6,18 @@
  *
  * @example
  * ```tsx
- * import { useQuery, useMutation } from '@sylphx/lens-react';
+ * import { useLensClient, useQuery, useMutation } from '@sylphx/lens-react';
  *
  * function UserProfile({ userId }: { userId: string }) {
- *   const { data: user, loading } = useQuery(api.getUser({ id: userId }));
+ *   const client = useLensClient();
+ *   const { data: user, loading } = useQuery(client.user.get({ id: userId }));
  *   if (loading) return <Spinner />;
  *   return <h1>{user?.name}</h1>;
  * }
  *
  * function CreatePost() {
- *   const { mutate, loading } = useMutation(api.createPost);
+ *   const client = useLensClient();
+ *   const { mutate, loading } = useMutation(client.post.create);
  *   const handleCreate = () => mutate({ title: 'Hello' });
  *   return <button onClick={handleCreate} disabled={loading}>Create</button>;
  * }
@@ -75,7 +77,8 @@ export interface UseQueryOptions {
  * ```tsx
  * // Basic usage
  * function UserProfile({ userId }: { userId: string }) {
- *   const { data: user, loading, error } = useQuery(api.getUser({ id: userId }));
+ *   const client = useLensClient();
+ *   const { data: user, loading, error } = useQuery(client.user.get({ id: userId }));
  *
  *   if (loading) return <Spinner />;
  *   if (error) return <Error message={error.message} />;
@@ -86,8 +89,9 @@ export interface UseQueryOptions {
  *
  * // With select (type-safe field selection)
  * function UserName({ userId }: { userId: string }) {
+ *   const client = useLensClient();
  *   const { data } = useQuery(
- *     api.getUser({ id: userId }).select({ name: true })
+ *     client.user.get({ id: userId }).select({ name: true })
  *   );
  *   // data is { name: string } | null
  *   return <span>{data?.name}</span>;
@@ -95,7 +99,8 @@ export interface UseQueryOptions {
  *
  * // Skip query conditionally
  * function ConditionalQuery({ shouldFetch }: { shouldFetch: boolean }) {
- *   const { data } = useQuery(api.getUsers(), { skip: !shouldFetch });
+ *   const client = useLensClient();
+ *   const { data } = useQuery(client.user.list(), { skip: !shouldFetch });
  * }
  * ```
  */
@@ -190,7 +195,8 @@ export type MutationFn<TInput, TOutput> = (input: TInput) => Promise<MutationRes
  * @example
  * ```tsx
  * function CreatePost() {
- *   const { mutate, loading, error, data } = useMutation(api.createPost);
+ *   const client = useLensClient();
+ *   const { mutate, loading, error, data } = useMutation(client.post.create);
  *
  *   const handleSubmit = async (formData: FormData) => {
  *     try {
@@ -216,7 +222,8 @@ export type MutationFn<TInput, TOutput> = (input: TInput) => Promise<MutationRes
  *
  * // With optimistic updates
  * function UpdatePost({ postId }: { postId: string }) {
- *   const { mutate } = useMutation(api.updatePost);
+ *   const client = useLensClient();
+ *   const { mutate } = useMutation(client.post.update);
  *
  *   const handleUpdate = async (title: string) => {
  *     const result = await mutate({ id: postId, title });
@@ -307,9 +314,10 @@ export interface UseLazyQueryResult<T> {
  * @example
  * ```tsx
  * function SearchUsers() {
+ *   const client = useLensClient();
  *   const [searchTerm, setSearchTerm] = useState('');
  *   const { execute, data, loading } = useLazyQuery(
- *     api.searchUsers({ query: searchTerm })
+ *     client.user.search({ query: searchTerm })
  *   );
  *
  *   const handleSearch = async () => {

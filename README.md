@@ -535,7 +535,13 @@ const metricsPlugin = (): Plugin => ({
 ### React
 
 ```tsx
-import { LensProvider, useLensClient } from '@sylphx/lens-react'
+import { createClient, http } from '@sylphx/lens-client'
+import { LensProvider, useLensClient, useQuery } from '@sylphx/lens-react'
+import type { AppRouter } from './server'
+
+const client = createClient<AppRouter>({
+  transport: http({ url: '/api' }),
+})
 
 function App() {
   return (
@@ -557,7 +563,14 @@ function UserProfile() {
 ### SolidJS
 
 ```tsx
+import { createClient, http } from '@sylphx/lens-client'
 import { LensProvider, useLensClient } from '@sylphx/lens-solid'
+import { Show, createQuery } from 'solid-js'
+import type { AppRouter } from './server'
+
+const client = createClient<AppRouter>({
+  transport: http({ url: '/api' }),
+})
 
 function App() {
   return (
@@ -582,8 +595,30 @@ function UserProfile() {
 ### Vue
 
 ```vue
+<!-- App.vue -->
 <script setup lang="ts">
-import { provideLensClient, useLensClient, useQuery } from '@sylphx/lens-vue'
+import { createClient, http } from '@sylphx/lens-client'
+import { provideLensClient } from '@sylphx/lens-vue'
+import type { AppRouter } from './server'
+import UserProfile from './UserProfile.vue'
+
+const client = createClient<AppRouter>({
+  transport: http({ url: '/api' }),
+})
+
+provideLensClient(client)
+</script>
+
+<template>
+  <UserProfile />
+</template>
+```
+
+```vue
+<!-- UserProfile.vue -->
+<script setup lang="ts">
+import { useLensClient, useQuery } from '@sylphx/lens-vue'
+import type { AppRouter } from './server'
 
 const client = useLensClient<AppRouter>()
 const { data, loading } = useQuery(() => client.user.me())
@@ -598,8 +633,28 @@ const { data, loading } = useQuery(() => client.user.me())
 ### Svelte
 
 ```svelte
+<!-- App.svelte -->
 <script lang="ts">
-  import { provideLensClient, useLensClient, query } from '@sylphx/lens-svelte'
+  import { createClient, http } from '@sylphx/lens-client'
+  import { provideLensClient } from '@sylphx/lens-svelte'
+  import type { AppRouter } from './server'
+  import UserProfile from './UserProfile.svelte'
+
+  const client = createClient<AppRouter>({
+    transport: http({ url: '/api' }),
+  })
+
+  provideLensClient(client)
+</script>
+
+<UserProfile />
+```
+
+```svelte
+<!-- UserProfile.svelte -->
+<script lang="ts">
+  import { useLensClient, query } from '@sylphx/lens-svelte'
+  import type { AppRouter } from './server'
 
   const client = useLensClient<AppRouter>()
   const user = query(() => client.user.me())
