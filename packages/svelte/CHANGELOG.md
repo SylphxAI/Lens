@@ -1,5 +1,34 @@
 # @sylphx/lens-svelte
 
+## 1.1.2
+
+### Patch Changes
+
+- Architecture cleanup: remove unnecessary dependencies and optimize bundle sizes
+
+  **Breaking Changes:**
+
+  - Removed `client.$store` property (ReactiveStore no longer exposed via client instance)
+
+  **Dependency Cleanup:**
+
+  - React: removed @preact/signals-react dependency (-49KB bundle size!)
+  - React/Vue/Svelte: removed unused @sylphx/lens-core dependency
+  - Client: moved @preact/signals-core to optional peerDependencies
+
+  **Bundle Size Improvements:**
+
+  - React: 158KB → 109KB (-31% reduction)
+
+  **Internal Changes:**
+
+  - Removed ReactiveStore from ClientImpl (still exported for advanced use)
+  - Removed QueryResult signal/loading/error properties (use subscribe() instead)
+  - Framework adapters now only depend on lens-client (consistent with SolidJS)
+
+- Updated dependencies
+  - @sylphx/lens-client@1.1.2
+
 ## 1.1.1
 
 ### Patch Changes
