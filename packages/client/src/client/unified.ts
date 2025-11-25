@@ -750,7 +750,7 @@ class UnifiedClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 
 	/**
 	 * Apply optimistic update from mutation to affected subscriptions
-	 * Finds subscriptions by matching entity ID in optimistic data
+	 * Handles: single entity, array of entities, multi-type returns
 	 */
 	private applyOptimisticFromMutation(
 		_operation: string,
@@ -762,26 +762,35 @@ class UnifiedClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 		// Track all affected subscriptions for rollback
 		const affectedSubs: Array<{ key: string; previousData: unknown }> = [];
 
-		// If optimistic data has an ID, find subscriptions with matching entity
-		const dataId = this.extractId(optimisticData);
+		// Extract all entities from optimistic data (handles nested structures)
+		const entities = this.extractEntities(optimisticData);
 
-		for (const [key, sub] of this.subscriptions) {
-			const currentData = sub.data.value;
-			const currentId = this.extractId(currentData);
+		// Apply each entity to matching subscriptions
+		for (const entity of entities) {
+			const entityId = this.extractId(entity);
+			if (!entityId) continue;
 
-			// Match by ID
-			if (dataId && currentId === dataId) {
-				affectedSubs.push({ key, previousData: currentData });
+			for (const [key, sub] of this.subscriptions) {
+				const currentData = sub.data.value;
 
-				// Merge optimistic data
-				const merged = currentData && typeof currentData === "object"
-					? { ...currentData, ...(optimisticData as object) }
-					: optimisticData;
-				sub.data.value = merged;
+				// Check if subscription data matches this entity
+				if (this.matchesEntity(currentData, entityId)) {
+					// Only record once per subscription
+					if (!affectedSubs.some((s) => s.key === key)) {
+						affectedSubs.push({ key, previousData: currentData });
+					}
 
-				// Notify callbacks
-				for (const callback of sub.callbacks) {
-					callback(merged);
+					// Merge optimistic data into current data
+					const merged =
+						currentData && typeof currentData === "object"
+							? { ...currentData, ...(entity as object) }
+							: entity;
+					sub.data.value = merged;
+
+					// Notify callbacks
+					for (const callback of sub.callbacks) {
+						callback(merged);
+					}
 				}
 			}
 		}
@@ -798,6 +807,43 @@ class UnifiedClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 	}
 
 	/**
+	 * Extract all entities from optimistic data
+	 * Handles: { id } | [{ id }] | { users: [{ id }], posts: [{ id }] }
+	 */
+	private extractEntities(data: unknown): unknown[] {
+		if (!data || typeof data !== "object") return [];
+
+		// Single entity with ID
+		if (this.extractId(data)) {
+			return [data];
+		}
+
+		// Array of entities
+		if (Array.isArray(data)) {
+			return data.filter((item) => this.extractId(item));
+		}
+
+		// Multi-type return: { users: [...], posts: [...] }
+		const entities: unknown[] = [];
+		for (const value of Object.values(data as Record<string, unknown>)) {
+			if (Array.isArray(value)) {
+				entities.push(...value.filter((item) => this.extractId(item)));
+			} else if (this.extractId(value)) {
+				entities.push(value);
+			}
+		}
+		return entities;
+	}
+
+	/**
+	 * Check if subscription data matches entity ID
+	 */
+	private matchesEntity(data: unknown, entityId: string): boolean {
+		const dataId = this.extractId(data);
+		return dataId === entityId;
+	}
+
+	/**
 	 * Extract ID from entity data
 	 */
 	private extractId(data: unknown): string | undefined {
@@ -809,21 +855,24 @@ class UnifiedClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 
 	/**
 	 * Confirm optimistic update with server data
+	 * Handles multi-entity server responses
 	 */
 	private confirmOptimistic(optId: string, serverData?: unknown): void {
 		const entry = this.optimisticUpdates.get(optId);
 		if (!entry) return;
 
-		// Update affected subscriptions with server data
+		// Update affected subscriptions with authoritative server data
 		if (serverData !== undefined) {
-			const serverId = this.extractId(serverData);
-			if (serverId) {
+			const entities = this.extractEntities(serverData);
+			for (const entity of entities) {
+				const entityId = this.extractId(entity);
+				if (!entityId) continue;
+
 				for (const [_key, sub] of this.subscriptions) {
-					const currentId = this.extractId(sub.data.value);
-					if (currentId === serverId) {
-						sub.data.value = serverData;
+					if (this.matchesEntity(sub.data.value, entityId)) {
+						sub.data.value = entity;
 						for (const callback of sub.callbacks) {
-							callback(serverData);
+							callback(entity);
 						}
 					}
 				}
