@@ -213,3 +213,13 @@ export {
 	type InferInput as UnifiedInferInput,
 	type InferOutput as UnifiedInferOutput,
 } from "./client/unified";
+
+export {
+	// WebSocket Transport for Unified Client
+	WebSocketUnifiedTransport,
+	createWebSocketUnifiedTransport,
+	websocketUnifiedTransport,
+	// Types
+	type WebSocketUnifiedTransportOptions,
+	type WebSocketUnifiedState,
+} from "./client/unified-transport";
