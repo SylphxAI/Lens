@@ -534,6 +534,7 @@ class LensServerImpl<
 
 			const resolverCtx = {
 				input: sub.input,
+				ctx: context, // Pass context directly to resolver (tRPC style)
 				emit: emitData,
 				onCleanup: (fn: () => void) => {
 					sub.cleanups.push(fn);
@@ -756,6 +757,7 @@ class LensServerImpl<
 
 				const resolverCtx = {
 					input: cleanInput as TInput,
+					ctx: context, // Pass context directly to resolver (tRPC style)
 					emit: () => {},
 					onCleanup: () => () => {},
 				};
@@ -805,7 +807,10 @@ class LensServerImpl<
 					throw new Error(`Mutation ${name} has no resolver`);
 				}
 
-				const result = await resolver({ input: input as TInput });
+				const result = await resolver({
+					input: input as TInput,
+					ctx: context, // Pass context directly to resolver (tRPC style)
+				});
 
 				// Emit to GraphStateManager
 				const entityName = this.getEntityNameFromMutation(name);

@@ -9,23 +9,23 @@
  * import { query, mutation, tempId } from '@sylphx/lens-core';
  * import { z } from 'zod';
  *
- * // Query without input
+ * // Query without input - ctx contains user-defined context (db, user, etc.)
  * export const whoami = query()
  *   .returns(User)
- *   .resolve(() => useCurrentUser());
+ *   .resolve(({ ctx }) => ctx.currentUser);
  *
  * // Query with input
  * export const user = query()
  *   .input(z.object({ id: z.string() }))
  *   .returns(User)
- *   .resolve(({ input }) => useDB().user.findUnique({ where: { id: input.id } }));
+ *   .resolve(({ input, ctx }) => ctx.db.user.findUnique({ where: { id: input.id } }));
  *
  * // Mutation with optimistic updates
  * export const createPost = mutation()
  *   .input(z.object({ title: z.string(), content: z.string() }))
  *   .returns(Post)
  *   .optimistic(({ input }) => ({ id: tempId(), ...input }))
- *   .resolve(({ input }) => useDB().post.create({ data: input }));
+ *   .resolve(({ input, ctx }) => ctx.db.post.create({ data: input }));
  * ```
  */
 
@@ -58,18 +58,23 @@ export type InferReturnType<R extends ReturnSpec> = R extends EntityDef<string, 
 			? { [K in keyof R]: R[K] extends [EntityDef<string, EntityDefinition>] ? unknown[] : unknown }
 			: never;
 
-/** Resolver context */
-export interface ResolverContext<TInput = unknown> {
+/** Resolver context - passed directly to resolver function (tRPC style) */
+export interface ResolverContext<TInput = unknown, TContext = unknown> {
+	/** Parsed and validated input */
 	input: TInput;
+	/** User-defined context (db, user, etc.) - set via createServer({ context }) */
+	ctx: TContext;
+	/** Emit data for subscriptions */
 	emit?: (data: unknown) => void;
+	/** Register cleanup function for subscriptions */
 	onCleanup?: (fn: () => void) => () => void;
 }
 
 /** Resolver function type */
-export type ResolverFn<TInput, TOutput> =
-	| ((ctx: ResolverContext<TInput>) => Promise<TOutput>)
-	| ((ctx: ResolverContext<TInput>) => TOutput)
-	| ((ctx: ResolverContext<TInput>) => AsyncGenerator<TOutput>);
+export type ResolverFn<TInput, TOutput, TContext = unknown> =
+	| ((ctx: ResolverContext<TInput, TContext>) => Promise<TOutput>)
+	| ((ctx: ResolverContext<TInput, TContext>) => TOutput)
+	| ((ctx: ResolverContext<TInput, TContext>) => AsyncGenerator<TOutput>);
 
 /** Optimistic function type (legacy - still supported) */
 export type OptimisticFn<TInput, TOutput> = (ctx: { input: TInput }) => Partial<TOutput>;

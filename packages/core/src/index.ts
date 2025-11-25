@@ -268,23 +268,16 @@ export {
 } from "./resolvers/index";
 
 // =============================================================================
-// Context System (AsyncLocalStorage)
+// Context System (Internal - used by server)
 // =============================================================================
 
+// Note: Context is now passed directly to resolvers via `ctx` parameter (tRPC style).
+// These exports are kept for advanced use cases and server internals.
 export {
-	// Core functions
+	// Core functions (internal use)
 	createContext,
-	useContext,
-	tryUseContext,
 	runWithContext,
 	runWithContextAsync,
-	// Composable helpers
-	createComposable,
-	createComposables,
-	// Utilities
-	hasContext,
-	getContextStore,
-	extendContext,
 	// Types
 	type ContextStore,
 	type ContextValue,

@@ -12,15 +12,15 @@ export const User = entity({
   role: t.enum(['user', 'admin']),
 })
 
-// Define operations (not CRUD-locked!)
+// Define operations (ctx passed directly - tRPC style!)
 const whoami = query()
   .returns(User)
-  .resolve(() => useCurrentUser())
+  .resolve(({ ctx }) => ctx.currentUser)
 
 const searchUsers = query()
   .input(z.object({ query: z.string() }))
   .returns([User])
-  .resolve(({ input }) => useDB().user.findMany({
+  .resolve(({ input, ctx }) => ctx.db.user.findMany({
     where: { name: { contains: input.query } }
   }))
 
@@ -145,13 +145,13 @@ import { User, Post } from '../schema/entities'
 // No input required
 export const whoami = query()
   .returns(User)
-  .resolve(() => useCurrentUser())
+  .resolve(({ ctx }) => ctx.currentUser)
 
 // With input
 export const user = query()
   .input(z.object({ id: z.string() }))
   .returns(User)
-  .resolve(({ input }) => useDB().user.findUnique({
+  .resolve(({ input, ctx }) => ctx.db.user.findUnique({
     where: { id: input.id }
   }))
 
@@ -159,7 +159,7 @@ export const user = query()
 export const searchUsers = query()
   .input(z.object({ query: z.string(), limit: z.number().optional() }))
   .returns([User])
-  .resolve(({ input }) => useDB().user.findMany({
+  .resolve(({ input, ctx }) => ctx.db.user.findMany({
     where: { name: { contains: input.query } },
     take: input.limit ?? 10,
   }))
@@ -176,9 +176,9 @@ export const createPost = mutation()
   .input(z.object({ title: z.string(), content: z.string() }))
   .returns(Post)
   // No .optimistic() needed - auto-derived from "createPost" name!
-  .resolve(({ input }) => {
-    return useDB().post.create({
-      data: { ...input, authorId: useCurrentUser().id },
+  .resolve(({ input, ctx }) => {
+    return ctx.db.post.create({
+      data: { ...input, authorId: ctx.currentUser.id },
     })
   })
 
@@ -186,7 +186,7 @@ export const createPost = mutation()
 export const updatePost = mutation()
   .input(z.object({ id: z.string(), title: z.string().optional() }))
   .returns(Post)
-  .resolve(({ input }) => useDB().post.update({
+  .resolve(({ input, ctx }) => ctx.db.post.update({
     where: { id: input.id },
     data: input,
   }))
@@ -200,12 +200,12 @@ import { entityResolvers } from '@sylphx/lens-core'
 
 export const resolvers = entityResolvers({
   User: {
-    posts: (user) => useDB().post.findMany({
+    posts: (user) => ctx.db.post.findMany({
       where: { authorId: user.id }
     }),
   },
   Post: {
-    author: (post) => useDB().user.findUnique({
+    author: (post) => ctx.db.user.findUnique({
       where: { id: post.authorId }
     }),
   },
@@ -673,13 +673,13 @@ import { z } from 'zod'
 // No input
 export const whoami = query()
   .returns(User)
-  .resolve(() => useCurrentUser())
+  .resolve(({ ctx }) => ctx.currentUser)
 
 // With input
 export const user = query()
   .input(z.object({ id: z.string() }))
   .returns(User)
-  .resolve(({ input }) => useDB().user.findUnique({
+  .resolve(({ input, ctx }) => ctx.db.user.findUnique({
     where: { id: input.id }
   }))
 
@@ -687,7 +687,7 @@ export const user = query()
 export const recentPosts = query()
   .input(z.object({ limit: z.number().default(10) }))
   .returns([Post])
-  .resolve(({ input }) => useDB().post.findMany({
+  .resolve(({ input, ctx }) => ctx.db.post.findMany({
     orderBy: { createdAt: 'desc' },
     take: input.limit,
   }))
@@ -696,9 +696,9 @@ export const recentPosts = query()
 export const activeUsers = query()
   .returns([User])
   .resolve(async function* () {
-    yield await useDB().user.findMany({ where: { active: true } })
+    yield await ctx.db.user.findMany({ where: { active: true } })
 
-    for await (const event of useRedis().subscribe('user:active')) {
+    for await (const event of ctx.redis.subscribe('user:active')) {
       yield event.users
     }
   })
@@ -714,7 +714,7 @@ import { z } from 'zod'
 export const createPost = mutation()
   .input(z.object({ title: z.string(), content: z.string() }))
   .returns(Post)
-  .resolve(({ input }) => useDB().post.create({ data: input }))
+  .resolve(({ input, ctx }) => ctx.db.post.create({ data: input }))
 
 // Multi-entity mutation
 export const promoteSomeUsers = mutation()
@@ -734,15 +734,15 @@ export const promoteSomeUsers = mutation()
       message: `Promoted to ${input.newRole}!`,
     })),
   }))
-  .resolve(async ({ input }) => {
+  .resolve(async ({ input, ctx }) => {
     const users = await Promise.all(
       input.userIds.map(id =>
-        useDB().user.update({ where: { id }, data: { role: input.newRole } })
+        ctx.db.user.update({ where: { id }, data: { role: input.newRole } })
       )
     )
     const notifications = await Promise.all(
       input.userIds.map(userId =>
-        useDB().notification.create({
+        ctx.db.notification.create({
           data: { userId, message: `Promoted to ${input.newRole}!` }
         })
       )
@@ -762,19 +762,19 @@ import { entityResolvers } from '@sylphx/lens-core'
 
 export const resolvers = entityResolvers({
   User: {
-    posts: (user) => useDB().post.findMany({
+    posts: (user) => ctx.db.post.findMany({
       where: { authorId: user.id }
     }),
-    comments: (user) => useDB().comment.findMany({
+    comments: (user) => ctx.db.comment.findMany({
       where: { authorId: user.id }
     }),
   },
 
   Post: {
-    author: (post) => useDB().user.findUnique({
+    author: (post) => ctx.db.user.findUnique({
       where: { id: post.authorId }
     }),
-    comments: (post) => useDB().comment.findMany({
+    comments: (post) => ctx.db.comment.findMany({
       where: { postId: post.id }
     }),
   },
@@ -789,7 +789,7 @@ export const resolvers = entityResolvers({
     author: {
       batch: async (posts) => {
         const authorIds = [...new Set(posts.map(p => p.authorId))]
-        const authors = await useDB().user.findMany({
+        const authors = await ctx.db.user.findMany({
           where: { id: { in: authorIds } }
         })
         const authorMap = new Map(authors.map(a => [a.id, a]))
@@ -825,21 +825,19 @@ const server = createServer({
   }),
 })
 
-// In operations - use composables
+// In operations - ctx is passed directly (tRPC style!)
 export const whoami = query()
   .returns(User)
-  .resolve(() => useCurrentUser())  // Clean!
+  .resolve(({ ctx }) => ctx.currentUser)  // Clean!
 
 export const createPost = mutation()
   .input(...)
-  .resolve(({ input }) => {
-    const db = useDB()
-    const user = useCurrentUser()
-    return db.post.create({ data: { ...input, authorId: user.id } })
+  .resolve(({ input, ctx }) => {
+    return ctx.db.post.create({ data: { ...input, authorId: ctx.currentUser.id } })
   })
 ```
 
-### Explicit Context (Fallback)
+### Context Setup
 
 ```typescript
 export const createPost = mutation()
@@ -894,13 +892,13 @@ const { users, notifications } = await client.mutations.promoteSomeUsers({
 
 ```typescript
 // 1. Return - Single value
-.resolve(({ input }) => useDB().user.findUnique({ where: { id: input.id } }))
+.resolve(({ input, ctx }) => ctx.db.user.findUnique({ where: { id: input.id } }))
 
 // 2. Generator - Sequential streaming
 .resolve(async function* ({ input }) {
-  yield await useDB().user.findUnique({ where: { id: input.id } })
+  yield await ctx.db.user.findUnique({ where: { id: input.id } })
 
-  for await (const event of useRedis().subscribe(`user:${input.id}`)) {
+  for await (const event of ctx.redis.subscribe(`user:${input.id}`)) {
     yield event
   }
 })
@@ -910,9 +908,9 @@ const { users, notifications } = await client.mutations.promoteSomeUsers({
   emit(initialData)
 
   const handler = (data) => emit(data)
-  useRedis().subscribe(`user:${input.id}`, handler)
+  ctx.redis.subscribe(`user:${input.id}`, handler)
 
-  onCleanup(() => useRedis().unsubscribe(`user:${input.id}`, handler))
+  onCleanup(() => ctx.redis.unsubscribe(`user:${input.id}`, handler))
 })
 ```
 
@@ -927,7 +925,7 @@ const { users, notifications } = await client.mutations.promoteSomeUsers({
 export const updatePost = mutation()
   .input(z.object({ id: z.string(), title: z.string() }))
   .returns(Post)
-  .resolve(({ input }) => useDB().post.update({
+  .resolve(({ input, ctx }) => ctx.db.post.update({
     where: { id: input.id },
     data: { title: input.title },
   }))
@@ -936,13 +934,13 @@ export const updatePost = mutation()
 export const createPost = mutation()
   .input(z.object({ title: z.string() }))
   .returns(Post)
-  .resolve(({ input }) => useDB().post.create({ data: input }))
+  .resolve(({ input, ctx }) => ctx.db.post.create({ data: input }))
 
 // "deletePost" → auto 'delete'
 export const deletePost = mutation()
   .input(z.object({ id: z.string() }))
   .returns(Post)
-  .resolve(({ input }) => useDB().post.delete({ where: { id: input.id } }))
+  .resolve(({ input, ctx }) => ctx.db.post.delete({ where: { id: input.id } }))
 ```
 
 ### Explicit DSL (for edge cases)
@@ -953,7 +951,7 @@ export const publishPost = mutation()
   .input(z.object({ id: z.string() }))
   .returns(Post)
   .optimistic({ merge: { published: true } })  // Set extra field
-  .resolve(({ input }) => useDB().post.update({
+  .resolve(({ input, ctx }) => ctx.db.post.update({
     where: { id: input.id },
     data: { published: true },
   }))
@@ -1043,10 +1041,10 @@ dedupLink()                     // Request deduplication
 // Entity Resolvers
 entityResolvers({ Entity: { field: resolver } })
 
-// Context
-useContext()                    // Get full context
-useDB()                         // Get database
-useCurrentUser()                // Get current user
+// Context (tRPC-style, passed directly to resolvers)
+({ ctx }) =>                   // Access context in resolver
+ctx.db                         // Get database
+ctx.currentUser                // Get current user
 
 // Helpers
 tempId()                        // Generate temporary ID for optimistic
