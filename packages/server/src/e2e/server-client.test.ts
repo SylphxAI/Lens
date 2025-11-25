@@ -7,7 +7,7 @@
 
 import { describe, it, expect, beforeEach, afterEach } from "bun:test";
 import { createSchema, t } from "@lens/core";
-import { createServer, type LensServer, createResolvers } from "../index";
+import { createServerV1 as createServer, type LensServerV1 as LensServer, createResolvers } from "../index";
 
 // =============================================================================
 // Test Schema

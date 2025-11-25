@@ -19,6 +19,7 @@ import {
 	type RelationTypeWithForeignKey,
 	type ContextValue,
 	type Update,
+	type FieldType,
 	isQueryDef,
 	isMutationDef,
 	isBatchResolver,
@@ -26,6 +27,10 @@ import {
 	runWithContext,
 	createUpdate,
 } from "@lens/core";
+
+/** Selection object type for nested field selection */
+export type SelectionObject = Record<string, boolean | SelectionObject | { select: SelectionObject }>;
+
 import { GraphStateManager, type StateClient } from "../state/graph-state-manager";
 
 // =============================================================================
@@ -129,6 +134,8 @@ interface QueryMessage {
 	operation: string;
 	input?: unknown;
 	fields?: string[] | "*";
+	/** SelectionObject for nested field selection */
+	select?: SelectionObject;
 }
 
 /** Mutation */
@@ -552,10 +559,18 @@ class UnifiedServerImpl<TContext extends ContextValue> implements UnifiedServer 
 
 	private async handleQuery(conn: ClientConnection, message: QueryMessage): Promise<void> {
 		try {
-			const result = await this.executeQuery(message.operation, message.input);
+			// If select is provided, inject it into input for executeQuery to process
+			let input = message.input;
+			if (message.select) {
+				input = { ...(message.input as object || {}), $select: message.select };
+			}
 
-			// Apply field selection if specified
-			const selected = message.fields ? this.applySelection(result, message.fields) : result;
+			const result = await this.executeQuery(message.operation, input);
+
+			// Apply field selection if specified (for backward compatibility with simple field lists)
+			const selected = message.fields && !message.select
+				? this.applySelection(result, message.fields)
+				: result;
 
 			conn.ws.send(
 				JSON.stringify({
@@ -634,8 +649,17 @@ class UnifiedServerImpl<TContext extends ContextValue> implements UnifiedServer 
 			throw new Error(`Query not found: ${name}`);
 		}
 
-		if (queryDef._input && input !== undefined) {
-			const result = queryDef._input.safeParse(input);
+		// Extract $select from input if present
+		let select: SelectionObject | undefined;
+		let cleanInput = input;
+		if (input && typeof input === "object" && "$select" in input) {
+			const { $select, ...rest } = input as Record<string, unknown>;
+			select = $select as SelectionObject;
+			cleanInput = (Object.keys(rest).length > 0 ? rest : undefined) as TInput;
+		}
+
+		if (queryDef._input && cleanInput !== undefined) {
+			const result = queryDef._input.safeParse(cleanInput);
 			if (!result.success) {
 				throw new Error(`Invalid input: ${JSON.stringify(result.error)}`);
 			}
@@ -655,16 +679,23 @@ class UnifiedServerImpl<TContext extends ContextValue> implements UnifiedServer 
 					onCleanup: () => () => {},
 				};
 
-				const result = resolver({ input: input as TInput, ctx: emitCtx });
+				const result = resolver({ input: cleanInput as TInput, ctx: emitCtx });
 
+				let data: TOutput;
 				if (isAsyncIterable(result)) {
 					for await (const value of result) {
-						return value as TOutput;
+						data = value as TOutput;
+						break;
 					}
-					throw new Error(`Query ${name} returned empty stream`);
+					if (data! === undefined) {
+						throw new Error(`Query ${name} returned empty stream`);
+					}
+				} else {
+					data = (await result) as TOutput;
 				}
 
-				return result as TOutput;
+				// Process with entity resolvers and selection
+				return this.processQueryResult(name, data, select);
 			});
 		} finally {
 			this.clearLoaders();
@@ -851,7 +882,7 @@ class UnifiedServerImpl<TContext extends ContextValue> implements UnifiedServer 
 		return results;
 	}
 
-	private applySelection(data: unknown, fields: string[] | "*"): unknown {
+	private applySelection(data: unknown, fields: string[] | "*" | SelectionObject): unknown {
 		if (fields === "*" || !data) return data;
 
 		if (Array.isArray(data)) {
@@ -863,7 +894,7 @@ class UnifiedServerImpl<TContext extends ContextValue> implements UnifiedServer 
 
 	private applySelectionToObject(
 		data: unknown,
-		fields: string[],
+		fields: string[] | SelectionObject,
 	): Record<string, unknown> | null {
 		if (!data || typeof data !== "object") return null;
 
@@ -875,10 +906,259 @@ class UnifiedServerImpl<TContext extends ContextValue> implements UnifiedServer 
 			result.id = obj.id;
 		}
 
-		for (const field of fields) {
-			if (field in obj) {
-				result[field] = obj[field];
+		// Handle string array (simple field list)
+		if (Array.isArray(fields)) {
+			for (const field of fields) {
+				if (field in obj) {
+					result[field] = obj[field];
+				}
 			}
+			return result;
+		}
+
+		// Handle SelectionObject (nested selection)
+		for (const [key, value] of Object.entries(fields)) {
+			if (value === false) continue;
+
+			const dataValue = obj[key];
+
+			if (value === true) {
+				// Simple field selection
+				result[key] = dataValue;
+			} else if (typeof value === "object" && value !== null) {
+				// Nested selection (relations or nested select)
+				const nestedSelect = (value as { select?: SelectionObject }).select ?? value;
+
+				if (Array.isArray(dataValue)) {
+					// HasMany relation
+					result[key] = dataValue.map((item) =>
+						this.applySelectionToObject(item, nestedSelect as SelectionObject),
+					);
+				} else if (dataValue !== null && typeof dataValue === "object") {
+					// HasOne/BelongsTo relation
+					result[key] = this.applySelectionToObject(dataValue, nestedSelect as SelectionObject);
+				} else {
+					result[key] = dataValue;
+				}
+			}
+		}
+
+		return result;
+	}
+
+	// ===========================================================================
+	// Entity Resolver Execution
+	// ===========================================================================
+
+	/**
+	 * Execute entity resolvers for nested data.
+	 * Processes the selection object and resolves relation fields.
+	 */
+	private async executeEntityResolvers<T>(
+		entityName: string,
+		data: T,
+		select?: SelectionObject,
+	): Promise<T> {
+		if (!data || !select || !this.resolvers) return data;
+
+		const result = { ...(data as Record<string, unknown>) };
+
+		for (const [fieldName, fieldSelect] of Object.entries(select)) {
+			if (fieldSelect === false || fieldSelect === true) continue;
+
+			// Check if this field has an entity resolver
+			const resolver = this.resolvers.getResolver(entityName, fieldName);
+			if (!resolver) continue;
+
+			// Execute resolver (with batching if available)
+			if (isBatchResolver(resolver)) {
+				// Use DataLoader for batching
+				const loaderKey = `${entityName}.${fieldName}`;
+				if (!this.loaders.has(loaderKey)) {
+					this.loaders.set(
+						loaderKey,
+						new DataLoader(async (parents: unknown[]) => {
+							return resolver.batch(parents);
+						}),
+					);
+				}
+				const loader = this.loaders.get(loaderKey)!;
+				result[fieldName] = await loader.load(data);
+			} else {
+				// Simple resolver
+				result[fieldName] = await resolver(data);
+			}
+
+			// Recursively resolve nested selections
+			const nestedSelect = (fieldSelect as { select?: SelectionObject }).select;
+			if (nestedSelect && result[fieldName]) {
+				const relationData = result[fieldName];
+				// Get target entity name from the entity definition if available
+				const targetEntity = this.getRelationTargetEntity(entityName, fieldName);
+
+				if (Array.isArray(relationData)) {
+					result[fieldName] = await Promise.all(
+						relationData.map((item) =>
+							this.executeEntityResolvers(targetEntity, item, nestedSelect),
+						),
+					);
+				} else {
+					result[fieldName] = await this.executeEntityResolvers(
+						targetEntity,
+						relationData,
+						nestedSelect,
+					);
+				}
+			}
+		}
+
+		return result as T;
+	}
+
+	/**
+	 * Get target entity name for a relation field.
+	 */
+	private getRelationTargetEntity(entityName: string, fieldName: string): string {
+		const entityDef = this.entities[entityName];
+		if (!entityDef) return fieldName; // Fallback to field name
+
+		// EntityDef has 'fields' property
+		const fields = (entityDef as { fields?: Record<string, FieldType> }).fields;
+		if (!fields) return fieldName;
+
+		const fieldDef = fields[fieldName];
+		if (!fieldDef) return fieldName;
+
+		// Check if it's a relation type
+		if (fieldDef._type === "hasMany" || fieldDef._type === "hasOne" || fieldDef._type === "belongsTo") {
+			return (fieldDef as { _target: string })._target ?? fieldName;
+		}
+
+		return fieldName;
+	}
+
+	/**
+	 * Serialize entity data for transport.
+	 * Auto-calls serialize() on field types (Date → ISO string, etc.)
+	 */
+	private serializeEntity(
+		entityName: string,
+		data: Record<string, unknown> | null,
+	): Record<string, unknown> | null {
+		if (data === null) return null;
+
+		const entityDef = this.entities[entityName];
+		if (!entityDef) return data;
+
+		// EntityDef has 'fields' property
+		const fields = (entityDef as { fields?: Record<string, FieldType> }).fields;
+		if (!fields) return data;
+
+		const result: Record<string, unknown> = {};
+
+		for (const [fieldName, value] of Object.entries(data)) {
+			const fieldType = fields[fieldName];
+
+			if (!fieldType) {
+				// Field not in schema (extra data from resolver)
+				result[fieldName] = value;
+				continue;
+			}
+
+			// Handle null values
+			if (value === null || value === undefined) {
+				result[fieldName] = value;
+				continue;
+			}
+
+			// Relations: recursively serialize
+			if (fieldType._type === "hasMany" || fieldType._type === "belongsTo" || fieldType._type === "hasOne") {
+				const targetEntity = (fieldType as { _target?: string })._target;
+				if (targetEntity && Array.isArray(value)) {
+					result[fieldName] = value.map((item) =>
+						this.serializeEntity(targetEntity, item as Record<string, unknown>),
+					);
+				} else if (targetEntity && typeof value === "object") {
+					result[fieldName] = this.serializeEntity(targetEntity, value as Record<string, unknown>);
+				} else {
+					result[fieldName] = value;
+				}
+				continue;
+			}
+
+			// Scalar field - call serialize() if method exists
+			if (typeof (fieldType as { serialize?: (v: unknown) => unknown }).serialize === "function") {
+				try {
+					result[fieldName] = (fieldType as { serialize: (v: unknown) => unknown }).serialize(value);
+				} catch (error) {
+					console.warn(`Failed to serialize field ${entityName}.${fieldName}:`, error);
+					result[fieldName] = value;
+				}
+			} else {
+				result[fieldName] = value;
+			}
+		}
+
+		return result;
+	}
+
+	/**
+	 * Process query result: execute entity resolvers, apply selection, serialize
+	 */
+	private async processQueryResult<T>(
+		queryName: string,
+		data: T,
+		select?: SelectionObject,
+	): Promise<T> {
+		if (data === null || data === undefined) return data;
+
+		// Determine entity name from query definition's _output
+		const queryDef = this.queries[queryName];
+		const entityName = this.getEntityNameFromOutput(queryDef?._output);
+
+		// Handle array results - process each item
+		if (Array.isArray(data)) {
+			const processedItems = await Promise.all(
+				data.map(async (item) => {
+					let result = item;
+
+					// Execute entity resolvers for nested data
+					if (select && this.resolvers) {
+						result = await this.executeEntityResolvers(entityName, item, select);
+					}
+
+					// Apply field selection
+					if (select) {
+						result = this.applySelection(result, select);
+					}
+
+					// Serialize for transport
+					if (entityName) {
+						return this.serializeEntity(entityName, result as Record<string, unknown>);
+					}
+
+					return result;
+				}),
+			);
+			return processedItems as T;
+		}
+
+		// Single object result
+		let result = data;
+
+		// Execute entity resolvers for nested data
+		if (select && this.resolvers) {
+			result = await this.executeEntityResolvers(entityName, data, select);
+		}
+
+		// Apply field selection
+		if (select) {
+			result = this.applySelection(result, select) as T;
+		}
+
+		// Serialize for transport
+		if (entityName && typeof result === "object" && result !== null) {
+			return this.serializeEntity(entityName, result as Record<string, unknown>) as T;
 		}
 
 		return result;

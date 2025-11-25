@@ -43,15 +43,15 @@ export {
 } from "./store/reactive-store";
 
 // =============================================================================
-// Client
+// Client (Legacy V1 - CRUD-based)
 // =============================================================================
 
 export {
-	// Factory
-	createClient,
+	// Factory (V1 Legacy - use createClient from unified instead)
+	createClient as createClientV1,
 	// Types
-	type Client,
-	type ClientConfig,
+	type Client as ClientV1,
+	type ClientConfig as ClientV1Config,
 	type EntityAccessor,
 	type QueryOptions,
 	type ListOptions,
@@ -233,6 +233,5 @@ export { createUnifiedClient as createClient } from "./client/unified";
 export type { UnifiedClient as LensClient } from "./client/unified";
 export type { UnifiedClientConfig as ClientConfig } from "./client/unified";
 
-// websocketLink = websocket transport (for links array compatibility)
-export { websocketUnifiedTransport as websocketLink } from "./client/unified-transport";
-export type { WebSocketUnifiedTransportOptions as WebSocketLinkOptions } from "./client/unified-transport";
+// websocketUnifiedTransport = unified transport for unified client
+// Note: websocketLink from ./links is for V1 client, websocketUnifiedTransport is for unified client

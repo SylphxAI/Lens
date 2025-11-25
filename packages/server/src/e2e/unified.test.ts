@@ -534,3 +534,122 @@ describe("Unified E2E - GraphStateManager", () => {
 		expect(received.length).toBeGreaterThan(1);
 	});
 });
+
+// =============================================================================
+// Test: Entity Resolvers and Nested Selection
+// =============================================================================
+
+describe("Unified E2E - Entity Resolvers", () => {
+	it("executes entity resolvers for nested selection via $select", async () => {
+		// Mock data
+		const users = [
+			{ id: "user-1", name: "Alice", email: "alice@example.com" },
+			{ id: "user-2", name: "Bob", email: "bob@example.com" },
+		];
+
+		const posts = [
+			{ id: "post-1", title: "Hello World", content: "First post", authorId: "user-1" },
+			{ id: "post-2", title: "Second Post", content: "More content", authorId: "user-1" },
+		];
+
+		const getUser = query()
+			.input(z.object({ id: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => users.find((u) => u.id === input.id) ?? null);
+
+		// Create entity resolvers for User.posts
+		const resolvers = {
+			getResolver: (entityName: string, fieldName: string) => {
+				if (entityName === "User" && fieldName === "posts") {
+					return (user: { id: string }) => posts.filter((p) => p.authorId === user.id);
+				}
+				return undefined;
+			},
+		};
+
+		const server = createUnifiedServer({
+			entities: { User, Post },
+			queries: { getUser },
+			resolvers: resolvers as any,
+		});
+
+		// Test with $select for nested posts
+		const result = await server.executeQuery("getUser", {
+			id: "user-1",
+			$select: {
+				name: true,
+				posts: {
+					select: {
+						title: true,
+					},
+				},
+			},
+		});
+
+		expect(result).toMatchObject({
+			id: "user-1",
+			name: "Alice",
+			posts: [
+				{ id: "post-1", title: "Hello World" },
+				{ id: "post-2", title: "Second Post" },
+			],
+		});
+	});
+
+	it("handles DataLoader batching for entity resolvers", async () => {
+		// Track batch calls
+		let batchCallCount = 0;
+
+		const users = [
+			{ id: "user-1", name: "Alice" },
+			{ id: "user-2", name: "Bob" },
+		];
+
+		const posts = [
+			{ id: "post-1", title: "Post 1", authorId: "user-1" },
+			{ id: "post-2", title: "Post 2", authorId: "user-2" },
+		];
+
+		const getUsers = query()
+			.returns([User])
+			.resolve(() => users);
+
+		// Create batch resolver for User.posts (object with batch property)
+		const resolvers = {
+			getResolver: (entityName: string, fieldName: string) => {
+				if (entityName === "User" && fieldName === "posts") {
+					// Return batch resolver object (not a function with batch attached)
+					return {
+						batch: async (parents: { id: string }[]) => {
+							batchCallCount++;
+							return parents.map((parent) => posts.filter((p) => p.authorId === parent.id));
+						},
+					};
+				}
+				return undefined;
+			},
+		};
+
+		const server = createUnifiedServer({
+			entities: { User, Post },
+			queries: { getUsers },
+			resolvers: resolvers as any,
+		});
+
+		// Execute query with nested selection for all users
+		const result = await server.executeQuery("getUsers", {
+			$select: {
+				name: true,
+				posts: {
+					select: {
+						title: true,
+					},
+				},
+			},
+		});
+
+		// Should have batched the posts resolution into a single call
+		expect(batchCallCount).toBe(1);
+		expect(result).toHaveLength(2);
+	});
+});

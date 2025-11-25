@@ -53,16 +53,16 @@ export {
 } from "./execution/engine";
 
 // =============================================================================
-// Server
+// Server (Legacy V1 - CRUD-based)
 // =============================================================================
 
 export {
-	// Factory
-	createServer,
+	// Factory (V1 Legacy - use createServer from unified instead)
+	createServer as createServerV1,
 	// Types
-	type ServerConfig,
-	type LensServer,
-	type WebSocketLike,
+	type ServerConfig as ServerV1Config,
+	type LensServer as LensServerV1,
+	type WebSocketLike as WebSocketLikeV1,
 } from "./server/create";
 
 export {
@@ -125,6 +125,7 @@ export {
 	type MutationsMap as UnifiedMutationsMap,
 	type RelationsArray as UnifiedRelationsArray,
 	type WebSocketLike as UnifiedWebSocketLike,
+	type SelectionObject,
 } from "./server/unified";
 
 // =============================================================================
