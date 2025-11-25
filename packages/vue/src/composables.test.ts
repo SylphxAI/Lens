@@ -2,238 +2,234 @@
  * Tests for Vue Composables
  */
 
-import { describe, expect, test, mock } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { ref, nextTick } from "vue";
-import { signal } from "@lens/client";
-import { useEntity, useList, useMutation } from "./composables";
+import { useQuery, useMutation, useLazyQuery } from "./composables";
+import type { QueryResult, MutationResult } from "@lens/client";
 
 // =============================================================================
-// Mock Client
+// Mock QueryResult
 // =============================================================================
 
-function createMockClient() {
-	const entitySignal = signal({
-		data: null as { id: string; name: string; email: string } | null,
-		loading: true,
-		error: null as Error | null,
-		stale: false,
-		refCount: 0,
+function createMockQueryResult<T>(
+	initialValue: T | null = null,
+): QueryResult<T> & {
+	_setValue: (value: T) => void;
+	_setError: (error: Error) => void;
+} {
+	let currentValue = initialValue;
+	const subscribers: Array<(value: T) => void> = [];
+	let resolved = false;
+	let resolvePromise: ((value: T) => void) | null = null;
+	let rejectPromise: ((error: Error) => void) | null = null;
+
+	const promise = new Promise<T>((resolve, reject) => {
+		resolvePromise = resolve;
+		rejectPromise = reject;
+		if (initialValue !== null) {
+			resolved = true;
+			resolve(initialValue);
+		}
 	});
 
-	const listSignal = signal({
-		data: null as { id: string; name: string; email: string }[] | null,
-		loading: true,
-		error: null as Error | null,
-		stale: false,
-		refCount: 0,
-	});
-
-	return {
-		User: {
-			get: mock((_id: string, _options?: unknown) => entitySignal),
-			list: mock((_options?: unknown) => listSignal),
-			create: mock(async (input: unknown) => ({
-				data: { id: "new-id", ...(input as object) },
-			})),
-			update: mock(async (id: string, _data?: unknown) => ({
-				data: { id, name: "Updated", email: "updated@test.com" },
-			})),
-			delete: mock(async (_id: string) => {}),
+	const result = {
+		get value() {
+			return currentValue;
 		},
-		$store: {
-			release: mock(() => {}),
-			setEntityLoading: mock(() => {}),
+		signal: { value: currentValue } as any,
+		loading: { value: initialValue === null } as any,
+		error: { value: null } as any,
+		subscribe(callback?: (data: T) => void): () => void {
+			if (callback) {
+				subscribers.push(callback);
+				if (currentValue !== null) {
+					callback(currentValue);
+				}
+			}
+			return () => {
+				const idx = subscribers.indexOf(callback!);
+				if (idx >= 0) subscribers.splice(idx, 1);
+			};
+		},
+		select() {
+			return result as unknown as QueryResult<T>;
+		},
+		then<TResult1 = T, TResult2 = never>(
+			onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
+			onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+		): Promise<TResult1 | TResult2> {
+			return promise.then(onfulfilled, onrejected);
 		},
 		// Test helpers
-		_entitySignal: entitySignal,
-		_listSignal: listSignal,
-		_setUserData: (data: { id: string; name: string; email: string } | null) => {
-			entitySignal.value = {
-				...entitySignal.value,
-				data,
-				loading: false,
-			};
+		_setValue(value: T) {
+			currentValue = value;
+			subscribers.forEach((cb) => cb(value));
+			if (!resolved && resolvePromise) {
+				resolved = true;
+				resolvePromise(value);
+			}
 		},
-		_setListData: (data: { id: string; name: string; email: string }[]) => {
-			listSignal.value = {
-				...listSignal.value,
-				data,
-				loading: false,
-			};
+		_setError(error: Error) {
+			if (!resolved && rejectPromise) {
+				resolved = true;
+				rejectPromise(error);
+			}
 		},
+	};
+
+	return result as QueryResult<T> & {
+		_setValue: (value: T) => void;
+		_setError: (error: Error) => void;
 	};
 }
 
 // =============================================================================
-// Tests
+// Tests: useQuery
 // =============================================================================
 
-describe("useEntity()", () => {
+describe("useQuery", () => {
 	test("returns loading state initially", () => {
-		const client = createMockClient();
+		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
+		const { data, loading, error } = useQuery(() => mockQuery);
 
-		const result = useEntity("User", { id: "123" }, undefined, client as never);
-
-		expect(result.loading.value).toBe(true);
-		expect(result.data.value).toBe(null);
-		expect(result.error.value).toBe(null);
+		expect(loading.value).toBe(true);
+		expect(data.value).toBe(null);
+		expect(error.value).toBe(null);
 	});
 
-	test("updates when signal changes", async () => {
-		const client = createMockClient();
+	test("returns data when query resolves", async () => {
+		const mockQuery = createMockQueryResult<{ id: string; name: string }>({
+			id: "123",
+			name: "John",
+		});
+		const { data, loading, error } = useQuery(() => mockQuery);
 
-		const result = useEntity("User", { id: "123" }, undefined, client as never);
+		// Wait for promise to resolve
+		await new Promise((r) => setTimeout(r, 10));
 
-		// Simulate data loaded
-		client._setUserData({ id: "123", name: "John", email: "john@test.com" });
-
-		await nextTick();
-
-		expect(result.loading.value).toBe(false);
-		expect(result.data.value).toEqual({ id: "123", name: "John", email: "john@test.com" });
+		expect(data.value).toEqual({ id: "123", name: "John" });
+		expect(loading.value).toBe(false);
+		expect(error.value).toBe(null);
 	});
 
-	test("calls client.get with correct parameters", () => {
-		const client = createMockClient();
+	test("skips query when skip option is true", () => {
+		const mockQuery = createMockQueryResult<{ id: string }>();
+		const { data, loading } = useQuery(() => mockQuery, { skip: true });
 
-		useEntity("User", { id: "123" }, { select: { name: true } }, client as never);
-
-		expect(client.User.get).toHaveBeenCalledWith("123", { select: { name: true } });
+		expect(loading.value).toBe(false);
+		expect(data.value).toBe(null);
 	});
 
-	test("works with reactive ID", async () => {
-		const client = createMockClient();
-		const input = ref({ id: "123" });
+	test("skips query when skip ref is true", () => {
+		const mockQuery = createMockQueryResult<{ id: string }>();
+		const skip = ref(true);
+		const { data, loading } = useQuery(() => mockQuery, { skip });
 
-		const result = useEntity("User", input, undefined, client as never);
-
-		expect(client.User.get).toHaveBeenCalledWith("123", undefined);
-
-		// Change ID
-		input.value = { id: "456" };
-		await nextTick();
-
-		// Should call with new ID
-		expect(client.User.get).toHaveBeenCalledWith("456", undefined);
+		expect(loading.value).toBe(false);
+		expect(data.value).toBe(null);
 	});
 });
 
-describe("useList()", () => {
-	test("returns loading state initially", () => {
-		const client = createMockClient();
+// =============================================================================
+// Tests: useMutation
+// =============================================================================
 
-		const result = useList("User", undefined, client as never);
+describe("useMutation", () => {
+	test("executes mutation and returns result", async () => {
+		const mutationFn = async (
+			input: { name: string },
+		): Promise<MutationResult<{ id: string; name: string }>> => {
+			return { data: { id: "new-id", name: input.name } };
+		};
 
-		expect(result.loading.value).toBe(true);
-		expect(result.data.value).toEqual([]);
-	});
+		const { data, loading, mutate } = useMutation(mutationFn);
 
-	test("updates when signal changes", async () => {
-		const client = createMockClient();
+		expect(loading.value).toBe(false);
+		expect(data.value).toBe(null);
 
-		const result = useList("User", undefined, client as never);
+		const result = await mutate({ name: "New User" });
 
-		// Simulate data loaded
-		client._setListData([
-			{ id: "1", name: "John", email: "john@test.com" },
-			{ id: "2", name: "Jane", email: "jane@test.com" },
-		]);
-
-		await nextTick();
-
-		expect(result.loading.value).toBe(false);
-		expect(result.data.value).toHaveLength(2);
-		expect(result.data.value[0].name).toBe("John");
-	});
-
-	test("calls client.list with options", () => {
-		const client = createMockClient();
-
-		useList(
-			"User",
-			{
-				where: { isActive: true },
-				take: 10,
-			},
-			client as never,
-		);
-
-		expect(client.User.list).toHaveBeenCalledWith({
-			where: { isActive: true },
-			take: 10,
-		});
-	});
-});
-
-describe("useMutation()", () => {
-	test("create mutation executes correctly", async () => {
-		const client = createMockClient();
-
-		const result = useMutation("User", "create", client as never);
-
-		expect(result.loading.value).toBe(false);
-		expect(result.data.value).toBe(null);
-
-		const createResult = await result.mutate({ name: "New User", email: "new@test.com" });
-
-		expect(client.User.create).toHaveBeenCalledWith({
-			name: "New User",
-			email: "new@test.com",
-		});
-		expect(createResult).toEqual({ id: "new-id", name: "New User", email: "new@test.com" });
-	});
-
-	test("update mutation executes correctly", async () => {
-		const client = createMockClient();
-
-		const result = useMutation("User", "update", client as never);
-
-		await result.mutate({ id: "123", data: { name: "Updated Name" } });
-
-		expect(client.User.update).toHaveBeenCalledWith("123", { name: "Updated Name" });
-	});
-
-	test("delete mutation executes correctly", async () => {
-		const client = createMockClient();
-
-		const result = useMutation("User", "delete", client as never);
-
-		await result.mutate({ id: "123" });
-
-		expect(client.User.delete).toHaveBeenCalledWith("123");
+		expect(result.data).toEqual({ id: "new-id", name: "New User" });
+		expect(data.value).toEqual({ id: "new-id", name: "New User" });
+		expect(loading.value).toBe(false);
 	});
 
 	test("handles mutation error", async () => {
-		const client = createMockClient();
-		client.User.create = mock(async () => {
-			throw new Error("Creation failed");
-		});
+		const mutationFn = async (
+			_input: { name: string },
+		): Promise<MutationResult<{ id: string }>> => {
+			throw new Error("Mutation failed");
+		};
 
-		const result = useMutation("User", "create", client as never);
+		const { error, loading, mutate } = useMutation(mutationFn);
 
 		try {
-			await result.mutate({ name: "New User" });
+			await mutate({ name: "New User" });
 		} catch {
-			// Expected
+			// Expected error
 		}
 
-		expect(result.error.value?.message).toBe("Creation failed");
-		expect(result.loading.value).toBe(false);
+		expect(error.value?.message).toBe("Mutation failed");
+		expect(loading.value).toBe(false);
 	});
 
 	test("reset clears mutation state", async () => {
-		const client = createMockClient();
+		const mutationFn = async (
+			input: { name: string },
+		): Promise<MutationResult<{ id: string; name: string }>> => {
+			return { data: { id: "new-id", name: input.name } };
+		};
 
-		const result = useMutation("User", "create", client as never);
+		const { data, error, loading, mutate, reset } = useMutation(mutationFn);
 
-		await result.mutate({ name: "New User", email: "new@test.com" });
+		await mutate({ name: "New User" });
+		expect(data.value).not.toBe(null);
 
-		expect(result.data.value).not.toBe(null);
+		reset();
 
-		result.reset();
+		expect(data.value).toBe(null);
+		expect(error.value).toBe(null);
+		expect(loading.value).toBe(false);
+	});
+});
 
-		expect(result.data.value).toBe(null);
-		expect(result.error.value).toBe(null);
-		expect(result.loading.value).toBe(false);
+// =============================================================================
+// Tests: useLazyQuery
+// =============================================================================
+
+describe("useLazyQuery", () => {
+	test("does not execute query on creation", () => {
+		const mockQuery = createMockQueryResult<{ id: string }>({ id: "123" });
+		const { data, loading } = useLazyQuery(() => mockQuery);
+
+		expect(loading.value).toBe(false);
+		expect(data.value).toBe(null);
+	});
+
+	test("executes query when execute is called", async () => {
+		const mockQuery = createMockQueryResult<{ id: string; name: string }>({
+			id: "123",
+			name: "John",
+		});
+		const { data, execute } = useLazyQuery(() => mockQuery);
+
+		const result = await execute();
+
+		expect(result).toEqual({ id: "123", name: "John" });
+		expect(data.value).toEqual({ id: "123", name: "John" });
+	});
+
+	test("reset clears query state", async () => {
+		const mockQuery = createMockQueryResult<{ id: string }>({ id: "123" });
+		const { data, error, loading, execute, reset } = useLazyQuery(() => mockQuery);
+
+		await execute();
+		expect(data.value).not.toBe(null);
+
+		reset();
+
+		expect(data.value).toBe(null);
+		expect(error.value).toBe(null);
+		expect(loading.value).toBe(false);
 	});
 });

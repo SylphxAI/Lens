@@ -2,52 +2,33 @@
  * @lens/vue
  *
  * Vue composables for Lens API framework.
- * Provides reactive composables that integrate with Vue's Composition API.
+ * Uses Vue's Composition API for reactive state management.
  */
+
+// =============================================================================
+// Context
+// =============================================================================
+
+export {
+	LensClientKey,
+	provideLensClient,
+	useLensClient,
+} from "./context";
 
 // =============================================================================
 // Composables
 // =============================================================================
 
 export {
-	// Standard composables
-	useEntity,
-	useList,
+	// Query composables
+	useQuery,
+	useLazyQuery,
+	// Mutation composable
 	useMutation,
 	// Types
-	type UseEntityOptions,
-	type UseListOptions,
-	type UseEntityResult,
-	type UseListResult,
+	type UseQueryResult,
+	type UseLazyQueryResult,
 	type UseMutationResult,
+	type UseQueryOptions,
+	type MutationFn,
 } from "./composables";
-
-// =============================================================================
-// Plugin
-// =============================================================================
-
-export {
-	// Vue plugin
-	LensPlugin,
-	// Inject keys
-	LENS_CLIENT_KEY,
-	REACTIVE_LENS_CLIENT_KEY,
-	// Manual injection
-	useLensClient,
-	useReactiveLensClient,
-} from "./plugin";
-
-// =============================================================================
-// Reactive Composables (Fine-grained)
-// =============================================================================
-
-export {
-	// Reactive composables with field-level signals
-	useReactiveEntity,
-	useReactiveList,
-	// Types
-	type UseReactiveEntityOptions,
-	type UseReactiveListOptions,
-	type UseReactiveEntityResult,
-	type UseReactiveListResult,
-} from "./reactive-composables";

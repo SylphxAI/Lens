@@ -1,195 +1,168 @@
 /**
  * @lens/vue - Composables
  *
- * Vue composables for accessing Lens entities and mutations.
- * Integrates with Vue's Composition API and reactivity system.
+ * Vue composables for Lens queries and mutations.
+ * Uses Vue's Composition API for reactive state management.
  */
 
-import { ref, onUnmounted, watch, type Ref } from "vue";
-import type { Client, InferQueryResult } from "@lens/client";
-import type { SchemaDefinition, Select, InferEntity, CreateInput } from "@lens/core";
-import { useLensClient } from "./plugin";
+import { ref, shallowRef, onUnmounted, watch, type Ref, type ShallowRef } from "vue";
+import type { QueryResult, MutationResult } from "@lens/client";
 
 // =============================================================================
 // Types
 // =============================================================================
 
-/** Entity query input */
-export interface EntityInput {
-	id: string;
-}
-
-/** Entity composable options */
-export interface UseEntityOptions<
-	S extends SchemaDefinition,
-	E extends keyof S,
-	Sel extends Select<S[E], S> | undefined = undefined,
-> {
-	select?: Sel;
-}
-
-/** List composable options */
-export interface UseListOptions<
-	S extends SchemaDefinition,
-	E extends keyof S,
-	Sel extends Select<S[E], S> | undefined = undefined,
-> {
-	where?: Record<string, unknown>;
-	orderBy?: Record<string, "asc" | "desc">;
-	take?: number;
-	skip?: number;
-	select?: Sel;
-}
-
-/** Entity composable result */
-export interface UseEntityResult<T> {
-	/** Entity data */
-	data: Ref<T | null>;
-	/** Loading state */
+/** Query result with reactive refs */
+export interface UseQueryResult<T> {
+	/** Reactive data ref */
+	data: ShallowRef<T | null>;
+	/** Reactive loading state */
 	loading: Ref<boolean>;
-	/** Error state */
-	error: Ref<Error | null>;
-	/** Refetch the entity */
+	/** Reactive error state */
+	error: ShallowRef<Error | null>;
+	/** Refetch the query */
 	refetch: () => void;
 }
 
-/** List composable result */
-export interface UseListResult<T> {
-	/** List data */
-	data: Ref<T[]>;
-	/** Loading state */
-	loading: Ref<boolean>;
-	/** Error state */
-	error: Ref<Error | null>;
-	/** Refetch the list */
-	refetch: () => void;
-}
-
-/** Update input type */
-export type UpdateMutationInput<S extends SchemaDefinition, E extends keyof S> = {
-	id: string;
-	data: Partial<Omit<CreateInput<S[E], S>, "id">>;
-};
-
-/** Delete input type */
-export type DeleteMutationInput = {
-	id: string;
-};
-
-/** Mutation composable result */
+/** Mutation result with reactive refs */
 export interface UseMutationResult<TInput, TOutput> {
-	/** Execute the mutation */
-	mutate: (input: TInput) => Promise<TOutput>;
-	/** Mutation is in progress */
+	/** Reactive data ref */
+	data: ShallowRef<TOutput | null>;
+	/** Reactive loading state */
 	loading: Ref<boolean>;
-	/** Mutation error */
-	error: Ref<Error | null>;
-	/** Last mutation result */
-	data: Ref<TOutput | null>;
-	/** Reset mutation state */
+	/** Reactive error state */
+	error: ShallowRef<Error | null>;
+	/** Execute the mutation */
+	mutate: (input: TInput) => Promise<MutationResult<TOutput>>;
+	/** Reset state */
 	reset: () => void;
 }
 
+/** Lazy query result */
+export interface UseLazyQueryResult<T> {
+	/** Reactive data ref */
+	data: ShallowRef<T | null>;
+	/** Reactive loading state */
+	loading: Ref<boolean>;
+	/** Reactive error state */
+	error: ShallowRef<Error | null>;
+	/** Execute the query */
+	execute: () => Promise<T>;
+	/** Reset state */
+	reset: () => void;
+}
+
+/** Query options */
+export interface UseQueryOptions {
+	/** Skip the query (don't execute) */
+	skip?: boolean | Ref<boolean>;
+}
+
+/** Mutation function type */
+export type MutationFn<TInput, TOutput> = (
+	input: TInput,
+) => Promise<MutationResult<TOutput>>;
+
 // =============================================================================
-// useEntity() - Single Entity Composable
+// useQuery
 // =============================================================================
 
 /**
- * Composable for fetching and subscribing to a single entity.
- * Automatically manages subscriptions and cleanup.
+ * Create a reactive query from a QueryResult.
+ * Automatically subscribes to updates and manages cleanup.
  *
  * @example
  * ```vue
  * <script setup lang="ts">
- * import { useEntity } from '@lens/vue';
+ * import { useQuery } from '@lens/vue';
  *
- * const { data: user, loading, error } = useEntity('User', { id: '123' });
+ * const props = defineProps<{ userId: string }>();
+ * const { data, loading, error } = useQuery(
+ *   () => client.queries.getUser({ id: props.userId })
+ * );
  * </script>
  *
  * <template>
  *   <div v-if="loading">Loading...</div>
  *   <div v-else-if="error">Error: {{ error.message }}</div>
- *   <div v-else-if="user">
- *     <h1>{{ user.name }}</h1>
- *     <p>{{ user.email }}</p>
- *   </div>
+ *   <h1 v-else>{{ data?.name }}</h1>
  * </template>
  * ```
  */
-export function useEntity<
-	S extends SchemaDefinition,
-	E extends keyof S & string,
-	Sel extends Select<S[E], S> | undefined = undefined,
->(
-	entityName: E,
-	input: EntityInput | Ref<EntityInput>,
-	options?: UseEntityOptions<S, E, Sel>,
-	client?: Client<S>,
-): UseEntityResult<InferQueryResult<S, E, Sel>> {
-	type ResultType = InferQueryResult<S, E, Sel>;
-
-	const lensClient = client ?? useLensClient<S>();
-	const accessor = (lensClient as Record<string, unknown>)[entityName] as {
-		get: (id: string, options?: { select?: unknown }) => {
-			value: { data: ResultType | null; loading: boolean; error: Error | null };
-			subscribe: (cb: (value: unknown) => void) => () => void;
-		};
-	};
-
-	const data = ref<ResultType | null>(null) as Ref<ResultType | null>;
+export function useQuery<T>(
+	queryFn: () => QueryResult<T>,
+	options?: UseQueryOptions,
+): UseQueryResult<T> {
+	const data = shallowRef<T | null>(null);
 	const loading = ref(true);
-	const error = ref<Error | null>(null);
+	const error = shallowRef<Error | null>(null);
 
 	let unsubscribe: (() => void) | null = null;
 
-	const subscribe = (id: string) => {
-		// Clean up previous subscription
-		if (unsubscribe) {
-			unsubscribe();
-			lensClient.$store.release(entityName, id);
+	const executeQuery = () => {
+		const skip = typeof options?.skip === "object" ? options.skip.value : options?.skip;
+		if (skip) {
+			loading.value = false;
+			return;
 		}
 
-		// Get entity signal
-		const entitySignal = accessor.get(id, options);
+		loading.value = true;
+		error.value = null;
 
-		// Set initial value
-		data.value = entitySignal.value.data;
-		loading.value = entitySignal.value.loading;
-		error.value = entitySignal.value.error;
+		const queryResult = queryFn();
 
-		// Subscribe to changes
-		unsubscribe = entitySignal.subscribe((value: unknown) => {
-			const state = value as { data: ResultType | null; loading: boolean; error: Error | null };
-			data.value = state.data;
-			loading.value = state.loading;
-			error.value = state.error;
+		// Subscribe to updates
+		unsubscribe = queryResult.subscribe((value) => {
+			data.value = value;
+			loading.value = false;
+			error.value = null;
 		});
+
+		// Handle initial load via promise
+		queryResult.then(
+			(value) => {
+				data.value = value;
+				loading.value = false;
+				error.value = null;
+			},
+			(err) => {
+				error.value = err instanceof Error ? err : new Error(String(err));
+				loading.value = false;
+			},
+		);
 	};
 
-	// Watch for ID changes
-	if ("value" in input) {
-		watch(
-			() => input.value.id,
-			(id) => subscribe(id),
-			{ immediate: true },
-		);
-	} else {
-		subscribe(input.id);
+	// Execute immediately
+	executeQuery();
+
+	// Watch for skip changes
+	if (options?.skip && typeof options.skip === "object") {
+		watch(options.skip, (newSkip, oldSkip) => {
+			if (oldSkip && !newSkip) {
+				// Was skipped, now should execute
+				if (unsubscribe) {
+					unsubscribe();
+					unsubscribe = null;
+				}
+				executeQuery();
+			}
+		});
 	}
 
 	// Cleanup on unmount
 	onUnmounted(() => {
 		if (unsubscribe) {
 			unsubscribe();
-			const id = "value" in input ? input.value.id : input.id;
-			lensClient.$store.release(entityName, id);
+			unsubscribe = null;
 		}
 	});
 
 	const refetch = () => {
-		const id = "value" in input ? input.value.id : input.id;
-		lensClient.$store.setEntityLoading(entityName, id, true);
-		accessor.get(id, options);
+		if (unsubscribe) {
+			unsubscribe();
+			unsubscribe = null;
+		}
+		executeQuery();
 	};
 
 	return {
@@ -201,198 +174,145 @@ export function useEntity<
 }
 
 // =============================================================================
-// useList() - Entity List Composable
+// useMutation
 // =============================================================================
 
 /**
- * Composable for fetching and subscribing to a list of entities.
- * Automatically manages subscriptions and cleanup.
- *
- * @example
- * ```vue
- * <script setup lang="ts">
- * import { useList } from '@lens/vue';
- *
- * const { data: users, loading } = useList('User', {
- *   where: { isActive: true },
- *   orderBy: { name: 'asc' },
- *   take: 10,
- * });
- * </script>
- *
- * <template>
- *   <div v-if="loading">Loading...</div>
- *   <ul v-else>
- *     <li v-for="user in users" :key="user.id">
- *       {{ user.name }}
- *     </li>
- *   </ul>
- * </template>
- * ```
- */
-export function useList<
-	S extends SchemaDefinition,
-	E extends keyof S & string,
-	Sel extends Select<S[E], S> | undefined = undefined,
->(
-	entityName: E,
-	options?: UseListOptions<S, E, Sel>,
-	client?: Client<S>,
-): UseListResult<InferQueryResult<S, E, Sel>> {
-	type ResultType = InferQueryResult<S, E, Sel>;
-
-	const lensClient = client ?? useLensClient<S>();
-	const accessor = (lensClient as Record<string, unknown>)[entityName] as {
-		list: (options?: unknown) => {
-			value: { data: ResultType[] | null; loading: boolean; error: Error | null };
-			subscribe: (cb: (value: unknown) => void) => () => void;
-		};
-	};
-
-	const data = ref<ResultType[]>([]) as Ref<ResultType[]>;
-	const loading = ref(true);
-	const error = ref<Error | null>(null);
-
-	// Get list signal
-	const listSignal = accessor.list(options);
-
-	// Set initial value
-	data.value = listSignal.value.data ?? [];
-	loading.value = listSignal.value.loading;
-	error.value = listSignal.value.error;
-
-	// Subscribe to changes
-	const unsubscribe = listSignal.subscribe((value: unknown) => {
-		const state = value as { data: ResultType[] | null; loading: boolean; error: Error | null };
-		data.value = state.data ?? [];
-		loading.value = state.loading;
-		error.value = state.error;
-	});
-
-	// Cleanup on unmount
-	onUnmounted(() => {
-		unsubscribe();
-	});
-
-	const refetch = () => {
-		accessor.list(options);
-	};
-
-	return {
-		data,
-		loading,
-		error,
-		refetch,
-	};
-}
-
-// =============================================================================
-// useMutation() - Mutation Composable
-// =============================================================================
-
-/**
- * Composable for executing mutations.
+ * Create a reactive mutation with loading/error state.
  *
  * @example
  * ```vue
  * <script setup lang="ts">
  * import { useMutation } from '@lens/vue';
  *
- * const { mutate: createUser, loading, error } = useMutation('User', 'create');
+ * const { mutate, loading, error } = useMutation(client.mutations.createPost);
  *
- * const handleCreate = async () => {
- *   await createUser({ name: 'John', email: 'john@example.com' });
- * };
+ * async function handleSubmit() {
+ *   try {
+ *     const result = await mutate({ title: 'Hello World' });
+ *     console.log('Created:', result.data);
+ *   } catch (err) {
+ *     console.error('Failed:', err);
+ *   }
+ * }
  * </script>
  *
  * <template>
- *   <button @click="handleCreate" :disabled="loading">
- *     Create User
+ *   <button @click="handleSubmit" :disabled="loading">
+ *     {{ loading ? 'Creating...' : 'Create' }}
  *   </button>
+ *   <p v-if="error" class="error">{{ error.message }}</p>
  * </template>
  * ```
  */
-export function useMutation<
-	S extends SchemaDefinition,
-	E extends keyof S & string,
-	Op extends "create" | "update" | "delete",
->(
-	entityName: E,
-	operation: Op,
-	client?: Client<S>,
-): UseMutationResult<
-	Op extends "create"
-		? CreateInput<S[E], S>
-		: Op extends "update"
-			? UpdateMutationInput<S, E>
-			: DeleteMutationInput,
-	Op extends "delete" ? void : InferEntity<S[E], S>
-> {
-	const lensClient = client ?? useLensClient<S>();
-	const accessor = (lensClient as Record<string, unknown>)[entityName] as {
-		create: (data: CreateInput<S[E], S>) => Promise<{ data: InferEntity<S[E], S> }>;
-		update: (id: string, data: unknown) => Promise<{ data: InferEntity<S[E], S> }>;
-		delete: (id: string) => Promise<void>;
-	};
-
+export function useMutation<TInput, TOutput>(
+	mutationFn: MutationFn<TInput, TOutput>,
+): UseMutationResult<TInput, TOutput> {
+	const data = shallowRef<TOutput | null>(null);
 	const loading = ref(false);
-	const error = ref<Error | null>(null);
-	const data = ref<InferEntity<S[E], S> | null>(null) as Ref<InferEntity<S[E], S> | null>;
+	const error = shallowRef<Error | null>(null);
 
-	const mutate = async (input: unknown) => {
+	const mutate = async (input: TInput): Promise<MutationResult<TOutput>> => {
 		loading.value = true;
 		error.value = null;
 
 		try {
-			let result: unknown;
-
-			switch (operation) {
-				case "create":
-					result = await accessor.create(input as CreateInput<S[E], S>);
-					data.value = (result as { data: InferEntity<S[E], S> }).data;
-					return (result as { data: InferEntity<S[E], S> }).data;
-
-				case "update": {
-					const { id, data: updateData } = input as UpdateMutationInput<S, E>;
-					result = await accessor.update(id, updateData);
-					data.value = (result as { data: InferEntity<S[E], S> }).data;
-					return (result as { data: InferEntity<S[E], S> }).data;
-				}
-
-				case "delete": {
-					const { id } = input as DeleteMutationInput;
-					await accessor.delete(id);
-					data.value = null;
-					return undefined;
-				}
-			}
+			const result = await mutationFn(input);
+			data.value = result.data;
+			loading.value = false;
+			return result;
 		} catch (err) {
 			const mutationError = err instanceof Error ? err : new Error(String(err));
 			error.value = mutationError;
-			throw mutationError;
-		} finally {
 			loading.value = false;
+			throw mutationError;
 		}
 	};
 
 	const reset = () => {
+		data.value = null;
 		loading.value = false;
 		error.value = null;
-		data.value = null;
 	};
 
 	return {
-		mutate,
+		data,
 		loading,
 		error,
-		data,
+		mutate,
 		reset,
-	} as UseMutationResult<
-		Op extends "create"
-			? CreateInput<S[E], S>
-			: Op extends "update"
-				? UpdateMutationInput<S, E>
-				: DeleteMutationInput,
-		Op extends "delete" ? void : InferEntity<S[E], S>
-	>;
+	};
+}
+
+// =============================================================================
+// useLazyQuery
+// =============================================================================
+
+/**
+ * Create a lazy query that executes on demand.
+ *
+ * @example
+ * ```vue
+ * <script setup lang="ts">
+ * import { ref } from 'vue';
+ * import { useLazyQuery } from '@lens/vue';
+ *
+ * const searchTerm = ref('');
+ * const { data, loading, execute } = useLazyQuery(
+ *   () => client.queries.searchUsers({ query: searchTerm.value })
+ * );
+ *
+ * async function handleSearch() {
+ *   const results = await execute();
+ *   console.log('Found:', results);
+ * }
+ * </script>
+ *
+ * <template>
+ *   <input v-model="searchTerm" />
+ *   <button @click="handleSearch" :disabled="loading">Search</button>
+ *   <ul v-if="data">
+ *     <li v-for="user in data" :key="user.id">{{ user.name }}</li>
+ *   </ul>
+ * </template>
+ * ```
+ */
+export function useLazyQuery<T>(
+	queryFn: () => QueryResult<T>,
+): UseLazyQueryResult<T> {
+	const data = shallowRef<T | null>(null);
+	const loading = ref(false);
+	const error = shallowRef<Error | null>(null);
+
+	const execute = async (): Promise<T> => {
+		loading.value = true;
+		error.value = null;
+
+		try {
+			const queryResult = queryFn();
+			const result = await queryResult;
+			data.value = result;
+			loading.value = false;
+			return result;
+		} catch (err) {
+			const queryError = err instanceof Error ? err : new Error(String(err));
+			error.value = queryError;
+			loading.value = false;
+			throw queryError;
+		}
+	};
+
+	const reset = () => {
+		data.value = null;
+		loading.value = false;
+		error.value = null;
+	};
+
+	return {
+		data,
+		loading,
+		error,
+		execute,
+		reset,
+	};
 }
