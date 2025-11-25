@@ -15,7 +15,7 @@
 		"typecheck": "bun run --filter '*' typecheck",
 		"changeset": "changeset",
 		"version-packages": "changeset version",
-		"release": "bun run scripts/publish.ts"
+		"release": "changeset publish"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
