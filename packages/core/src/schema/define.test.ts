@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from "bun:test";
 import { t } from "./types";
-import { defineEntity, createSchemaFrom, hasMany, hasOne, belongsTo } from "./define";
+import { defineEntity, createSchema, hasMany, hasOne, belongsTo } from "./define";
 import type { InferEntity } from "./infer";
 
 // =============================================================================
@@ -95,10 +95,10 @@ describe("Relation helpers", () => {
 });
 
 // =============================================================================
-// Test: createSchemaFrom
+// Test: createSchema
 // =============================================================================
 
-describe("createSchemaFrom", () => {
+describe("createSchema", () => {
 	it("creates a schema from entity definitions", () => {
 		const User = defineEntity("User", {
 			id: t.id(),
@@ -110,7 +110,7 @@ describe("createSchemaFrom", () => {
 			title: t.string(),
 		});
 
-		const schema = createSchemaFrom({
+		const schema = createSchema({
 			User: User.with({
 				posts: hasMany(Post),
 			}),
@@ -140,7 +140,7 @@ describe("createSchemaFrom", () => {
 
 		// This should throw because 'InvalidEntity' doesn't exist
 		expect(() =>
-			createSchemaFrom({
+			createSchema({
 				User: User.with({
 					// @ts-expect-error - Testing runtime validation
 					invalid: t.hasMany("InvalidEntity"),
@@ -168,7 +168,7 @@ describe("Type inference with defineEntity", () => {
 			views: t.int(),
 		});
 
-		const schema = createSchemaFrom({
+		const schema = createSchema({
 			User: User.with({
 				posts: hasMany(Post),
 			}),
@@ -197,9 +197,9 @@ describe("Type inference with defineEntity", () => {
 
 describe("Comparison: String vs Direct Reference", () => {
 	it("both APIs produce the same schema", () => {
-		// String-based (old way)
-		const { createSchema } = require("./create");
-		const stringSchema = createSchema({
+		// String-based (legacy)
+		const { createSchemaLegacy } = require("./create");
+		const stringSchema = createSchemaLegacy({
 			User: {
 				id: t.id(),
 				name: t.string(),
@@ -223,7 +223,7 @@ describe("Comparison: String vs Direct Reference", () => {
 			title: t.string(),
 		});
 
-		const directSchema = createSchemaFrom({
+		const directSchema = createSchema({
 			User: User.with({ posts: hasMany(Post) }),
 			Post: Post.with({ author: belongsTo(User) }),
 		});

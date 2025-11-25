@@ -6,7 +6,7 @@
  *
  * @example
  * ```typescript
- * import { defineEntity, createSchemaFrom, t } from '@lens/core';
+ * import { entity, createSchema, hasMany, belongsTo, t } from '@lens/core';
  *
  * // Step 1: Define entities (without relations)
  * const User = defineEntity('User', {
@@ -22,12 +22,12 @@
  * });
  *
  * // Step 2: Create schema with type-safe relations
- * const schema = createSchemaFrom({
+ * const schema = createSchema({
  *   User: User.with({
- *     posts: User.hasMany(Post),  // Direct reference!
+ *     posts: hasMany(Post),  // Direct reference!
  *   }),
  *   Post: Post.with({
- *     author: Post.belongsTo(User),  // Direct reference!
+ *     author: belongsTo(User),  // Direct reference!
  *   }),
  * });
  * ```
@@ -201,23 +201,25 @@ type SchemaInput = Record<string, EntityDefinition>;
 
 /**
  * Create a typed schema from entity definitions.
- * This is an alternative to createSchema that works with defineEntity.
  *
  * @example
  * ```typescript
- * const schema = createSchemaFrom({
+ * const schema = createSchema({
  *   User: User.with({
- *     posts: User.hasMany(Post),
+ *     posts: hasMany(Post),
  *   }),
  *   Post: Post.with({
- *     author: Post.belongsTo(User),
+ *     author: belongsTo(User),
  *   }),
  * });
  * ```
  */
-export function createSchemaFrom<S extends SchemaInput>(definition: S): Schema<S> {
+export function createSchema<S extends SchemaInput>(definition: S): Schema<S> {
 	return new Schema(definition);
 }
+
+/** @deprecated Use createSchema instead */
+export const createSchemaFrom = createSchema;
 
 // =============================================================================
 // Convenience: Relation Helpers on Entity

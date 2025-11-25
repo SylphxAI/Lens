@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "bun:test";
 import { t } from "./types";
-import { entity, createSchemaFrom, hasMany, belongsTo } from "./define";
+import { entity, createSchema, hasMany, belongsTo } from "./define";
 import type {
 	WhereInput,
 	OrderByInput,
@@ -41,7 +41,7 @@ const Post = entity("Post", {
 });
 
 // Create schema with relations using direct entity references
-const schema = createSchemaFrom({
+const schema = createSchema({
 	User: User.with({ posts: hasMany(Post) }),
 	Post: Post.with({ author: belongsTo(User) }),
 });
@@ -408,7 +408,7 @@ describe("Relation validation", () => {
 		const Author = entity("Author", { id: t.id() });
 		const Book = entity("Book", { id: t.id() });
 
-		const validSchema = createSchemaFrom({
+		const validSchema = createSchema({
 			Author: Author.with({ books: hasMany(Book) }),
 			Book: Book.with({ author: belongsTo(Author) }),
 		});
@@ -421,7 +421,7 @@ describe("Relation validation", () => {
 		const UserOnly = entity("User", { id: t.id() });
 
 		expect(() =>
-			createSchemaFrom({
+			createSchema({
 				// @ts-expect-error - 'InvalidEntity' doesn't exist
 				User: UserOnly.with({ profile: t.hasOne("InvalidEntity") }),
 			} as any),

@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "bun:test";
-import { t, entity, createSchemaFrom, hasMany, belongsTo } from "@lens/core";
+import { t, entity, createSchema, hasMany, belongsTo } from "@lens/core";
 import type { InferQueryResult, ListOptions, QueryOptions } from "./client";
 
 // =============================================================================
@@ -29,7 +29,7 @@ const Post = entity("Post", {
 });
 
 // Create schema with relations using direct entity references
-const schema = createSchemaFrom({
+const schema = createSchema({
 	User: User.with({ posts: hasMany(Post) }),
 	Post: Post.with({ author: belongsTo(User) }),
 });

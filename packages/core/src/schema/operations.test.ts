@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "bun:test";
 import { t } from "./types";
-import { entity, createSchemaFrom, hasMany, hasOne, belongsTo } from "./define";
+import { entity, createSchema, hasMany, hasOne, belongsTo } from "./define";
 import type {
 	// Aggregation
 	AggregateInput,
@@ -68,7 +68,7 @@ const Tag = entity("Tag", {
 });
 
 // Create schema with relations using direct entity references
-const schema = createSchemaFrom({
+const schema = createSchema({
 	User: User.with({
 		posts: hasMany(Post),
 		profile: hasOne(Profile),

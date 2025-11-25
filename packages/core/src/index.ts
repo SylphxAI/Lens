@@ -54,8 +54,6 @@ export {
 export {
 	// Schema class
 	Schema,
-	// Factory function
-	createSchema,
 	// Metadata types
 	type RelationMeta,
 	type EntityMeta,
@@ -68,21 +66,23 @@ export {
 	type ValidatedSchemaDefinition,
 	// Errors
 	SchemaValidationError,
+	// Legacy (deprecated)
+	createSchemaLegacy,
 } from "./schema/create";
 
 // =============================================================================
-// Two-Phase Schema Definition (Drizzle-style)
+// Entity & Schema Definition (Primary API)
 // =============================================================================
 
 export {
 	// Entity definition
 	defineEntity,
-	entity, // Simplified alias
+	entity,
 	isEntityDef,
 	type EntityDef,
-	// Schema creation
-	createSchemaFrom,
-	// Relation helpers (no strings!)
+	// Schema creation (primary)
+	createSchema,
+	// Relation helpers
 	hasMany,
 	hasOne,
 	belongsTo,

@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { t } from "./types";
-import { entity, createSchemaFrom, hasMany, hasOne, belongsTo } from "./define";
+import { entity, createSchema, hasMany, hasOne, belongsTo } from "./define";
 import type {
 	InferEntity,
 	InferScalar,
@@ -53,7 +53,7 @@ const Profile = entity("Profile", {
 });
 
 // Create schema with relations using direct entity references
-const testSchema = createSchemaFrom({
+const testSchema = createSchema({
 	User: User.with({
 		posts: hasMany(Post),
 		profile: hasOne(Profile),
@@ -240,7 +240,7 @@ describe("Runtime Type Validation", () => {
 		const A = entity("A", { id: t.id() });
 		const B = entity("B", { id: t.id() });
 
-		const validSchema = createSchemaFrom({
+		const validSchema = createSchema({
 			A: A.with({ b: hasOne(B) }),
 			B: B.with({ a: belongsTo(A) }),
 		});
@@ -253,7 +253,7 @@ describe("Runtime Type Validation", () => {
 		const A = entity("A", { id: t.id() });
 
 		expect(() => {
-			createSchemaFrom({
+			createSchema({
 				// @ts-expect-error - Testing runtime validation
 				A: A.with({ b: t.hasOne("NonExistent") }),
 			});
