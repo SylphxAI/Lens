@@ -193,3 +193,23 @@ export {
 	type ReactiveListOptions,
 	type ReactiveInferQueryResult,
 } from "./reactive";
+
+// =============================================================================
+// Unified Client (V2 Operations + V1 Optimization Layer)
+// =============================================================================
+
+export {
+	// Factory
+	createUnifiedClient,
+	// Types
+	type UnifiedClient,
+	type UnifiedClientConfig,
+	type UnifiedTransport,
+	type QueryResult as UnifiedQueryResult,
+	type MutationResult as UnifiedMutationResult,
+	type SelectionObject,
+	type QueriesMap as UnifiedQueriesMap,
+	type MutationsMap as UnifiedMutationsMap,
+	type InferInput as UnifiedInferInput,
+	type InferOutput as UnifiedInferOutput,
+} from "./client/unified";

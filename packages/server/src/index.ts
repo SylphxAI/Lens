@@ -109,3 +109,19 @@ export {
 	type SSEHandlerConfig,
 	type SSEClientInfo,
 } from "./sse/handler";
+
+// =============================================================================
+// Unified Server (V2 Operations + V1 Optimization Layer)
+// =============================================================================
+
+export {
+	// Factory
+	createUnifiedServer,
+	// Types
+	type UnifiedServer,
+	type UnifiedServerConfig,
+	type EntitiesMap as UnifiedEntitiesMap,
+	type QueriesMap as UnifiedQueriesMap,
+	type MutationsMap as UnifiedMutationsMap,
+	type WebSocketLike as UnifiedWebSocketLike,
+} from "./server/unified";
