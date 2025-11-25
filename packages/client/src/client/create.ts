@@ -15,7 +15,6 @@ import type {
 	RouterRoutes,
 } from "@sylphx/lens-core";
 import { normalizeOptimisticDSL } from "@sylphx/lens-core";
-import { type Signal, type WritableSignal, signal } from "../signals/signal";
 import { ReactiveStore } from "../store/reactive-store";
 import type { Plugin } from "../transport/plugin";
 import type { Metadata, Observable, Operation, Result, Transport } from "../transport/types";
@@ -47,14 +46,8 @@ export interface LensClientConfig {
 
 /** Query result with reactive subscription support */
 export interface QueryResult<T> {
-	/** Current value */
+	/** Current value (for peeking without subscribing) */
 	readonly value: T | null;
-	/** Reactive signal */
-	readonly signal: Signal<T | null>;
-	/** Loading state */
-	readonly loading: Signal<boolean>;
-	/** Error state */
-	readonly error: Signal<Error | null>;
 	/** Subscribe to updates */
 	subscribe(callback?: (data: T) => void): () => void;
 	/** Select specific fields */
@@ -160,9 +153,7 @@ class ClientImpl {
 	private subscriptions = new Map<
 		string,
 		{
-			data: WritableSignal<unknown>;
-			loading: WritableSignal<boolean>;
-			error: WritableSignal<Error | null>;
+			data: unknown;
 			callbacks: Set<(data: unknown) => void>;
 			unsubscribe?: () => void;
 		}
@@ -288,9 +279,7 @@ class ClientImpl {
 		// Get or create subscription state
 		if (!this.subscriptions.has(key)) {
 			this.subscriptions.set(key, {
-				data: signal<unknown>(null),
-				loading: signal(true),
-				error: signal<Error | null>(null),
+				data: null,
 				callbacks: new Set(),
 			});
 		}
@@ -298,11 +287,8 @@ class ClientImpl {
 
 		const result: QueryResult<T> = {
 			get value() {
-				return sub.data.value as T | null;
+				return sub.data as T | null;
 			},
-			signal: sub.data as Signal<T | null>,
-			loading: sub.loading,
-			error: sub.error,
 
 			subscribe: (callback?: (data: T) => void) => {
 				// Add callback
@@ -311,8 +297,8 @@ class ClientImpl {
 					sub.callbacks.add(wrapped);
 
 					// If data available, call immediately
-					if (sub.data.value !== null) {
-						callback(sub.data.value as T);
+					if (sub.data !== null) {
+						callback(sub.data as T);
 					}
 				}
 
@@ -361,8 +347,7 @@ class ClientImpl {
 					}
 
 					// Update subscription state
-					sub.data.value = response.data;
-					sub.loading.value = false;
+					sub.data = response.data;
 
 					// Notify callbacks
 					for (const cb of sub.callbacks) {
@@ -373,8 +358,6 @@ class ClientImpl {
 						? onfulfilled(response.data as T)
 						: (response.data as unknown as TResult1);
 				} catch (error) {
-					sub.error.value = error as Error;
-					sub.loading.value = false;
 					if (onrejected) {
 						return onrejected(error);
 					}
@@ -411,19 +394,17 @@ class ClientImpl {
 				const subscription = resultOrObservable.subscribe({
 					next: (result) => {
 						if (result.data !== undefined) {
-							sub.data.value = result.data;
-							sub.loading.value = false;
+							sub.data = result.data;
 							for (const cb of sub.callbacks) {
 								cb(result.data);
 							}
 						}
 					},
-					error: (error) => {
-						sub.error.value = error;
-						sub.loading.value = false;
+					error: (_error) => {
+						// Error handled by promise rejection
 					},
 					complete: () => {
-						sub.loading.value = false;
+						// Completed
 					},
 				});
 
@@ -502,16 +483,16 @@ class ClientImpl {
 		const entityId = this.extractId(optimisticData);
 		if (entityId) {
 			for (const [key, sub] of this.subscriptions) {
-				const currentId = this.extractId(sub.data.value);
+				const currentId = this.extractId(sub.data);
 				if (currentId === entityId) {
-					affectedSubs.set(key, sub.data.value);
-					sub.data.value =
-						typeof sub.data.value === "object"
-							? { ...sub.data.value, ...(optimisticData as object) }
+					affectedSubs.set(key, sub.data);
+					sub.data =
+						typeof sub.data === "object"
+							? { ...sub.data, ...(optimisticData as object) }
 							: optimisticData;
 
 					for (const cb of sub.callbacks) {
-						cb(sub.data.value);
+						cb(sub.data);
 					}
 				}
 			}
@@ -545,9 +526,9 @@ class ClientImpl {
 		const entityId = this.extractId(serverData);
 		if (entityId) {
 			for (const [, sub] of this.subscriptions) {
-				const currentId = this.extractId(sub.data.value);
+				const currentId = this.extractId(sub.data);
 				if (currentId === entityId) {
-					sub.data.value = serverData;
+					sub.data = serverData;
 					for (const cb of sub.callbacks) {
 						cb(serverData);
 					}
@@ -566,7 +547,7 @@ class ClientImpl {
 		for (const [key, previousData] of entry.previousData) {
 			const sub = this.subscriptions.get(key);
 			if (sub) {
-				sub.data.value = previousData;
+				sub.data = previousData;
 				for (const cb of sub.callbacks) {
 					cb(previousData);
 				}
