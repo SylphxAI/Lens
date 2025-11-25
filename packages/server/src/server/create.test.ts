@@ -1,7 +1,7 @@
 /**
- * @lens/server - Unified Server Tests
+ * @lens/server - Server Tests
  *
- * Tests for unified server (V2 Operations + V1 Optimization Layer).
+ * Tests for Lens server operations and GraphStateManager integration.
  */
 
 import { describe, it, expect, beforeEach } from "bun:test";

@@ -1,7 +1,7 @@
 /**
  * @lens/client - Shared Key Utilities
  *
- * Unified key generation for entities and queries.
+ * Key generation for entities and queries.
  */
 
 // =============================================================================

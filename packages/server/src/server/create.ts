@@ -1,7 +1,7 @@
 /**
  * @lens/server - Lens Server
  *
- * Combines V2 Operations API with V1 Optimization Layer:
+ * Core server implementation:
  * - Free Operations (query/mutation definitions)
  * - GraphStateManager (per-client state tracking, minimal diffs)
  * - Field-level subscriptions
@@ -67,7 +67,7 @@ export interface LensServerConfig<TContext extends ContextValue = ContextValue> 
 	version?: string;
 }
 
-/** Unified server interface */
+/** Lens server interface */
 export interface LensServer {
 	/** Execute a query (one-time) */
 	executeQuery<TInput, TOutput>(name: string, input?: TInput): Promise<TOutput>;

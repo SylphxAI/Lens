@@ -1,7 +1,7 @@
 /**
- * @lens - Unified Architecture E2E Tests
+ * @lens - E2E Tests
  *
- * End-to-end tests for unified server and client working together.
+ * End-to-end tests for server and client working together.
  * Tests the complete flow of:
  * - Operations protocol (queries, mutations, subscriptions)
  * - GraphStateManager integration
@@ -50,7 +50,7 @@ let mockPosts = [
 // =============================================================================
 
 /**
- * Mock WebSocket client for testing unified server.
+ * Mock WebSocket client for testing the server.
  * Simulates client-side message handling.
  */
 function createMockClient(server: ReturnType<typeof createServer>) {
@@ -209,7 +209,7 @@ function createMockClient(server: ReturnType<typeof createServer>) {
 // Test: Basic Operations
 // =============================================================================
 
-describe("Unified E2E - Basic Operations", () => {
+describe("E2E - Basic Operations", () => {
 	it("query without input", async () => {
 		const getUsers = query()
 			.returns([User])
@@ -267,7 +267,7 @@ describe("Unified E2E - Basic Operations", () => {
 // Test: Subscriptions
 // =============================================================================
 
-describe("Unified E2E - Subscriptions", () => {
+describe("E2E - Subscriptions", () => {
 	it("subscribe receives initial data", async () => {
 		const getUser = query()
 			.input(z.object({ id: z.string() }))
@@ -387,7 +387,7 @@ describe("Unified E2E - Subscriptions", () => {
 // Test: Server API
 // =============================================================================
 
-describe("Unified E2E - Server API", () => {
+describe("E2E - Server API", () => {
 	it("executes queries via mock client", async () => {
 		const whoami = query()
 			.returns(User)
@@ -439,7 +439,7 @@ describe("Unified E2E - Server API", () => {
 // Test: Cleanup (ctx.onCleanup)
 // =============================================================================
 
-describe("Unified E2E - Cleanup", () => {
+describe("E2E - Cleanup", () => {
 	it("calls cleanup on unsubscribe", async () => {
 		let cleanedUp = false;
 
@@ -479,7 +479,7 @@ describe("Unified E2E - Cleanup", () => {
 // Test: GraphStateManager Integration
 // =============================================================================
 
-describe("Unified E2E - GraphStateManager", () => {
+describe("E2E - GraphStateManager", () => {
 	it("mutation updates are broadcast to subscribers", async () => {
 		let emitFn: ((data: unknown) => void) | null = null;
 
@@ -539,7 +539,7 @@ describe("Unified E2E - GraphStateManager", () => {
 // Test: Entity Resolvers and Nested Selection
 // =============================================================================
 
-describe("Unified E2E - Entity Resolvers", () => {
+describe("E2E - Entity Resolvers", () => {
 	it("executes entity resolvers for nested selection via $select", async () => {
 		// Mock data
 		const users = [

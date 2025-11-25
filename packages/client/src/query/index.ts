@@ -1,7 +1,7 @@
 /**
  * @lens/client - Query Module
  *
- * QueryResult - unified API that is both Thenable (can await) and Subscribable (can subscribe).
+ * QueryResult - API that is both Thenable (can await) and Subscribable (can subscribe).
  * Enables direct server communication with optional streaming.
  */
 

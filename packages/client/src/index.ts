@@ -68,43 +68,6 @@ export {
 } from "./client/create";
 
 // =============================================================================
-// Links (Utility)
-// =============================================================================
-
-export {
-	// New names (recommended)
-	loggerLink,
-	retryLink,
-	timingLink,
-	errorHandlerLink,
-	// Deprecated aliases
-	loggerMiddleware,
-	retryMiddleware,
-	timingMiddleware,
-	errorHandlerMiddleware,
-	// Types
-	type LoggerOptions,
-	type RetryOptions,
-	type TimingOptions,
-	type ErrorHandlerOptions,
-} from "./client/middleware";
-
-// =============================================================================
-// WebSocket Transport (Legacy - use websocketLink from links instead)
-// =============================================================================
-
-export {
-	// Class
-	WebSocketTransport,
-	// Factory
-	createWebSocketTransport as createWebSocketTransportLegacy,
-	websocketTransport,
-	// Types
-	type WebSocketTransportOptions,
-	type WebSocketState as WebSocketTransportState,
-} from "./client/transport";
-
-// =============================================================================
 // Links (tRPC-style middleware chain)
 // =============================================================================
 
@@ -124,9 +87,9 @@ export {
 	composeLinks,
 	createOperationContext,
 	// Middleware links
-	loggerLink as loggerLinkV2,
+	loggerLink,
 	type LoggerLinkOptions,
-	retryLink as retryLinkV2,
+	retryLink,
 	type RetryLinkOptions,
 	cacheLink,
 	createCacheStore,
@@ -163,3 +126,24 @@ export {
 	type WebSocketLinkOptions,
 	type WebSocketState,
 } from "./links";
+
+// =============================================================================
+// Legacy Exports (deprecated - use links instead)
+// =============================================================================
+
+export {
+	// WebSocket Transport (deprecated - use websocketLink from links)
+	WebSocketTransport,
+	createWebSocketTransport as createWebSocketTransportLegacy,
+	websocketTransport,
+	type WebSocketTransportOptions,
+	type WebSocketState as WebSocketTransportState,
+} from "./client/transport";
+
+export {
+	// Timing & Error handling (not yet in new links)
+	timingLink,
+	errorHandlerLink,
+	type TimingOptions,
+	type ErrorHandlerOptions,
+} from "./client/middleware";

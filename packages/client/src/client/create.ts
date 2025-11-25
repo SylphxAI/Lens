@@ -158,6 +158,37 @@ export interface ApiShape<Q extends QueriesMap = QueriesMap, M extends Mutations
  */
 export type InferApiFromServer<T> = T extends { _types: infer Shape } ? Shape : never;
 
+/** Selection object */
+export type SelectionObject = Record<string, boolean | SelectionObject | { select: SelectionObject }>;
+
+/**
+ * Infer selected type from selection object
+ *
+ * @example
+ * ```typescript
+ * type User = { id: string, name: string, email: string };
+ * type Selected = SelectedType<User, { id: true, name: true }>;
+ * // Selected = { id: string, name: string }
+ * ```
+ */
+export type SelectedType<T, S extends SelectionObject> = {
+	[K in keyof S & keyof T]: S[K] extends true
+		? T[K]
+		: S[K] extends { select: infer Nested extends SelectionObject }
+			? T[K] extends Array<infer Item>
+				? Array<SelectedType<Item, Nested>>
+				: T[K] extends object
+					? SelectedType<T[K], Nested>
+					: T[K]
+			: S[K] extends SelectionObject
+				? T[K] extends Array<infer Item>
+					? Array<SelectedType<Item, S[K]>>
+					: T[K] extends object
+						? SelectedType<T[K], S[K]>
+						: T[K]
+				: never;
+};
+
 /** Query result with subscription support */
 export interface QueryResult<T> {
 	/** Get current value (triggers fetch if not subscribed) */
@@ -170,17 +201,22 @@ export interface QueryResult<T> {
 	readonly error: Signal<Error | null>;
 	/** Subscribe to updates */
 	subscribe(callback?: (data: T) => void): () => void;
-	/** Select specific fields */
-	select<S extends SelectionObject>(selection: S): QueryResult<T>;
+	/**
+	 * Select specific fields (with type inference)
+	 *
+	 * @example
+	 * ```typescript
+	 * const user = await api.getUser({ id }).select({ name: true });
+	 * // user is { name: string }
+	 * ```
+	 */
+	select<S extends SelectionObject>(selection: S): QueryResult<SelectedType<T, S>>;
 	/** Promise interface */
 	then<TResult1 = T, TResult2 = never>(
 		onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null,
 		onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
 	): Promise<TResult1 | TResult2>;
 }
-
-/** Selection object */
-export type SelectionObject = Record<string, boolean | SelectionObject | { select: SelectionObject }>;
 
 /** Mutation result */
 export interface MutationResult<T> {

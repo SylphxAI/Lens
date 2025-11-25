@@ -1,7 +1,7 @@
 /**
  * @lens/client - QueryResult
  *
- * Unified result object that is both Thenable (can await) and Subscribable (can subscribe).
+ * Result object that is both Thenable (can await) and Subscribable (can subscribe).
  * Lazy execution - doesn't fetch until await or subscribe is called.
  */
 

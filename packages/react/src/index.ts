@@ -12,30 +12,25 @@
 export { LensProvider, useLensClient, type LensProviderProps } from "./context";
 
 // =============================================================================
-// Hooks
+// Hooks (Operations-based API)
 // =============================================================================
 
 export {
-	// Entity hooks
-	useEntity,
-	useList,
+	// Query hooks
+	useQuery,
+	useLazyQuery,
 	// Mutation hook
 	useMutation,
-	// Signal hooks
-	useSignalValue,
-	useLensComputed,
 	// Types
-	type EntityInput,
-	type QueryOptions,
-	type UseEntityResult,
-	type UseListResult,
+	type UseQueryResult,
+	type UseLazyQueryResult,
 	type UseMutationResult,
-	type UpdateMutationInput,
-	type DeleteMutationInput,
+	type UseQueryOptions,
+	type MutationFn,
 } from "./hooks";
 
 // =============================================================================
-// Reactive Hooks (Fine-grained reactivity)
+// Reactive Hooks (Fine-grained reactivity with signals)
 // =============================================================================
 
 export {
@@ -56,8 +51,8 @@ export {
 	// Types
 	type UseReactiveEntityResult,
 	type UseReactiveListResult,
-	type UpdateMutationInput as ReactiveUpdateMutationInput,
-	type DeleteMutationInput as ReactiveDeleteMutationInput,
+	type UpdateMutationInput,
+	type DeleteMutationInput,
 } from "./reactive-hooks";
 
 // =============================================================================
@@ -65,27 +60,3 @@ export {
 // =============================================================================
 
 export { useSignal, useComputed, useSignalEffect } from "@preact/signals-react";
-
-// =============================================================================
-// V2 Hooks (Operations-based API)
-// =============================================================================
-
-export {
-	// Context & Provider
-	LensProviderV2,
-	useLensClientV2,
-	type LensProviderV2Props,
-} from "./context-v2";
-
-export {
-	// Query hooks
-	useQuery,
-	useLazyQuery,
-	// Mutation hook
-	useMutation as useMutationV2,
-	// Types
-	type UseQueryResult,
-	type UseLazyQueryResult,
-	type UseMutationV2Result,
-	type UseQueryOptions,
-} from "./hooks-v2";

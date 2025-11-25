@@ -1,7 +1,7 @@
 /**
  * @lens/client - Shared Batching Utilities
  *
- * Unified batching infrastructure with configurable delay.
+ * Batching infrastructure with configurable delay.
  */
 
 // =============================================================================
