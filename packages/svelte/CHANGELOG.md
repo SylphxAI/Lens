@@ -1,5 +1,13 @@
 # @sylphx/lens-svelte
 
+## 1.0.1
+
+### Patch Changes
+
+- Fix server subscription context - add `onCleanup` and `emit` to `ctx` object instead of top-level resolver args. Also retry 1.0.0 release as 1.0.1 due to npm 24-hour unpublish restriction.
+- Updated dependencies
+  - @sylphx/lens-client@1.0.1
+
 ## 1.0.0
 
 ### Major Changes
