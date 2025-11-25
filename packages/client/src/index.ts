@@ -43,49 +43,95 @@ export {
 } from "./store/reactive-store";
 
 // =============================================================================
-// Client (Legacy V1 - CRUD-based)
+// Client (Primary API)
 // =============================================================================
 
 export {
-	// Factory (V1 Legacy - use createClient from unified instead)
-	createClient as createClientV1,
+	// Factory (recommended)
+	createClient,
 	// Types
-	type Client as ClientV1,
-	type ClientConfig as ClientV1Config,
-	type EntityAccessor,
-	type QueryOptions,
-	type ListOptions,
-	type MutationOptions,
+	type LensClient,
+	type ClientConfig,
+	type Transport,
+	type QueryResult,
 	type MutationResult,
-	type InferQueryResult,
-} from "./client/client";
+	type SelectionObject,
+	type QueriesMap,
+	type MutationsMap,
+	type InferInput,
+	type InferOutput,
+	// Middleware types
+	type Middleware,
+	type MiddlewareFn,
+	type OperationContext,
+} from "./client/create";
+
+// =============================================================================
+// Client Middleware
+// =============================================================================
 
 export {
-	// Factory (V2 - Operations-based)
+	// Middleware links
+	loggerMiddleware,
+	retryMiddleware,
+	timingMiddleware,
+	errorHandlerMiddleware,
+	// Types
+	type LoggerOptions,
+	type RetryOptions,
+	type TimingOptions,
+	type ErrorHandlerOptions,
+} from "./client/middleware";
+
+// =============================================================================
+// WebSocket Transport
+// =============================================================================
+
+export {
+	// Class
+	WebSocketTransport,
+	// Factory
+	createWebSocketTransport,
+	websocketTransport,
+	// Alias for convenience
+	websocketTransport as websocketLink,
+	// Types
+	type WebSocketTransportOptions,
+	type WebSocketState,
+	// Alias for convenience
+	type WebSocketTransportOptions as WebSocketLinkOptions,
+} from "./client/transport";
+
+// =============================================================================
+// Client V2 (Alternative: Operations-based with Links)
+// =============================================================================
+
+export {
+	// Factory
 	createClientV2,
 	// Types
 	type ClientV2,
 	type ClientV2Config,
-	type QueriesMap,
-	type MutationsMap,
+	type QueriesMap as QueriesMapV2,
+	type MutationsMap as MutationsMapV2,
 	type QueryAccessor,
 	type MutationAccessor,
 	type QueryAccessors,
 	type MutationAccessors,
 	type MutationV2Options,
 	type MutationV2Result,
-	type InferInput,
-	type InferOutput,
+	type InferInput as InferInputV2,
+	type InferOutput as InferOutputV2,
 } from "./client/client-v2";
 
 // =============================================================================
-// Links (tRPC-style middleware chain)
+// Links (tRPC-style middleware chain for V2 client)
 // =============================================================================
 
 export {
 	// Types
 	type OperationType,
-	type OperationContext,
+	type OperationContext as LinkOperationContext,
 	type OperationResult,
 	type NextLink,
 	type LinkFn,
@@ -138,12 +184,6 @@ export {
 	createInProcessLinkV2,
 	type InProcessLinkV2Options,
 	type InProcessServerV2,
-	// WebSocket subscription transport (V1 - for legacy client)
-	WebSocketSubscriptionTransport,
-	createWebSocketTransport,
-	websocketLink as websocketLinkV1,
-	type WebSocketLinkOptions as WebSocketLinkV1Options,
-	type WebSocketState,
 	// WebSocket V2 (operations protocol)
 	WebSocketTransportV2,
 	createWebSocketTransportV2,
@@ -151,105 +191,3 @@ export {
 	type WebSocketLinkV2Options,
 	type WebSocketV2State,
 } from "./links";
-
-// =============================================================================
-// Reactive System (Fine-grained reactivity)
-// =============================================================================
-
-export {
-	// EntitySignal (field-level signals)
-	EntitySignal,
-	createEntitySignal,
-	deriveEntitySignal,
-	type FieldSignals,
-	type EntitySignalOptions,
-	type DisposeCallback,
-	// SubscriptionManager (field-level subscriptions)
-	SubscriptionManager,
-	createSubscriptionManager,
-	type FieldSubscription,
-	type EntitySubscription,
-	type SubscribeMessage,
-	type UnsubscribeMessage,
-	type UpdateMessage,
-	type ServerMessage,
-	type SubscriptionTransport,
-	// QueryResolver (query deduplication)
-	QueryResolver,
-	createQueryResolver,
-	type QueryDef,
-	type QueryResult,
-	type ListQueryResult,
-	type QueryTransport,
-	// ReactiveClient
-	createReactiveClient,
-	type ReactiveClient,
-	type ReactiveClientConfig,
-	type ReactiveEntityAccessor,
-	type EntityResult,
-	type ListResult,
-	type ReactiveMutationResult,
-	type ReactiveQueryOptions,
-	type ReactiveListOptions,
-	type ReactiveInferQueryResult,
-} from "./reactive";
-
-// =============================================================================
-// Unified Client (V2 Operations + V1 Optimization Layer)
-// =============================================================================
-
-export {
-	// Factory
-	createUnifiedClient,
-	// Types
-	type UnifiedClient,
-	type UnifiedClientConfig,
-	type UnifiedTransport,
-	type QueryResult as UnifiedQueryResult,
-	type MutationResult as UnifiedMutationResult,
-	type SelectionObject,
-	type QueriesMap as UnifiedQueriesMap,
-	type MutationsMap as UnifiedMutationsMap,
-	type InferInput as UnifiedInferInput,
-	type InferOutput as UnifiedInferOutput,
-	// Unified link types
-	type UnifiedLink,
-	type UnifiedLinkFn,
-	type UnifiedOperationContext,
-} from "./client/unified";
-
-export {
-	// Unified middleware links
-	unifiedLoggerLink,
-	unifiedRetryLink,
-	unifiedTimingLink,
-	unifiedErrorHandlerLink,
-	// Types
-	type UnifiedLoggerOptions,
-	type UnifiedRetryOptions,
-	type UnifiedTimingOptions,
-	type UnifiedErrorHandlerOptions,
-} from "./client/unified-links";
-
-export {
-	// WebSocket Transport for Unified Client
-	WebSocketUnifiedTransport,
-	createWebSocketUnifiedTransport,
-	websocketUnifiedTransport,
-	// Types
-	type WebSocketUnifiedTransportOptions,
-	type WebSocketUnifiedState,
-} from "./client/unified-transport";
-
-// =============================================================================
-// Primary API (README-compatible aliases)
-// =============================================================================
-
-// createClient = unified client (recommended)
-export { createUnifiedClient as createClient } from "./client/unified";
-export type { UnifiedClient as LensClient } from "./client/unified";
-export type { UnifiedClientConfig as ClientConfig } from "./client/unified";
-
-// websocketLink = unified transport for unified client (README-compatible alias)
-export { websocketUnifiedTransport as websocketLink } from "./client/unified-transport";
-export type { WebSocketUnifiedTransportOptions as WebSocketLinkOptions } from "./client/unified-transport";
