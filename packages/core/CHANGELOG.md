@@ -1,5 +1,11 @@
 # @sylphx/lens-core
 
+## 1.0.2
+
+### Patch Changes
+
+- Retry release as 1.0.2 (npm 24h restriction - 1.0.0 and 1.0.1 were previously published then unpublished)
+
 ## 1.0.1
 
 ### Patch Changes
