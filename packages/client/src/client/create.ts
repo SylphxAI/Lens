@@ -17,7 +17,7 @@ import type {
 	RouterRoutes,
 	Update,
 } from "@sylphx/lens-core";
-import { applyUpdate, isOptimisticDSL, isRouterDef, normalizeOptimisticDSL } from "@sylphx/lens-core";
+import { applyUpdate, isOptimisticDSL, normalizeOptimisticDSL } from "@sylphx/lens-core";
 import type {
 	Link,
 	LinkFn,
@@ -92,6 +92,17 @@ export interface OperationContext {
 	signal?: AbortSignal;
 }
 
+/** Operation metadata from server */
+export interface OperationMeta {
+	type: "query" | "mutation";
+	optimistic?: unknown; // OptimisticDSL
+}
+
+/** Nested operations structure from server */
+export type OperationsMap = {
+	[key: string]: OperationMeta | OperationsMap;
+};
+
 /** Client configuration */
 export interface LensClientConfig<
 	Q extends QueriesMap = QueriesMap,
@@ -129,6 +140,19 @@ export interface LensClientConfig<
 	links?: Link[];
 	/** Enable optimistic updates */
 	optimistic?: boolean;
+	/**
+	 * URL to fetch operations metadata from server
+	 * Used for type-only mode to get operation types and optimistic configs
+	 *
+	 * @example
+	 * ```typescript
+	 * const client = createClient<Api>({
+	 *   url: 'http://localhost:3000/api',  // Will fetch from /api/operations
+	 *   links: [httpLink({ url: 'http://localhost:3000/api' })],
+	 * });
+	 * ```
+	 */
+	url?: string;
 }
 
 /**
@@ -324,6 +348,11 @@ class ClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 	private optimistic: boolean;
 	private store: ReactiveStore;
 
+	/** Operations metadata from server (for type-only mode) */
+	private operationsMetadata: OperationsMap | null = null;
+	private operationsMetadataPromise: Promise<void> | null = null;
+	private operationsUrl: string | null = null;
+
 	/** Subscription states by query key */
 	private subscriptions = new Map<string, SubscriptionState>();
 
@@ -351,6 +380,12 @@ class ClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 		this.mutations = config.mutations ?? ({} as M);
 		this.optimistic = config.optimistic ?? true;
 		this.store = new ReactiveStore();
+		this.operationsUrl = config.url ?? null;
+
+		// Auto-fetch operations metadata if URL provided
+		if (this.operationsUrl) {
+			this.operationsMetadataPromise = this.fetchOperationsMetadata();
+		}
 
 		// Handle links or transport config
 		if (config.links && config.links.length > 0) {
@@ -397,6 +432,57 @@ class ClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 		}
 
 		return chain;
+	}
+
+	/**
+	 * Fetch operations metadata from server
+	 */
+	private async fetchOperationsMetadata(): Promise<void> {
+		if (!this.operationsUrl) return;
+
+		try {
+			const response = await fetch(`${this.operationsUrl}/operations`);
+			if (response.ok) {
+				const data = (await response.json()) as { operations: OperationsMap };
+				this.operationsMetadata = data.operations;
+			}
+		} catch {
+			// Silently fail - operations will work without metadata
+			// just without optimistic updates in type-only mode
+		}
+	}
+
+	/**
+	 * Get operation metadata from server response
+	 * Handles nested paths like "user.get" or "post.comment.create"
+	 */
+	private getOperationMeta(operation: string): OperationMeta | null {
+		if (!this.operationsMetadata) return null;
+
+		const parts = operation.split(".");
+		let current: OperationsMap | OperationMeta = this.operationsMetadata;
+
+		for (const part of parts) {
+			if (!current || typeof current !== "object" || "type" in current) {
+				return null;
+			}
+			current = current[part] as OperationsMap | OperationMeta;
+		}
+
+		if (current && typeof current === "object" && "type" in current) {
+			return current as OperationMeta;
+		}
+
+		return null;
+	}
+
+	/**
+	 * Ensure operations metadata is loaded before use
+	 */
+	private async ensureOperationsMetadata(): Promise<void> {
+		if (this.operationsMetadataPromise) {
+			await this.operationsMetadataPromise;
+		}
 	}
 
 	/**
@@ -929,17 +1015,24 @@ class ClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 		operation: string,
 		input: TInput,
 	): Promise<MutationResult<TOutput>> {
-		// Get mutation definition for optimistic support
+		// Ensure operations metadata is loaded (for type-only mode)
+		await this.ensureOperationsMetadata();
+
+		// Get optimistic config from:
+		// 1. Mutation definition (definition mode)
+		// 2. Operations metadata (type-only mode)
 		const mutationDef = this.mutations[operation as keyof M] as
 			| MutationDef<TInput, TOutput>
 			| undefined;
+		const operationMeta = this.getOperationMeta(operation);
 
 		// Apply optimistic update (automatic by default)
 		let optId: string | undefined;
 		if (this.optimistic) {
 			let optimisticData: unknown;
 
-			const optimisticSpec = mutationDef?._optimistic;
+			// Check mutation definition first (definition mode), then metadata (type-only mode)
+			const optimisticSpec = mutationDef?._optimistic ?? operationMeta?.optimistic;
 
 			if (optimisticSpec) {
 				if (isOptimisticDSL(optimisticSpec)) {
@@ -1346,8 +1439,19 @@ class ClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 		// Return a function that:
 		// - Has QueryResult-like interface for subscriptions
 		// - Is callable for one-time execution
-		// The transport determines if it's a query or mutation
-		const accessor = (input?: unknown) => {
+		// Uses operations metadata to determine if it's a query or mutation
+		const accessor = async (input?: unknown) => {
+			// Ensure metadata is loaded
+			await this.ensureOperationsMetadata();
+
+			// Check operation type from metadata
+			const meta = this.getOperationMeta(name);
+
+			if (meta?.type === "mutation") {
+				return this.executeMutation(name, input);
+			}
+
+			// Default to query (for backwards compatibility and type-only without metadata)
 			return this.executeQuery(name, input);
 		};
 
@@ -1564,6 +1668,5 @@ export function createClient<TApi extends ApiShape | RouterApiShape>(
 		},
 	);
 
-	// biome-ignore lint/suspicious/noExplicitAny: Generic return type
 	return client as any;
 }

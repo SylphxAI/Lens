@@ -538,10 +538,7 @@ export function router<TRoutes extends RouterRoutes>(routes: TRoutes): RouterDef
 }
 
 /** Flatten router to dot-notation paths for server processing */
-export function flattenRouter(
-	routerDef: RouterDef,
-	prefix = "",
-): Map<string, AnyProcedure> {
+export function flattenRouter(routerDef: RouterDef, prefix = ""): Map<string, AnyProcedure> {
 	const result = new Map<string, AnyProcedure>();
 
 	for (const [key, value] of Object.entries(routerDef._routes)) {

@@ -27,7 +27,6 @@ import {
 	isBatchResolver,
 	isMutationDef,
 	isQueryDef,
-	isRouterDef,
 	runWithContext,
 } from "@sylphx/lens-core";
 
@@ -57,6 +56,17 @@ export type RelationsArray = RelationDef<
 	EntityDef<string, EntityDefinition>,
 	Record<string, RelationTypeWithForeignKey>
 >[];
+
+/** Operation metadata for handshake */
+export interface OperationMeta {
+	type: "query" | "mutation";
+	optimistic?: unknown; // OptimisticDSL - sent as JSON
+}
+
+/** Nested operations structure for handshake */
+export type OperationsMap = {
+	[key: string]: OperationMeta | OperationsMap;
+};
 
 /** Server configuration */
 export interface LensServerConfig<TContext extends ContextValue = ContextValue> {
@@ -369,6 +379,46 @@ class LensServerImpl<
 		return this.stateManager;
 	}
 
+	/**
+	 * Build nested operations map for handshake response
+	 * Converts flat "user.get", "user.create" into nested { user: { get: {...}, create: {...} } }
+	 */
+	private buildOperationsMap(): OperationsMap {
+		const result: OperationsMap = {};
+
+		// Helper to set nested value
+		const setNested = (path: string, meta: OperationMeta) => {
+			const parts = path.split(".");
+			let current: OperationsMap = result;
+
+			for (let i = 0; i < parts.length - 1; i++) {
+				const part = parts[i];
+				if (!current[part] || "type" in current[part]) {
+					current[part] = {};
+				}
+				current = current[part] as OperationsMap;
+			}
+
+			current[parts[parts.length - 1]] = meta;
+		};
+
+		// Add queries
+		for (const [name, def] of Object.entries(this.queries)) {
+			setNested(name, { type: "query" });
+		}
+
+		// Add mutations with optimistic config
+		for (const [name, def] of Object.entries(this.mutations)) {
+			const meta: OperationMeta = { type: "mutation" };
+			if (def._optimistic) {
+				meta.optimistic = def._optimistic;
+			}
+			setNested(name, meta);
+		}
+
+		return result;
+	}
+
 	// ===========================================================================
 	// WebSocket Handling
 	// ===========================================================================
@@ -441,8 +491,7 @@ class LensServerImpl<
 				type: "handshake",
 				id: message.id,
 				version: this.version,
-				queries: Object.keys(this.queries),
-				mutations: Object.keys(this.mutations),
+				operations: this.buildOperationsMap(),
 			}),
 		);
 	}
@@ -853,26 +902,39 @@ class LensServerImpl<
 	async handleRequest(req: Request): Promise<Response> {
 		const url = new URL(req.url);
 
+		// GET /operations - Return operations metadata for client initialization
+		if (req.method === "GET" && url.pathname.endsWith("/operations")) {
+			return new Response(
+				JSON.stringify({
+					version: this.version,
+					operations: this.buildOperationsMap(),
+				}),
+				{ headers: { "Content-Type": "application/json" } },
+			);
+		}
+
 		if (req.method === "POST") {
 			try {
-				const body = (await req.json()) as { type: string; operation: string; input?: unknown };
+				const body = (await req.json()) as { operation: string; input?: unknown };
 
-				if (body.type === "query") {
+				// Auto-detect operation type from server's registered operations
+				// Client doesn't need to know if it's a query or mutation
+				if (this.queries[body.operation]) {
 					const result = await this.executeQuery(body.operation, body.input);
 					return new Response(JSON.stringify({ data: result }), {
 						headers: { "Content-Type": "application/json" },
 					});
 				}
 
-				if (body.type === "mutation") {
+				if (this.mutations[body.operation]) {
 					const result = await this.executeMutation(body.operation, body.input);
 					return new Response(JSON.stringify({ data: result }), {
 						headers: { "Content-Type": "application/json" },
 					});
 				}
 
-				return new Response(JSON.stringify({ error: "Invalid request type" }), {
-					status: 400,
+				return new Response(JSON.stringify({ error: `Operation not found: ${body.operation}` }), {
+					status: 404,
 					headers: { "Content-Type": "application/json" },
 				});
 			} catch (error) {
