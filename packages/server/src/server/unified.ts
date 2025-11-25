@@ -14,6 +14,9 @@ import {
 	type EntityResolvers,
 	type EntityResolversDefinition,
 	type EntityDef,
+	type EntityDefinition,
+	type RelationDef,
+	type RelationTypeWithForeignKey,
 	type ContextValue,
 	type Update,
 	isQueryDef,
@@ -38,10 +41,15 @@ export type QueriesMap = Record<string, QueryDef<unknown, unknown, unknown>>;
 /** Mutations map type */
 export type MutationsMap = Record<string, MutationDef<unknown, unknown, unknown>>;
 
+/** Relations array type */
+export type RelationsArray = RelationDef<EntityDef<string, EntityDefinition>, Record<string, RelationTypeWithForeignKey>>[];
+
 /** Server configuration */
 export interface UnifiedServerConfig<TContext extends ContextValue = ContextValue> {
 	/** Entity definitions */
 	entities?: EntitiesMap;
+	/** Relation definitions */
+	relations?: RelationsArray;
 	/** Query definitions */
 	queries?: QueriesMap;
 	/** Mutation definitions */

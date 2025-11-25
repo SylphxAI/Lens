@@ -223,3 +223,16 @@ export {
 	type WebSocketUnifiedTransportOptions,
 	type WebSocketUnifiedState,
 } from "./client/unified-transport";
+
+// =============================================================================
+// Primary API (README-compatible aliases)
+// =============================================================================
+
+// createClient = unified client (recommended)
+export { createUnifiedClient as createClient } from "./client/unified";
+export type { UnifiedClient as LensClient } from "./client/unified";
+export type { UnifiedClientConfig as ClientConfig } from "./client/unified";
+
+// websocketLink = websocket transport (for links array compatibility)
+export { websocketUnifiedTransport as websocketLink } from "./client/unified-transport";
+export type { WebSocketUnifiedTransportOptions as WebSocketLinkOptions } from "./client/unified-transport";

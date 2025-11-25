@@ -123,5 +123,15 @@ export {
 	type EntitiesMap as UnifiedEntitiesMap,
 	type QueriesMap as UnifiedQueriesMap,
 	type MutationsMap as UnifiedMutationsMap,
+	type RelationsArray as UnifiedRelationsArray,
 	type WebSocketLike as UnifiedWebSocketLike,
 } from "./server/unified";
+
+// =============================================================================
+// Primary API (README-compatible aliases)
+// =============================================================================
+
+// createServer = unified server (recommended)
+export { createUnifiedServer as createServer } from "./server/unified";
+export type { UnifiedServer as LensServer } from "./server/unified";
+export type { UnifiedServerConfig as ServerConfig } from "./server/unified";
