@@ -7,7 +7,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { t } from "./types";
-import { createSchema } from "./create";
+import { entity, createSchemaFrom, hasMany, hasOne, belongsTo } from "./define";
 import type {
 	InferEntity,
 	InferScalar,
@@ -20,42 +20,55 @@ import type {
 } from "./infer";
 
 // =============================================================================
-// Test Schema
+// Test Entities (using new entity() API)
 // =============================================================================
 
-const testSchema = createSchema({
-	User: {
-		id: t.id(),
-		name: t.string(),
-		email: t.string(),
-		age: t.int().nullable(),
-		isActive: t.boolean(),
-		role: t.enum(["admin", "user", "guest"] as const),
-		metadata: t.object<{ theme: string; language: string }>(),
-		tags: t.array(t.string()),
-		posts: t.hasMany("Post"),
-		profile: t.hasOne("Profile"),
-	},
-	Post: {
-		id: t.id(),
-		title: t.string(),
-		content: t.string(),
-		published: t.boolean(),
-		author: t.belongsTo("User"),
-		comments: t.hasMany("Comment"),
-	},
-	Comment: {
-		id: t.id(),
-		body: t.string(),
-		author: t.belongsTo("User"),
-		post: t.belongsTo("Post"),
-	},
-	Profile: {
-		id: t.id(),
-		bio: t.string().nullable(),
-		avatar: t.string(),
-		user: t.belongsTo("User"),
-	},
+const User = entity("User", {
+	id: t.id(),
+	name: t.string(),
+	email: t.string(),
+	age: t.int().nullable(),
+	isActive: t.boolean(),
+	role: t.enum(["admin", "user", "guest"] as const),
+	metadata: t.object<{ theme: string; language: string }>(),
+	tags: t.array(t.string()),
+});
+
+const Post = entity("Post", {
+	id: t.id(),
+	title: t.string(),
+	content: t.string(),
+	published: t.boolean(),
+});
+
+const Comment = entity("Comment", {
+	id: t.id(),
+	body: t.string(),
+});
+
+const Profile = entity("Profile", {
+	id: t.id(),
+	bio: t.string().nullable(),
+	avatar: t.string(),
+});
+
+// Create schema with relations using direct entity references
+const testSchema = createSchemaFrom({
+	User: User.with({
+		posts: hasMany(Post),
+		profile: hasOne(Profile),
+	}),
+	Post: Post.with({
+		author: belongsTo(User),
+		comments: hasMany(Comment),
+	}),
+	Comment: Comment.with({
+		author: belongsTo(User),
+		post: belongsTo(Post),
+	}),
+	Profile: Profile.with({
+		user: belongsTo(User),
+	}),
 });
 
 type TestSchemaDefinition = typeof testSchema.definition;
@@ -89,7 +102,7 @@ describe("Type Inference", () => {
 	describe("Entity Inference", () => {
 		test("infers entity with scalar fields", () => {
 			// Type assertion - if this compiles, the inference works
-			type User = InferEntity<TestSchemaDefinition["User"], TestSchemaDefinition>;
+			type UserType = InferEntity<TestSchemaDefinition["User"], TestSchemaDefinition>;
 
 			// The type should include all scalar fields
 			// Runtime check that schema structure is correct
@@ -223,16 +236,13 @@ describe("Type Inference", () => {
 
 describe("Runtime Type Validation", () => {
 	test("schema validates relation targets", () => {
-		// Valid schema compiles
-		const validSchema = createSchema({
-			A: {
-				id: t.id(),
-				b: t.hasOne("B"),
-			},
-			B: {
-				id: t.id(),
-				a: t.belongsTo("A"),
-			},
+		// Valid schema with direct entity references
+		const A = entity("A", { id: t.id() });
+		const B = entity("B", { id: t.id() });
+
+		const validSchema = createSchemaFrom({
+			A: A.with({ b: hasOne(B) }),
+			B: B.with({ a: belongsTo(A) }),
 		});
 
 		expect(validSchema.hasEntity("A")).toBe(true);
@@ -240,12 +250,12 @@ describe("Runtime Type Validation", () => {
 	});
 
 	test("schema throws on invalid relation target", () => {
+		const A = entity("A", { id: t.id() });
+
 		expect(() => {
-			createSchema({
-				A: {
-					id: t.id(),
-					b: t.hasOne("NonExistent"),
-				},
+			createSchemaFrom({
+				// @ts-expect-error - Testing runtime validation
+				A: A.with({ b: t.hasOne("NonExistent") }),
 			});
 		}).toThrow();
 	});

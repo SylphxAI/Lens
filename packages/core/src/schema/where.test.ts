@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "bun:test";
 import { t } from "./types";
-import { createSchema } from "./create";
+import { entity, createSchemaFrom, hasMany, belongsTo } from "./define";
 import type {
 	WhereInput,
 	OrderByInput,
@@ -18,29 +18,32 @@ import type {
 } from "./infer";
 
 // =============================================================================
-// Test Schema
+// Test Entities (using new entity() API)
 // =============================================================================
 
-const schema = createSchema({
-	User: {
-		id: t.id(),
-		name: t.string(),
-		email: t.string(),
-		age: t.int().nullable(),
-		score: t.float(),
-		isActive: t.boolean(),
-		createdAt: t.datetime(),
-		role: t.enum(["admin", "user", "guest"] as const),
-		posts: t.hasMany("Post"),
-	},
-	Post: {
-		id: t.id(),
-		title: t.string(),
-		content: t.string(),
-		views: t.int(),
-		published: t.boolean(),
-		author: t.belongsTo("User"),
-	},
+const User = entity("User", {
+	id: t.id(),
+	name: t.string(),
+	email: t.string(),
+	age: t.int().nullable(),
+	score: t.float(),
+	isActive: t.boolean(),
+	createdAt: t.datetime(),
+	role: t.enum(["admin", "user", "guest"] as const),
+});
+
+const Post = entity("Post", {
+	id: t.id(),
+	title: t.string(),
+	content: t.string(),
+	views: t.int(),
+	published: t.boolean(),
+});
+
+// Create schema with relations using direct entity references
+const schema = createSchemaFrom({
+	User: User.with({ posts: hasMany(Post) }),
+	Post: Post.with({ author: belongsTo(User) }),
 });
 
 type UserDef = (typeof schema)["definition"]["User"];
@@ -401,16 +404,13 @@ describe("UpdateInput type safety", () => {
 
 describe("Relation validation", () => {
 	it("valid schema compiles without error", () => {
-		// This schema has valid relations - should compile fine
-		const validSchema = createSchema({
-			Author: {
-				id: t.id(),
-				books: t.hasMany("Book"),
-			},
-			Book: {
-				id: t.id(),
-				author: t.belongsTo("Author"),
-			},
+		// This schema has valid relations using direct entity references
+		const Author = entity("Author", { id: t.id() });
+		const Book = entity("Book", { id: t.id() });
+
+		const validSchema = createSchemaFrom({
+			Author: Author.with({ books: hasMany(Book) }),
+			Book: Book.with({ author: belongsTo(Author) }),
 		});
 
 		expect(validSchema.entities.size).toBe(2);
@@ -418,26 +418,15 @@ describe("Relation validation", () => {
 
 	it("validates relations at runtime", () => {
 		// Runtime validation should throw for invalid relations
+		const UserOnly = entity("User", { id: t.id() });
+
 		expect(() =>
-			createSchema({
-				User: {
-					id: t.id(),
-					// @ts-expect-error - 'InvalidEntity' doesn't exist
-					profile: t.hasOne("InvalidEntity"),
-				},
+			createSchemaFrom({
+				// @ts-expect-error - 'InvalidEntity' doesn't exist
+				User: UserOnly.with({ profile: t.hasOne("InvalidEntity") }),
 			} as any),
 		).toThrow("does not exist");
 	});
-
-	// Compile-time validation test
-	// This would cause a compile error if uncommented:
-	// const badSchema = createSchema({
-	//   User: {
-	//     id: t.id(),
-	//     posts: t.hasMany('Posts'),  // ❌ 'Posts' not 'Post'
-	//   },
-	// });
-	// Error: Invalid relation target: "Posts". Valid entities are: "User"
 });
 
 describe("Runtime behavior", () => {

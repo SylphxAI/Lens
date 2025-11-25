@@ -7,7 +7,7 @@
 
 import { describe, it, expect } from "bun:test";
 import { t } from "./types";
-import { createSchema } from "./create";
+import { entity, createSchemaFrom, hasMany, hasOne, belongsTo } from "./define";
 import type {
 	// Aggregation
 	AggregateInput,
@@ -33,43 +33,56 @@ import type {
 } from "./infer";
 
 // =============================================================================
-// Test Schema
+// Test Entities (using new entity() API)
 // =============================================================================
 
-const schema = createSchema({
-	User: {
-		id: t.id(),
-		name: t.string(),
-		email: t.string(),
-		age: t.int().nullable(),
-		score: t.float(),
-		isActive: t.boolean(),
-		createdAt: t.datetime(),
-		role: t.enum(["admin", "user", "guest"] as const),
-		posts: t.hasMany("Post"),
-		profile: t.hasOne("Profile"),
-	},
-	Post: {
-		id: t.id(),
-		title: t.string(),
-		content: t.string(),
-		views: t.int(),
-		rating: t.float(),
-		published: t.boolean(),
-		author: t.belongsTo("User"),
-		tags: t.hasMany("Tag"),
-	},
-	Profile: {
-		id: t.id(),
-		bio: t.string(),
-		avatar: t.string().nullable(),
-		user: t.belongsTo("User"),
-	},
-	Tag: {
-		id: t.id(),
-		name: t.string(),
-		posts: t.hasMany("Post"),
-	},
+const User = entity("User", {
+	id: t.id(),
+	name: t.string(),
+	email: t.string(),
+	age: t.int().nullable(),
+	score: t.float(),
+	isActive: t.boolean(),
+	createdAt: t.datetime(),
+	role: t.enum(["admin", "user", "guest"] as const),
+});
+
+const Post = entity("Post", {
+	id: t.id(),
+	title: t.string(),
+	content: t.string(),
+	views: t.int(),
+	rating: t.float(),
+	published: t.boolean(),
+});
+
+const Profile = entity("Profile", {
+	id: t.id(),
+	bio: t.string(),
+	avatar: t.string().nullable(),
+});
+
+const Tag = entity("Tag", {
+	id: t.id(),
+	name: t.string(),
+});
+
+// Create schema with relations using direct entity references
+const schema = createSchemaFrom({
+	User: User.with({
+		posts: hasMany(Post),
+		profile: hasOne(Profile),
+	}),
+	Post: Post.with({
+		author: belongsTo(User),
+		tags: hasMany(Tag),
+	}),
+	Profile: Profile.with({
+		user: belongsTo(User),
+	}),
+	Tag: Tag.with({
+		posts: hasMany(Post),
+	}),
 });
 
 type UserDef = (typeof schema)["definition"]["User"];

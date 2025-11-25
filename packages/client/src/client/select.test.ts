@@ -6,29 +6,32 @@
  */
 
 import { describe, it, expect } from "bun:test";
-import { t, createSchema } from "@lens/core";
+import { t, entity, createSchemaFrom, hasMany, belongsTo } from "@lens/core";
 import type { InferQueryResult, ListOptions, QueryOptions } from "./client";
 
 // =============================================================================
-// Test Schema
+// Test Entities (using new entity() API)
 // =============================================================================
 
-const schema = createSchema({
-	User: {
-		id: t.id(),
-		name: t.string(),
-		email: t.string(),
-		age: t.int().nullable(),
-		isActive: t.boolean(),
-		posts: t.hasMany("Post"),
-	},
-	Post: {
-		id: t.id(),
-		title: t.string(),
-		content: t.string(),
-		views: t.int(),
-		author: t.belongsTo("User"),
-	},
+const User = entity("User", {
+	id: t.id(),
+	name: t.string(),
+	email: t.string(),
+	age: t.int().nullable(),
+	isActive: t.boolean(),
+});
+
+const Post = entity("Post", {
+	id: t.id(),
+	title: t.string(),
+	content: t.string(),
+	views: t.int(),
+});
+
+// Create schema with relations using direct entity references
+const schema = createSchemaFrom({
+	User: User.with({ posts: hasMany(Post) }),
+	Post: Post.with({ author: belongsTo(User) }),
 });
 
 type S = typeof schema.definition;
