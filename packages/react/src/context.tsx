@@ -13,16 +13,19 @@ import type { LensClient } from "@lens/client";
 
 /**
  * Context for Lens client
+ * Using any for internal storage to avoid type constraint issues
  */
-const LensContext = createContext<LensClient<unknown, unknown> | null>(null);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const LensContext = createContext<LensClient<any, any> | null>(null);
 
 // =============================================================================
 // Provider
 // =============================================================================
 
-export interface LensProviderProps<Q = unknown, M = unknown> {
+export interface LensProviderProps {
 	/** Lens client instance */
-	client: LensClient<Q, M>;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	client: LensClient<any, any>;
 	/** Children */
 	children: ReactNode;
 }
@@ -49,9 +52,9 @@ export interface LensProviderProps<Q = unknown, M = unknown> {
  * }
  * ```
  */
-export function LensProvider<Q, M>({ client, children }: LensProviderProps<Q, M>) {
+export function LensProvider({ client, children }: LensProviderProps) {
 	return (
-		<LensContext.Provider value={client as LensClient<unknown, unknown>}>
+		<LensContext.Provider value={client}>
 			{children}
 		</LensContext.Provider>
 	);
@@ -75,7 +78,8 @@ export function LensProvider<Q, M>({ client, children }: LensProviderProps<Q, M>
  * }
  * ```
  */
-export function useLensClient<Q = unknown, M = unknown>(): LensClient<Q, M> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function useLensClient<TRouter = any>(): LensClient<any, any> & TRouter {
 	const client = useContext(LensContext);
 
 	if (!client) {
@@ -85,5 +89,6 @@ export function useLensClient<Q = unknown, M = unknown>(): LensClient<Q, M> {
 		);
 	}
 
-	return client as LensClient<Q, M>;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	return client as LensClient<any, any> & TRouter;
 }

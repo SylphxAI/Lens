@@ -12,7 +12,7 @@
 import type { QueryDef, MutationDef, Update, OptimisticDSL } from "@lens/core";
 import { applyUpdate, isOptimisticDSL, normalizeOptimisticDSL } from "@lens/core";
 import { ReactiveStore, type EntityState } from "../store/reactive-store";
-import { signal, computed, type Signal } from "../signals/signal";
+import { signal, computed, type Signal, type WritableSignal } from "../signals/signal";
 import {
 	makeQueryKey,
 	makeQueryKeyWithFields,
@@ -31,10 +31,10 @@ import type {
 // =============================================================================
 
 /** Query map type */
-export type QueriesMap = Record<string, QueryDef<unknown, unknown, unknown>>;
+export type QueriesMap = Record<string, QueryDef<unknown, unknown>>;
 
 /** Mutation map type */
-export type MutationsMap = Record<string, MutationDef<unknown, unknown, unknown>>;
+export type MutationsMap = Record<string, MutationDef<unknown, unknown>>;
 
 /** Transport interface */
 export interface Transport {
@@ -144,7 +144,9 @@ export interface ApiShape<Q extends QueriesMap = QueriesMap, M extends Mutations
 export type InferApiFromServer<T> = T extends { _types: infer Shape } ? Shape : never;
 
 /** Selection object */
-export type SelectionObject = Record<string, boolean | SelectionObject | { select: SelectionObject }>;
+export interface SelectionObject {
+	[key: string]: boolean | SelectionObject | { select: SelectionObject };
+}
 
 /**
  * Infer selected type from selection object
@@ -219,18 +221,18 @@ interface OptimisticEntry {
 }
 
 /** Infer input type from query/mutation */
-export type InferInput<T> = T extends QueryDef<infer I, unknown, unknown>
+export type InferInput<T> = T extends QueryDef<infer I, unknown>
 	? I extends void
 		? void
 		: I
-	: T extends MutationDef<infer I, unknown, unknown>
+	: T extends MutationDef<infer I, unknown>
 		? I
 		: never;
 
 /** Infer output type from query/mutation */
-export type InferOutput<T> = T extends QueryDef<unknown, infer O, unknown>
+export type InferOutput<T> = T extends QueryDef<unknown, infer O>
 	? O
-	: T extends MutationDef<unknown, infer O, unknown>
+	: T extends MutationDef<unknown, infer O>
 		? O
 		: never;
 
@@ -250,11 +252,11 @@ interface SubscriptionState {
 	/** Per-field ref counts */
 	fieldRefs: Map<string, number>;
 	/** Current data */
-	data: Signal<unknown>;
+	data: WritableSignal<unknown>;
 	/** Loading state */
-	loading: Signal<boolean>;
+	loading: WritableSignal<boolean>;
 	/** Error state */
-	error: Signal<Error | null>;
+	error: WritableSignal<Error | null>;
 	/** Transport subscription */
 	transportSub?: {
 		unsubscribe: () => void;
@@ -752,7 +754,8 @@ class ClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 
 			select: <S extends SelectionObject>(selection: S) => {
 				// Pass full SelectionObject, not just field names
-				return this.executeQuery<T>(operation, input, selection);
+				// Type assertion needed as actual filtering happens server-side
+				return this.executeQuery<T>(operation, input, selection) as unknown as QueryResult<SelectedType<T, S>>;
 			},
 
 			then: async <TResult1 = T, TResult2 = never>(
@@ -1297,7 +1300,7 @@ class ClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 		};
 
 		// Add subscribe method for real-time
-		(accessor as Record<string, unknown>).subscribe = (callback?: (data: unknown) => void) => {
+		(accessor as unknown as Record<string, unknown>).subscribe = (callback?: (data: unknown) => void) => {
 			return this.executeQuery(name, undefined).subscribe(callback);
 		};
 
@@ -1330,13 +1333,13 @@ class ClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 // Accessor Types
 // =============================================================================
 
-type QueryAccessorFn<T> = T extends QueryDef<infer I, infer O, unknown>
+type QueryAccessorFn<T> = T extends QueryDef<infer I, infer O>
 	? I extends void
 		? () => QueryResult<O>
 		: (input: I) => QueryResult<O>
 	: never;
 
-type MutationAccessorFn<T> = T extends MutationDef<infer I, infer O, unknown>
+type MutationAccessorFn<T> = T extends MutationDef<infer I, infer O>
 	? (input: I) => Promise<MutationResult<O>>
 	: never;
 

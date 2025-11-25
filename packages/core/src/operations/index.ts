@@ -29,7 +29,8 @@
  * ```
  */
 
-import type { EntityDef, EntityDefinition } from "../schema/define";
+import type { EntityDef } from "../schema/define";
+import type { EntityDefinition } from "../schema/types";
 
 // =============================================================================
 // Type Definitions
@@ -54,7 +55,7 @@ export type InferReturnType<R extends ReturnSpec> = R extends EntityDef<string, 
 	: R extends [EntityDef<string, infer F>]
 		? { [K in keyof F]: unknown }[]
 		: R extends Record<string, unknown>
-			? { [K in keyof R]: R[K] extends [EntityDef<string, unknown>] ? unknown[] : unknown }
+			? { [K in keyof R]: R[K] extends [EntityDef<string, EntityDefinition>] ? unknown[] : unknown }
 			: never;
 
 /** Resolver context */

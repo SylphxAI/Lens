@@ -199,9 +199,9 @@ async function compress(
 	algorithm: "gzip" | "brotli",
 	level: number,
 ): Promise<ArrayBuffer> {
-	// Browser environment with CompressionStream API
-	if (typeof CompressionStream !== "undefined") {
-		const stream = new CompressionStream(algorithm);
+	// Browser environment with CompressionStream API (only supports gzip/deflate)
+	if (typeof CompressionStream !== "undefined" && algorithm === "gzip") {
+		const stream = new CompressionStream(algorithm as CompressionFormat);
 		const writer = stream.writable.getWriter();
 		const reader = stream.readable.getReader();
 
@@ -260,9 +260,9 @@ async function compress(
  * Decompress data using specified algorithm
  */
 async function decompress(data: ArrayBuffer, algorithm: "gzip" | "brotli"): Promise<string> {
-	// Browser environment with DecompressionStream API
-	if (typeof DecompressionStream !== "undefined") {
-		const stream = new DecompressionStream(algorithm);
+	// Browser environment with DecompressionStream API (only supports gzip/deflate)
+	if (typeof DecompressionStream !== "undefined" && algorithm === "gzip") {
+		const stream = new DecompressionStream(algorithm as CompressionFormat);
 		const writer = stream.writable.getWriter();
 		const reader = stream.readable.getReader();
 

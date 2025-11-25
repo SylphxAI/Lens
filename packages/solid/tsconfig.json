@@ -5,7 +5,7 @@
 		"rootDir": "./src",
 		"jsx": "preserve",
 		"jsxImportSource": "solid-js",
-		"types": ["bun-types"]
+		"lib": ["ES2022", "DOM"]
 	},
 	"include": ["src/**/*"],
 	"exclude": ["node_modules", "dist"]

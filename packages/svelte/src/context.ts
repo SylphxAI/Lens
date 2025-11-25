@@ -33,9 +33,8 @@ export const LENS_CLIENT_KEY = Symbol("lens-client");
  * </script>
  * ```
  */
-export function provideLensClient<Q = unknown, M = unknown>(
-	client: LensClient<Q, M>,
-): void {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function provideLensClient(client: LensClient<any, any>): void {
 	setContext(LENS_CLIENT_KEY, client);
 }
 
@@ -54,8 +53,10 @@ export function provideLensClient<Q = unknown, M = unknown>(
  * </script>
  * ```
  */
-export function useLensClient<Q = unknown, M = unknown>(): LensClient<Q, M> {
-	const client = getContext<LensClient<Q, M>>(LENS_CLIENT_KEY);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function useLensClient<TRouter = any>(): LensClient<any, any> & TRouter {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const client = getContext<LensClient<any, any>>(LENS_CLIENT_KEY);
 
 	if (!client) {
 		throw new Error(
@@ -64,7 +65,8 @@ export function useLensClient<Q = unknown, M = unknown>(): LensClient<Q, M> {
 		);
 	}
 
-	return client;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	return client as LensClient<any, any> & TRouter;
 }
 
 // Legacy aliases for backwards compatibility

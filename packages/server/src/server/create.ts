@@ -29,7 +29,9 @@ import {
 } from "@lens/core";
 
 /** Selection object type for nested field selection */
-export type SelectionObject = Record<string, boolean | SelectionObject | { select: SelectionObject }>;
+export interface SelectionObject {
+	[key: string]: boolean | SelectionObject | { select: SelectionObject };
+}
 
 import { GraphStateManager, type StateClient } from "../state/graph-state-manager";
 
@@ -38,13 +40,14 @@ import { GraphStateManager, type StateClient } from "../state/graph-state-manage
 // =============================================================================
 
 /** Entity map type */
-export type EntitiesMap = Record<string, EntityDef<Record<string, unknown>>>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type EntitiesMap = Record<string, EntityDef<string, any>>;
 
 /** Queries map type */
-export type QueriesMap = Record<string, QueryDef<unknown, unknown, unknown>>;
+export type QueriesMap = Record<string, QueryDef<unknown, unknown>>;
 
 /** Mutations map type */
-export type MutationsMap = Record<string, MutationDef<unknown, unknown, unknown>>;
+export type MutationsMap = Record<string, MutationDef<unknown, unknown>>;
 
 /** Relations array type */
 export type RelationsArray = RelationDef<EntityDef<string, EntityDefinition>, Record<string, RelationTypeWithForeignKey>>[];
@@ -521,9 +524,10 @@ class LensServerImpl<
 				throw new Error(`Query ${sub.operation} has no resolver`);
 			}
 
-			const emitCtx: EmitContext<unknown> = {
+			const resolverCtx = {
+				input: sub.input,
 				emit: emitData,
-				onCleanup: (fn) => {
+				onCleanup: (fn: () => void) => {
 					sub.cleanups.push(fn);
 					return () => {
 						const idx = sub.cleanups.indexOf(fn);
@@ -532,7 +536,7 @@ class LensServerImpl<
 				},
 			};
 
-			const result = resolver({ input: sub.input, ctx: emitCtx });
+			const result = resolver(resolverCtx);
 
 			if (isAsyncIterable(result)) {
 				// Async generator - stream all values
@@ -743,12 +747,13 @@ class LensServerImpl<
 					throw new Error(`Query ${name} has no resolver`);
 				}
 
-				const emitCtx: EmitContext<TOutput> = {
+				const resolverCtx = {
+					input: cleanInput as TInput,
 					emit: () => {},
 					onCleanup: () => () => {},
 				};
 
-				const result = resolver({ input: cleanInput as TInput, ctx: emitCtx });
+				const result = resolver(resolverCtx);
 
 				let data: TOutput;
 				if (isAsyncIterable(result)) {
@@ -1111,7 +1116,7 @@ class LensServerImpl<
 
 		// Check if it's a relation type
 		if (fieldDef._type === "hasMany" || fieldDef._type === "hasOne" || fieldDef._type === "belongsTo") {
-			return (fieldDef as { _target: string })._target ?? fieldName;
+			return (fieldDef as unknown as { _target: string })._target ?? fieldName;
 		}
 
 		return fieldName;
@@ -1224,11 +1229,11 @@ class LensServerImpl<
 		}
 
 		// Single object result
-		let result = data;
+		let result: T = data;
 
 		// Execute entity resolvers for nested data
 		if (select && this.resolvers) {
-			result = await this.executeEntityResolvers(entityName, data, select);
+			result = await this.executeEntityResolvers(entityName, data, select) as T;
 		}
 
 		// Apply field selection
@@ -1312,20 +1317,20 @@ function isAsyncIterable<T>(value: unknown): value is AsyncIterable<T> {
 /**
  * Infer input type from a query/mutation definition
  */
-export type InferInput<T> = T extends QueryDef<infer I, unknown, unknown>
+export type InferInput<T> = T extends QueryDef<infer I, unknown>
 	? I extends void
 		? void
 		: I
-	: T extends MutationDef<infer I, unknown, unknown>
+	: T extends MutationDef<infer I, unknown>
 		? I
 		: never;
 
 /**
  * Infer output type from a query/mutation definition
  */
-export type InferOutput<T> = T extends QueryDef<unknown, infer O, unknown>
+export type InferOutput<T> = T extends QueryDef<unknown, infer O>
 	? O
-	: T extends MutationDef<unknown, infer O, unknown>
+	: T extends MutationDef<unknown, infer O>
 		? O
 		: never;
 
@@ -1364,5 +1369,5 @@ export function createServer<
 ): LensServer & { _types: { queries: Q; mutations: M } } {
 	const server = new LensServerImpl(config) as LensServerImpl<Q, M>;
 	// Attach type marker for inference (stripped at runtime)
-	return server as LensServer & { _types: { queries: Q; mutations: M } };
+	return server as unknown as LensServer & { _types: { queries: Q; mutations: M } };
 }

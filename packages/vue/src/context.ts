@@ -11,7 +11,8 @@ import type { LensClient } from "@lens/client";
 // Injection Key
 // =============================================================================
 
-export const LensClientKey: InjectionKey<LensClient<unknown, unknown>> =
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const LensClientKey: InjectionKey<LensClient<any, any>> =
 	Symbol("lens-client");
 
 // =============================================================================
@@ -40,10 +41,9 @@ export const LensClientKey: InjectionKey<LensClient<unknown, unknown>> =
  * </template>
  * ```
  */
-export function provideLensClient<Q = unknown, M = unknown>(
-	client: LensClient<Q, M>,
-): void {
-	provide(LensClientKey, client as LensClient<unknown, unknown>);
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function provideLensClient(client: LensClient<any, any>): void {
+	provide(LensClientKey, client);
 }
 
 // =============================================================================
@@ -65,7 +65,8 @@ export function provideLensClient<Q = unknown, M = unknown>(
  * </script>
  * ```
  */
-export function useLensClient<Q = unknown, M = unknown>(): LensClient<Q, M> {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function useLensClient<TRouter = any>(): LensClient<any, any> & TRouter {
 	const client = inject(LensClientKey);
 
 	if (!client) {
@@ -75,5 +76,6 @@ export function useLensClient<Q = unknown, M = unknown>(): LensClient<Q, M> {
 		);
 	}
 
-	return client as LensClient<Q, M>;
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	return client as LensClient<any, any> & TRouter;
 }

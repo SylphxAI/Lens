@@ -28,7 +28,8 @@
  * ```
  */
 
-import type { EntityDef, EntityDefinition } from "../schema/define";
+import type { EntityDef } from "../schema/define";
+import type { EntityDefinition } from "../schema/types";
 
 // =============================================================================
 // Type Definitions
