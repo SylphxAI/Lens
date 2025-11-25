@@ -25,8 +25,8 @@ const searchUsers = query()
   }))
 
 // Use on client
-const me = await client.whoami()
-const results = await client.searchUsers({ query: 'john' })
+const me = await api.whoami()
+const results = await api.searchUsers({ query: 'john' })
 ```
 
 ---
@@ -83,6 +83,9 @@ bun add @lens/core @lens/server @lens/client
 
 # Framework adapters
 bun add @lens/react      # React hooks
+bun add @lens/solid      # SolidJS primitives
+bun add @lens/vue        # Vue composables
+bun add @lens/svelte     # Svelte stores
 ```
 
 ---
@@ -232,6 +235,9 @@ export const server = createServer({
   }),
 })
 
+// Export router type for client
+export type AppRouter = typeof server.router
+
 server.listen(3000)
 ```
 
@@ -239,36 +245,64 @@ server.listen(3000)
 
 ```typescript
 // client.ts
-import { createClient } from '@lens/client'
-import * as queries from './operations/queries'
-import * as mutations from './operations/mutations'
+import { createClient, httpLink, websocketLink } from '@lens/client'
+import type { AppRouter } from './server'
 
-export const client = createClient({
-  queries,
-  mutations,
+// Type-safe client with tRPC-style links
+export const client = createClient<AppRouter>({
   links: [
-    websocketLink({ url: 'ws://localhost:3000' }),
+    httpLink({ url: '/api' }),
+    // Or for real-time:
+    // websocketLink({ url: 'ws://localhost:3000' }),
   ],
 })
+
+// Direct usage (async/await)
+const me = await client.queries.whoami()
+const user = await client.queries.user({ id: '123' })
+const result = await client.mutations.createPost({ title: 'Hello', content: 'World' })
 ```
 
 ### 7. Use in React
 
 ```tsx
-import { useQuery, useMutation } from '@lens/react'
-import { client } from './client'
+// App.tsx
+import { createClient, httpLink } from '@lens/client'
+import { LensProvider } from '@lens/react'
+import type { AppRouter } from './server'
+
+const client = createClient<AppRouter>({
+  links: [httpLink({ url: '/api' })],
+})
+
+function App() {
+  return (
+    <LensProvider client={client}>
+      <UserProfile />
+    </LensProvider>
+  )
+}
+```
+
+```tsx
+// components/UserProfile.tsx
+import { useQuery, useMutation, useLensClient } from '@lens/react'
+import type { AppRouter } from './server'
 
 function UserProfile() {
-  const { data: me, loading } = useQuery(client.whoami)
+  const client = useLensClient<AppRouter>()
+  const { data: me, loading, error } = useQuery(client.queries.whoami())
 
   if (loading) return <div>Loading...</div>
+  if (error) return <div>Error: {error.message}</div>
 
   return <div>Welcome, {me?.name}!</div>
 }
 
 function SearchUsers() {
+  const client = useLensClient<AppRouter>()
   const [query, setQuery] = useState('')
-  const { data: users } = useQuery(() => client.searchUsers({ query }), [query])
+  const { data: users } = useQuery(client.queries.searchUsers({ query }))
 
   return (
     <div>
@@ -281,7 +315,8 @@ function SearchUsers() {
 }
 
 function CreatePost() {
-  const { mutate, loading } = useMutation(client.createPost)
+  const client = useLensClient<AppRouter>()
+  const { mutate, loading } = useMutation(client.mutations.createPost)
 
   return (
     <button
@@ -292,6 +327,227 @@ function CreatePost() {
     </button>
   )
 }
+```
+
+---
+
+## Framework Adapters
+
+### React
+
+```tsx
+import { createClient, httpLink } from '@lens/client'
+import { LensProvider, useQuery, useMutation, useLazyQuery, useLensClient } from '@lens/react'
+import type { AppRouter } from './server'
+
+const client = createClient<AppRouter>({
+  links: [httpLink({ url: '/api' })],
+})
+
+// Wrap app with provider
+function App() {
+  return (
+    <LensProvider client={client}>
+      <MyComponent />
+    </LensProvider>
+  )
+}
+
+// Use hooks in components
+function MyComponent() {
+  const client = useLensClient<AppRouter>()
+
+  // Query - executes immediately
+  const { data, loading, error, refetch } = useQuery(client.queries.whoami())
+
+  // Mutation - returns mutate function
+  const { mutate, loading: mutating } = useMutation(client.mutations.createPost)
+
+  // Lazy query - executes on demand
+  const { execute, data: searchData } = useLazyQuery(client.queries.searchUsers)
+
+  return (
+    <button onClick={() => execute({ query: 'john' })}>
+      Search
+    </button>
+  )
+}
+```
+
+### SolidJS
+
+```tsx
+import { createClient, httpLink } from '@lens/client'
+import { LensProvider, createQuery, createMutation, createLazyQuery, useLensClient } from '@lens/solid'
+import type { AppRouter } from './server'
+
+const client = createClient<AppRouter>({
+  links: [httpLink({ url: '/api' })],
+})
+
+// Wrap app with provider
+function App() {
+  return (
+    <LensProvider client={client}>
+      <MyComponent />
+    </LensProvider>
+  )
+}
+
+// Use primitives in components
+function MyComponent() {
+  const client = useLensClient<AppRouter>()
+
+  // Query - reactive signals
+  const { data, loading, error, refetch } = createQuery(() => client.queries.whoami())
+
+  // Mutation
+  const { mutate, loading: mutating } = createMutation(() => client.mutations.createPost)
+
+  // Lazy query
+  const { execute, data: searchData } = createLazyQuery(() => client.queries.searchUsers)
+
+  return (
+    <Show when={!loading()} fallback={<div>Loading...</div>}>
+      <div>Welcome, {data()?.name}!</div>
+    </Show>
+  )
+}
+```
+
+### Vue
+
+```vue
+<script setup lang="ts">
+import { createClient, httpLink } from '@lens/client'
+import { provideLensClient, useQuery, useMutation, useLazyQuery, useLensClient } from '@lens/vue'
+import type { AppRouter } from './server'
+
+// In root component - provide client
+const client = createClient<AppRouter>({
+  links: [httpLink({ url: '/api' })],
+})
+provideLensClient(client)
+</script>
+```
+
+```vue
+<script setup lang="ts">
+import { useLensClient, useQuery, useMutation, useLazyQuery } from '@lens/vue'
+import type { AppRouter } from './server'
+
+const client = useLensClient<AppRouter>()
+
+// Query - reactive refs
+const { data, loading, error, refetch } = useQuery(() => client.queries.whoami())
+
+// Mutation
+const { mutate, loading: mutating } = useMutation(() => client.mutations.createPost)
+
+// Lazy query
+const { execute, data: searchData } = useLazyQuery(() => client.queries.searchUsers)
+</script>
+
+<template>
+  <div v-if="loading">Loading...</div>
+  <div v-else>Welcome, {{ data?.name }}!</div>
+</template>
+```
+
+### Svelte
+
+```svelte
+<script lang="ts">
+  import { createClient, httpLink } from '@lens/client'
+  import { provideLensClient, query, mutation, lazyQuery, useLensClient } from '@lens/svelte'
+  import type { AppRouter } from './server'
+
+  // In root component - provide client
+  const client = createClient<AppRouter>({
+    links: [httpLink({ url: '/api' })],
+  })
+  provideLensClient(client)
+</script>
+```
+
+```svelte
+<script lang="ts">
+  import { useLensClient, query, mutation, lazyQuery } from '@lens/svelte'
+  import type { AppRouter } from './server'
+
+  const client = useLensClient<AppRouter>()
+
+  // Query - Svelte stores
+  const whoami = query(() => client.queries.whoami())
+
+  // Mutation
+  const createPost = mutation(() => client.mutations.createPost)
+
+  // Lazy query
+  const search = lazyQuery(() => client.queries.searchUsers)
+</script>
+
+{#if $whoami.loading}
+  <div>Loading...</div>
+{:else}
+  <div>Welcome, {$whoami.data?.name}!</div>
+{/if}
+```
+
+---
+
+## Links
+
+Links are composable middleware for request/response processing (tRPC-style).
+
+### Available Links
+
+```typescript
+import {
+  // Transport
+  httpLink,           // HTTP requests
+  websocketLink,      // WebSocket for real-time
+  sseLink,            // Server-Sent Events
+
+  // Middleware
+  loggerLink,         // Request/response logging
+  retryLink,          // Automatic retry with backoff
+  batchLink,          // Request batching
+  deserializeLink,    // Date/BigInt deserialization
+
+  // Optimization
+  dedupLink,          // Request deduplication
+  cacheLink,          // Response caching
+} from '@lens/client'
+
+const client = createClient<AppRouter>({
+  links: [
+    loggerLink({ enabled: process.env.NODE_ENV === 'development' }),
+    retryLink({ maxRetries: 3 }),
+    deserializeLink(),
+    httpLink({ url: '/api' }),
+  ],
+})
+```
+
+### Custom Links
+
+```typescript
+import { Link, LinkFn } from '@lens/client'
+
+const timingLink: Link = () => async (op, next) => {
+  const start = performance.now()
+  const result = await next(op)
+  console.log(`${op.path} took ${performance.now() - start}ms`)
+  return result
+}
+
+const client = createClient<AppRouter>({
+  links: [
+    timingLink,
+    httpLink({ url: '/api' }),
+  ],
+})
 ```
 
 ---
@@ -510,9 +766,9 @@ export const resolvers = entityResolvers({
 **Reusability:**
 ```typescript
 // All three use the SAME User.posts resolver
-const user = await client.user({ id: '1' }).select({ posts: true })
-const users = await client.searchUsers({ query: 'john' }).select({ posts: true })
-const me = await client.whoami().select({ posts: true })
+const user = await api.user({ id: '1' }).select({ posts: true })
+const users = await api.searchUsers({ query: 'john' }).select({ posts: true })
+const me = await api.whoami().select({ posts: true })
 ```
 
 ---
@@ -564,16 +820,16 @@ export const createPost = mutation()
 
 ```typescript
 // Single value
-const user = await client.user({ id: '123' })
+const user = await client.queries.user({ id: '123' })
 
 // With nested data
-const user = await client.user({ id: '123' }).select({
+const user = await client.queries.user({ id: '123' }).select({
   name: true,
   posts: { title: true },
 })
 
 // Streaming
-client.activeUsers().subscribe(users => {
+client.queries.activeUsers().subscribe(users => {
   console.log('Active users:', users.length)
 })
 ```
@@ -582,43 +838,13 @@ client.activeUsers().subscribe(users => {
 
 ```typescript
 // Optimistic by default
-await client.createPost({ title: 'Hello', content: 'World' })
+await client.mutations.createPost({ title: 'Hello', content: 'World' })
 
 // Multi-entity
-const { users, notifications } = await client.promoteSomeUsers({
+const { users, notifications } = await client.mutations.promoteSomeUsers({
   userIds: ['1', '2', '3'],
   newRole: 'admin',
 })
-```
-
----
-
-## React Integration
-
-```tsx
-import { useQuery, useMutation } from '@lens/react'
-
-function UserProfile() {
-  const { data: me, loading, error } = useQuery(client.whoami)
-
-  if (loading) return <div>Loading...</div>
-  if (error) return <div>Error: {error.message}</div>
-
-  return <div>Welcome, {me?.name}!</div>
-}
-
-function CreatePost() {
-  const { mutate, loading } = useMutation(client.createPost)
-
-  return (
-    <button
-      disabled={loading}
-      onClick={() => mutate({ title: 'Hello', content: 'World' })}
-    >
-      Create Post
-    </button>
-  )
-}
 ```
 
 ---
@@ -740,6 +966,20 @@ mutation(name)                  // Create mutation builder (explicit name)
 .optimistic({ merge: { published: true } }) // Merge with extra fields
 .optimistic({ create: { status: 'draft' }}) // Create with extra fields
 
+// Client
+createClient<AppRouter>({ links: [...] })   // Create type-safe client
+client.queries.operationName(input)         // Execute query
+client.mutations.operationName(input)       // Execute mutation
+
+// Links
+httpLink({ url })               // HTTP transport
+websocketLink({ url })          // WebSocket transport
+sseLink({ url })                // SSE transport
+loggerLink({ enabled })         // Request logging
+retryLink({ maxRetries })       // Automatic retry
+batchLink({ maxSize, delay })   // Request batching
+dedupLink()                     // Request deduplication
+
 // Entity Resolvers
 entityResolvers({ Entity: { field: resolver } })
 
@@ -762,6 +1002,9 @@ tempId()                        // Generate temporary ID for optimistic
 | `@lens/server` | Execution engine, GraphStateManager |
 | `@lens/client` | Client API, links, reactive store |
 | `@lens/react` | React hooks |
+| `@lens/solid` | SolidJS primitives |
+| `@lens/vue` | Vue composables |
+| `@lens/svelte` | Svelte stores |
 
 ---
 
