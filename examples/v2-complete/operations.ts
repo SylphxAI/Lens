@@ -1,13 +1,22 @@
 /**
  * V2 Complete Example - Operations
  *
- * Demonstrates: Queries, Mutations, Optimistic Updates
+ * Demonstrates: Queries, Mutations, Optimistic Updates with DSL
  *
  * Key concept: Operations are free-form, not locked to CRUD!
  * - whoami, searchUsers, promoteBatch (not just User.get/list/create)
+ *
+ * Optimistic Updates:
+ * - DSL (recommended): { type: 'merge' }, { type: 'create' }
+ * - Function (legacy): ({ input }) => ({ id: input.id, ...input })
+ *
+ * DSL advantages:
+ * - Works with type-only imports (no runtime code transfer)
+ * - Declarative and predictable
+ * - Serializable (no closures)
  */
 
-import { query, mutation, tempId } from "@lens/core";
+import { query, mutation } from "@lens/core";
 import { z } from "zod";
 import { User, Post, Comment } from "./schema";
 
@@ -72,7 +81,8 @@ export const trendingPosts = query()
 /**
  * 更新用戶資料
  *
- * .optimistic() 定義預測結果 → 即時 UI 更新
+ * Optimistic DSL: { type: 'merge' }
+ * - Merges input into entity with matching id
  * - 成功: server data 取代 optimistic data
  * - 失敗: 自動 rollback 到之前狀態
  */
@@ -86,10 +96,7 @@ export const updateUser = mutation()
 		})
 	)
 	.returns(User)
-	.optimistic(({ input }) => ({
-		id: input.id,
-		...input, // 預測: 直接用 input 作為新值
-	}))
+	.optimistic({ type: "merge" }) // DSL: merge input into entity
 	.resolve(({ input, ctx }) =>
 		ctx.db.user.update({
 			where: { id: input.id },
@@ -100,7 +107,9 @@ export const updateUser = mutation()
 /**
  * 建立新文章
  *
- * tempId() 產生臨時 ID，server 會回傳真正 ID
+ * Optimistic DSL: { type: 'create' }
+ * - Auto-generates tempId
+ * - Server 會回傳真正 ID
  */
 export const createPost = mutation()
 	.input(
@@ -110,14 +119,7 @@ export const createPost = mutation()
 		})
 	)
 	.returns(Post)
-	.optimistic(({ input, ctx }) => ({
-		id: tempId(), // 臨時 ID: "temp_0", "temp_1", etc.
-		title: input.title,
-		content: input.content,
-		published: false,
-		authorId: ctx.currentUser.id,
-		createdAt: new Date(),
-	}))
+	.optimistic({ type: "create", set: { published: false } }) // DSL: create with tempId
 	.resolve(({ input, ctx }) =>
 		ctx.db.post.create({
 			data: {
@@ -128,7 +130,9 @@ export const createPost = mutation()
 	);
 
 /**
- * 更新文章 (with updatedAt timestamp)
+ * 更新文章
+ *
+ * Optimistic DSL: { type: 'merge' }
  */
 export const updatePost = mutation()
 	.input(
@@ -139,11 +143,7 @@ export const updatePost = mutation()
 		})
 	)
 	.returns(Post)
-	.optimistic(({ input }) => ({
-		id: input.id,
-		...input,
-		updatedAt: new Date(), // 自動設定當前時間
-	}))
+	.optimistic({ type: "merge" }) // DSL: merge input into entity
 	.resolve(({ input, ctx }) =>
 		ctx.db.post.update({
 			where: { id: input.id },
@@ -153,15 +153,14 @@ export const updatePost = mutation()
 
 /**
  * 發佈文章
+ *
+ * Optimistic DSL: { type: 'merge', set: { published: true } }
+ * - Merges input (id) + sets published to true
  */
 export const publishPost = mutation()
 	.input(z.object({ id: z.string() }))
 	.returns(Post)
-	.optimistic(({ input }) => ({
-		id: input.id,
-		published: true,
-		updatedAt: new Date(),
-	}))
+	.optimistic({ type: "merge", set: { published: true } }) // DSL: merge + set field
 	.resolve(({ input, ctx }) =>
 		ctx.db.post.update({
 			where: { id: input.id },
@@ -172,9 +171,12 @@ export const publishPost = mutation()
 /**
  * 批量升級用戶角色 (跨 entity optimistic update)
  *
+ * Optimistic DSL: { type: 'updateMany', ... }
+ * - Updates multiple entities in one mutation
+ * - $ prefix references input fields
+ *
  * 一個 mutation 影響多個 entities:
  * - users: 更新角色
- * - notifications: 建立通知
  */
 export const bulkPromoteUsers = mutation()
 	.input(
@@ -187,14 +189,12 @@ export const bulkPromoteUsers = mutation()
 		users: [User],
 		count: z.number(),
 	})
-	.optimistic(({ input }) => ({
-		// 每個 user 都會被 optimistic update
-		users: input.userIds.map((id) => ({
-			id,
-			role: input.newRole,
-		})),
-		count: input.userIds.length,
-	}))
+	.optimistic({
+		type: "updateMany",
+		entity: "User",
+		ids: "$userIds", // Reference: input.userIds
+		set: { role: "$newRole" }, // Reference: input.newRole
+	})
 	.resolve(async ({ input, ctx }) => {
 		const users = await ctx.db.user.updateMany({
 			where: { id: { in: input.userIds } },
@@ -211,6 +211,9 @@ export const bulkPromoteUsers = mutation()
 
 /**
  * 添加留言
+ *
+ * Optimistic DSL: { type: 'create' }
+ * - Creates new entity with auto tempId
  */
 export const addComment = mutation()
 	.input(
@@ -220,13 +223,7 @@ export const addComment = mutation()
 		})
 	)
 	.returns(Comment)
-	.optimistic(({ input, ctx }) => ({
-		id: tempId(),
-		postId: input.postId,
-		content: input.content,
-		authorId: ctx.currentUser.id,
-		createdAt: new Date(),
-	}))
+	.optimistic({ type: "create" }) // DSL: create with tempId
 	.resolve(({ input, ctx }) =>
 		ctx.db.comment.create({
 			data: {

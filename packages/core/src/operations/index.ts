@@ -70,8 +70,99 @@ export type ResolverFn<TInput, TOutput> =
 	| ((ctx: ResolverContext<TInput>) => TOutput)
 	| ((ctx: ResolverContext<TInput>) => AsyncGenerator<TOutput>);
 
-/** Optimistic function type */
+/** Optimistic function type (legacy - still supported) */
 export type OptimisticFn<TInput, TOutput> = (ctx: { input: TInput }) => Partial<TOutput>;
+
+// =============================================================================
+// Optimistic DSL (Declarative - for type-only client imports)
+// =============================================================================
+
+/**
+ * Declarative optimistic update DSL
+ *
+ * Unlike functions, DSL is pure data that can be:
+ * 1. Part of the type (transferred via type imports)
+ * 2. Interpreted by client at runtime
+ * 3. Serializable (no closures)
+ *
+ * @example
+ * ```typescript
+ * // Simple merge (UPDATE)
+ * .optimistic({ type: 'merge' })
+ *
+ * // Create with tempId
+ * .optimistic({ type: 'create' })
+ *
+ * // Set specific fields
+ * .optimistic({ type: 'merge', set: { published: true } })
+ *
+ * // Cross-entity update
+ * .optimistic({
+ *   type: 'updateMany',
+ *   entity: 'User',
+ *   ids: '$userIds',  // Reference input field
+ *   set: { role: '$newRole' }
+ * })
+ * ```
+ */
+export type OptimisticDSL =
+	| OptimisticMerge
+	| OptimisticCreate
+	| OptimisticDelete
+	| OptimisticUpdateMany
+	| OptimisticCustom;
+
+/** Merge input into entity (UPDATE operation) */
+export interface OptimisticMerge {
+	type: "merge";
+	/** Additional fields to set (optional) */
+	set?: Record<string, unknown>;
+}
+
+/** Create new entity with tempId (CREATE operation) */
+export interface OptimisticCreate {
+	type: "create";
+	/** Additional fields to set (optional) */
+	set?: Record<string, unknown>;
+}
+
+/** Delete entity (DELETE operation) */
+export interface OptimisticDelete {
+	type: "delete";
+}
+
+/** Update multiple entities (cross-entity operation) */
+export interface OptimisticUpdateMany {
+	type: "updateMany";
+	/** Target entity type */
+	entity: string;
+	/** Input field containing IDs (use $ prefix for references) */
+	ids: string;
+	/** Fields to set (use $ prefix for input references) */
+	set: Record<string, unknown>;
+}
+
+/** Custom optimistic (escape hatch - function) */
+export interface OptimisticCustom {
+	type: "custom";
+	/** Function name or handler */
+	fn: OptimisticFn<unknown, unknown>;
+}
+
+/**
+ * Check if value is an OptimisticDSL object
+ */
+export function isOptimisticDSL(value: unknown): value is OptimisticDSL {
+	if (!value || typeof value !== "object") return false;
+	const obj = value as Record<string, unknown>;
+	return (
+		obj.type === "merge" ||
+		obj.type === "create" ||
+		obj.type === "delete" ||
+		obj.type === "updateMany" ||
+		obj.type === "custom"
+	);
+}
 
 // =============================================================================
 // Query Builder
@@ -155,7 +246,12 @@ export interface MutationDef<TInput = unknown, TOutput = unknown> {
 	_type: "mutation";
 	_input: ZodLikeSchema<TInput>;
 	_output?: ReturnSpec;
-	_optimistic?: OptimisticFn<TInput, TOutput>;
+	/**
+	 * Optimistic update specification
+	 * - DSL object: Declarative, works with type-only imports
+	 * - Function: Legacy, requires runtime import
+	 */
+	_optimistic?: OptimisticDSL | OptimisticFn<TInput, TOutput>;
 	_resolve: ResolverFn<TInput, TOutput>;
 }
 
@@ -173,8 +269,24 @@ export interface MutationBuilderWithInput<TInput, TOutput = unknown> {
 
 /** Mutation builder after returns is defined */
 export interface MutationBuilderWithReturns<TInput, TOutput> {
-	/** Define optimistic update function (optional) */
-	optimistic(fn: OptimisticFn<TInput, TOutput>): MutationBuilderWithOptimistic<TInput, TOutput>;
+	/**
+	 * Define optimistic update (optional)
+	 *
+	 * @param spec - DSL object (recommended) or function (legacy)
+	 *
+	 * @example DSL (works with type-only imports)
+	 * ```typescript
+	 * .optimistic({ type: 'merge' })
+	 * .optimistic({ type: 'create' })
+	 * .optimistic({ type: 'merge', set: { published: true } })
+	 * ```
+	 *
+	 * @example Function (legacy, requires runtime import)
+	 * ```typescript
+	 * .optimistic(({ input }) => ({ id: input.id, ...input }))
+	 * ```
+	 */
+	optimistic(spec: OptimisticDSL | OptimisticFn<TInput, TOutput>): MutationBuilderWithOptimistic<TInput, TOutput>;
 
 	/** Define resolver function */
 	resolve(fn: ResolverFn<TInput, TOutput>): MutationDef<TInput, TOutput>;
@@ -195,7 +307,7 @@ class MutationBuilderImpl<TInput = unknown, TOutput = unknown>
 {
 	private _inputSchema?: ZodLikeSchema<TInput>;
 	private _outputSpec?: ReturnSpec;
-	private _optimisticFn?: OptimisticFn<TInput, TOutput>;
+	private _optimisticSpec?: OptimisticDSL | OptimisticFn<TInput, TOutput>;
 
 	input<T>(schema: ZodLikeSchema<T>): MutationBuilderWithInput<T, TOutput> {
 		const builder = new MutationBuilderImpl<T, TOutput>();
@@ -210,11 +322,11 @@ class MutationBuilderImpl<TInput = unknown, TOutput = unknown>
 		return builder;
 	}
 
-	optimistic(fn: OptimisticFn<TInput, TOutput>): MutationBuilderWithOptimistic<TInput, TOutput> {
+	optimistic(spec: OptimisticDSL | OptimisticFn<TInput, TOutput>): MutationBuilderWithOptimistic<TInput, TOutput> {
 		const builder = new MutationBuilderImpl<TInput, TOutput>();
 		builder._inputSchema = this._inputSchema;
 		builder._outputSpec = this._outputSpec;
-		builder._optimisticFn = fn;
+		builder._optimisticSpec = spec;
 		return builder;
 	}
 
@@ -226,7 +338,7 @@ class MutationBuilderImpl<TInput = unknown, TOutput = unknown>
 			_type: "mutation",
 			_input: this._inputSchema,
 			_output: this._outputSpec,
-			_optimistic: this._optimisticFn,
+			_optimistic: this._optimisticSpec,
 			_resolve: fn,
 		};
 	}

@@ -31,7 +31,8 @@
  * ```
  */
 
-import type { QueryDef, MutationDef, Update } from "@lens/core";
+import type { QueryDef, MutationDef, Update, OptimisticDSL } from "@lens/core";
+import { isOptimisticDSL } from "@lens/core";
 import { ReactiveStore, type EntityState } from "../store/reactive-store";
 import {
 	type Link,
@@ -197,6 +198,82 @@ export interface ClientV2<
 	$queryNames: () => string[];
 	/** Get mutation names */
 	$mutationNames: () => string[];
+}
+
+// =============================================================================
+// Optimistic DSL Interpreter
+// =============================================================================
+
+let optimisticCounter = 0;
+
+/**
+ * Interpret OptimisticDSL to compute optimistic data
+ */
+function interpretOptimisticDSL(dsl: OptimisticDSL, input: unknown): unknown {
+	const inputObj = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+
+	switch (dsl.type) {
+		case "merge": {
+			const id = inputObj.id;
+			if (typeof id !== "string") return null;
+			const result: Record<string, unknown> = { ...inputObj };
+			if (dsl.set) {
+				for (const [key, value] of Object.entries(dsl.set)) {
+					result[key] = resolveReference(value, inputObj);
+				}
+			}
+			return result;
+		}
+
+		case "create": {
+			const result: Record<string, unknown> = {
+				id: `temp_${++optimisticCounter}`,
+				...inputObj,
+			};
+			if (dsl.set) {
+				for (const [key, value] of Object.entries(dsl.set)) {
+					result[key] = resolveReference(value, inputObj);
+				}
+			}
+			return result;
+		}
+
+		case "delete": {
+			const id = inputObj.id;
+			if (typeof id !== "string") return null;
+			return { id, _deleted: true };
+		}
+
+		case "updateMany": {
+			const ids = resolveReference(dsl.ids, inputObj);
+			if (!Array.isArray(ids)) return null;
+			const setData: Record<string, unknown> = {};
+			for (const [key, value] of Object.entries(dsl.set)) {
+				setData[key] = resolveReference(value, inputObj);
+			}
+			return ids.map((id: unknown) => ({ id, ...setData }));
+		}
+
+		case "custom": {
+			if (typeof dsl.fn === "function") {
+				return dsl.fn({ input });
+			}
+			return null;
+		}
+
+		default:
+			return null;
+	}
+}
+
+/**
+ * Resolve $ references in DSL values
+ */
+function resolveReference(value: unknown, input: Record<string, unknown>): unknown {
+	if (typeof value === "string" && value.startsWith("$")) {
+		return input[value.slice(1)];
+	}
+	return value;
 }
 
 // =============================================================================
@@ -383,9 +460,18 @@ export function createClientV2<
 			const useOptimistic = options?.optimistic ?? optimistic;
 			let optimisticId: string | undefined;
 
-			// Apply optimistic update if mutation has optimistic handler
+			// Apply optimistic update if mutation has optimistic spec
 			if (useOptimistic && mutationDef._optimistic) {
-				const optimisticData = mutationDef._optimistic({ input });
+				let optimisticData: unknown;
+
+				if (isOptimisticDSL(mutationDef._optimistic)) {
+					// DSL: Interpret declarative spec
+					optimisticData = interpretOptimisticDSL(mutationDef._optimistic, input);
+				} else if (typeof mutationDef._optimistic === "function") {
+					// Function: Legacy callback
+					optimisticData = mutationDef._optimistic({ input });
+				}
+
 				if (optimisticData) {
 					// Store the optimistic data (we use the mutation name as a key prefix)
 					optimisticId = store.applyOptimistic("operation", "mutate", {

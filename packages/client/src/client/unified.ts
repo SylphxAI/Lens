@@ -9,8 +9,8 @@
  * - Request batching
  */
 
-import type { QueryDef, MutationDef, Update } from "@lens/core";
-import { applyUpdate } from "@lens/core";
+import type { QueryDef, MutationDef, Update, OptimisticDSL } from "@lens/core";
+import { applyUpdate, isOptimisticDSL } from "@lens/core";
 import { ReactiveStore, type EntityState } from "../store/reactive-store";
 import { signal, computed, type Signal } from "../signals/signal";
 import {
@@ -707,14 +707,15 @@ class UnifiedClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 	/**
 	 * Execute a mutation
 	 * Automatically applies optimistic update:
-	 * - Default: auto-derive from input (if input has 'id', merge into matching entity)
-	 * - Custom: use mutation's ._optimistic() for more accurate predictions
+	 * - DSL: Declarative spec interpreted at runtime (recommended for type-only imports)
+	 * - Function: Legacy callback (requires runtime import)
+	 * - Auto: If no optimistic specified, derive from input
 	 */
 	private async executeMutation<TInput, TOutput>(
 		operation: string,
 		input: TInput,
 	): Promise<MutationResult<TOutput>> {
-		// Get mutation definition for custom optimistic support
+		// Get mutation definition for optimistic support
 		const mutationDef = this.mutations[operation as keyof M] as MutationDef<TInput, TOutput> | undefined;
 
 		// Apply optimistic update (automatic by default)
@@ -722,9 +723,16 @@ class UnifiedClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 		if (this.optimistic) {
 			let optimisticData: unknown;
 
-			if (mutationDef?._optimistic) {
-				// Custom prediction (optional, for more accurate updates)
-				optimisticData = mutationDef._optimistic({ input });
+			const optimisticSpec = mutationDef?._optimistic;
+
+			if (optimisticSpec) {
+				if (isOptimisticDSL(optimisticSpec)) {
+					// DSL: Interpret declarative spec (works with type-only imports)
+					optimisticData = this.interpretOptimisticDSL(optimisticSpec, input);
+				} else if (typeof optimisticSpec === "function") {
+					// Function: Legacy callback (requires runtime import)
+					optimisticData = optimisticSpec({ input });
+				}
 			} else {
 				// AUTO: if input has 'id', use input as optimistic data
 				// This merges input fields into the entity with matching id
@@ -919,6 +927,123 @@ class UnifiedClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 			id: `temp_${++this.optimisticCounter}`,
 			...obj,
 		};
+	}
+
+	/**
+	 * Interpret OptimisticDSL to compute optimistic data
+	 *
+	 * This allows declarative optimistic updates that work with type-only imports.
+	 * The DSL is pure data, interpreted at runtime on the client.
+	 *
+	 * @example
+	 * // { type: 'merge' } + input { id: "1", name: "New" }
+	 * // → { id: "1", name: "New" }
+	 *
+	 * // { type: 'create' } + input { title: "Hello" }
+	 * // → { id: "temp_0", title: "Hello" }
+	 *
+	 * // { type: 'merge', set: { published: true } } + input { id: "1" }
+	 * // → { id: "1", published: true }
+	 *
+	 * // { type: 'updateMany', entity: 'User', ids: '$userIds', set: { role: '$newRole' } }
+	 * // + input { userIds: ["1", "2"], newRole: "admin" }
+	 * // → [{ id: "1", role: "admin" }, { id: "2", role: "admin" }]
+	 */
+	private interpretOptimisticDSL(dsl: OptimisticDSL, input: unknown): unknown {
+		const inputObj = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+
+		switch (dsl.type) {
+			case "merge": {
+				// Merge input into entity (UPDATE)
+				// Requires input to have 'id'
+				const id = inputObj.id;
+				if (typeof id !== "string") return null;
+
+				const result: Record<string, unknown> = { ...inputObj };
+
+				// Apply additional 'set' fields (with $ reference resolution)
+				if (dsl.set) {
+					for (const [key, value] of Object.entries(dsl.set)) {
+						result[key] = this.resolveReference(value, inputObj);
+					}
+				}
+
+				return result;
+			}
+
+			case "create": {
+				// Create new entity with tempId
+				const result: Record<string, unknown> = {
+					id: `temp_${++this.optimisticCounter}`,
+					...inputObj,
+				};
+
+				// Apply additional 'set' fields
+				if (dsl.set) {
+					for (const [key, value] of Object.entries(dsl.set)) {
+						result[key] = this.resolveReference(value, inputObj);
+					}
+				}
+
+				return result;
+			}
+
+			case "delete": {
+				// Delete entity - mark as deleted
+				const id = inputObj.id;
+				if (typeof id !== "string") return null;
+				return { id, _deleted: true };
+			}
+
+			case "updateMany": {
+				// Update multiple entities (cross-entity)
+				const idsRef = dsl.ids;
+				const ids = this.resolveReference(idsRef, inputObj);
+
+				if (!Array.isArray(ids)) return null;
+
+				// Resolve set fields
+				const setData: Record<string, unknown> = {};
+				for (const [key, value] of Object.entries(dsl.set)) {
+					setData[key] = this.resolveReference(value, inputObj);
+				}
+
+				// Create optimistic entity for each ID
+				return ids.map((id: unknown) => ({
+					id,
+					...setData,
+				}));
+			}
+
+			case "custom": {
+				// Custom function (escape hatch)
+				if (typeof dsl.fn === "function") {
+					return dsl.fn({ input });
+				}
+				return null;
+			}
+
+			default:
+				return null;
+		}
+	}
+
+	/**
+	 * Resolve $ references in DSL values
+	 *
+	 * @example
+	 * resolveReference('$newRole', { newRole: 'admin' }) → 'admin'
+	 * resolveReference('literal', {}) → 'literal'
+	 * resolveReference(true, {}) → true
+	 */
+	private resolveReference(value: unknown, input: Record<string, unknown>): unknown {
+		// String starting with $ is a reference to input field
+		if (typeof value === "string" && value.startsWith("$")) {
+			const fieldName = value.slice(1);
+			return input[fieldName];
+		}
+		// Otherwise, return literal value
+		return value;
 	}
 
 	/**

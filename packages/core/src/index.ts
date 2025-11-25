@@ -233,6 +233,7 @@ export {
 	isQueryDef,
 	isMutationDef,
 	isOperationDef,
+	isOptimisticDSL,
 	// Types
 	type QueryDef,
 	type MutationDef,
@@ -243,6 +244,13 @@ export {
 	type OptimisticFn,
 	type ReturnSpec,
 	type ZodLikeSchema,
+	// Optimistic DSL types
+	type OptimisticDSL,
+	type OptimisticMerge,
+	type OptimisticCreate,
+	type OptimisticDelete,
+	type OptimisticUpdateMany,
+	type OptimisticCustom,
 } from "./operations/index";
 
 // =============================================================================

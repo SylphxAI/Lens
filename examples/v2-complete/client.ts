@@ -4,7 +4,12 @@
  * Demonstrates tRPC-style type inference:
  * - Import TYPE from server (not runtime)
  * - Links as middleware chain
- * - Automatic optimistic updates (requires mutation defs)
+ * - Automatic optimistic updates with DSL
+ *
+ * Optimistic Updates Strategy:
+ * 1. TYPE-only import from server (client.updateUser knows input/output types)
+ * 2. DSL from operations contract (client interprets { type: 'merge' } at runtime)
+ * 3. No server code transferred (DSL is pure data, no closures)
  */
 
 import {
@@ -21,8 +26,9 @@ import {
 // TYPE-only import from server!
 import type { Api } from "./server";
 
-// For optimistic updates, we need the mutation definitions
-// (they contain the _optimistic function)
+// For optimistic updates, import mutation definitions (DSL only, no server logic)
+// The DSL is pure data: { type: 'merge' }, { type: 'create' }, etc.
+// It doesn't contain server context or closures
 import { mutations } from "./operations";
 
 // =============================================================================
