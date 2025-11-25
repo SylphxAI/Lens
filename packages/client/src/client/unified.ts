@@ -54,6 +54,33 @@ export interface UnifiedTransport {
 	disconnect(): void;
 }
 
+/** Unified link function */
+export type UnifiedLinkFn = (
+	ctx: UnifiedOperationContext,
+	next: (ctx: UnifiedOperationContext) => Promise<unknown>,
+) => Promise<unknown>;
+
+/** Unified link factory */
+export type UnifiedLink = () => UnifiedLinkFn;
+
+/** Unified operation context */
+export interface UnifiedOperationContext {
+	/** Unique operation ID */
+	id: string;
+	/** Operation type */
+	type: "query" | "mutation" | "subscription";
+	/** Operation name */
+	operation: string;
+	/** Operation input */
+	input: unknown;
+	/** Field selection */
+	select?: SelectionObject;
+	/** Custom metadata (can be extended by links) */
+	meta: Record<string, unknown>;
+	/** AbortSignal for cancellation */
+	signal?: AbortSignal;
+}
+
 /** Client configuration */
 export interface UnifiedClientConfig<
 	Q extends QueriesMap = QueriesMap,
@@ -63,8 +90,10 @@ export interface UnifiedClientConfig<
 	queries?: Q;
 	/** Mutation definitions */
 	mutations?: M;
-	/** Transport */
-	transport: UnifiedTransport;
+	/** Transport (direct transport, use this OR links) */
+	transport?: UnifiedTransport;
+	/** Links chain (last one should be terminal, use this OR transport) */
+	links?: (UnifiedLink | UnifiedTransport)[];
 	/** Enable optimistic updates */
 	optimistic?: boolean;
 }
@@ -168,6 +197,7 @@ class UnifiedClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 	private queries: Q;
 	private mutations: M;
 	private transport: UnifiedTransport;
+	private linkChain: UnifiedLinkFn[] = [];
 	private optimistic: boolean;
 	private store: ReactiveStore;
 
@@ -192,9 +222,69 @@ class UnifiedClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 	constructor(config: UnifiedClientConfig<Q, M>) {
 		this.queries = config.queries ?? ({} as Q);
 		this.mutations = config.mutations ?? ({} as M);
-		this.transport = config.transport;
 		this.optimistic = config.optimistic ?? true;
 		this.store = new ReactiveStore();
+
+		// Handle links or transport config
+		if (config.links && config.links.length > 0) {
+			// Extract terminal link (last one that is a transport)
+			const lastItem = config.links[config.links.length - 1];
+			if (this.isTransport(lastItem)) {
+				this.transport = lastItem;
+				// Build middleware chain from remaining links
+				for (let i = 0; i < config.links.length - 1; i++) {
+					const link = config.links[i];
+					if (!this.isTransport(link)) {
+						this.linkChain.push(link());
+					}
+				}
+			} else {
+				throw new Error("Last link must be a terminal transport (e.g., websocketLink)");
+			}
+		} else if (config.transport) {
+			this.transport = config.transport;
+		} else {
+			throw new Error("Must provide either 'transport' or 'links' config");
+		}
+	}
+
+	/** Check if item is a transport */
+	private isTransport(item: UnifiedLink | UnifiedTransport): item is UnifiedTransport {
+		return (
+			typeof item === "object" &&
+			"connect" in item &&
+			"disconnect" in item &&
+			"query" in item &&
+			"mutate" in item
+		);
+	}
+
+	/** Execute through link chain */
+	private async executeWithLinks(ctx: UnifiedOperationContext): Promise<unknown> {
+		// Build execution chain
+		const execute = async (ctx: UnifiedOperationContext): Promise<unknown> => {
+			if (ctx.type === "query") {
+				return this.transport.query(ctx.operation, ctx.input, "*", ctx.select);
+			} else if (ctx.type === "mutation") {
+				return this.transport.mutate(ctx.operation, ctx.input);
+			}
+			throw new Error(`Unsupported operation type: ${ctx.type}`);
+		};
+
+		// If no middleware, execute directly
+		if (this.linkChain.length === 0) {
+			return execute(ctx);
+		}
+
+		// Build chain from right to left
+		let chain = execute;
+		for (let i = this.linkChain.length - 1; i >= 0; i--) {
+			const link = this.linkChain[i];
+			const next = chain;
+			chain = (ctx) => link(ctx, next);
+		}
+
+		return chain(ctx);
 	}
 
 	// ===========================================================================
@@ -515,8 +605,18 @@ class UnifiedClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 			return inFlight;
 		}
 
-		// Create promise - pass SelectionObject for nested resolution
-		const promise = this.transport.query(operation, input, fields ?? "*", select);
+		// Create operation context for link chain
+		const ctx: UnifiedOperationContext = {
+			id: `query-${operation}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+			type: "query",
+			operation,
+			input,
+			select,
+			meta: {},
+		};
+
+		// Execute through link chain
+		const promise = this.executeWithLinks(ctx);
 		this.inFlight.set(key, promise);
 
 		try {
@@ -579,7 +679,17 @@ class UnifiedClientImpl<Q extends QueriesMap, M extends MutationsMap> {
 		operation: string,
 		input: TInput,
 	): Promise<MutationResult<TOutput>> {
-		const result = await this.transport.mutate(operation, input);
+		// Create operation context for link chain
+		const ctx: UnifiedOperationContext = {
+			id: `mutation-${operation}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+			type: "mutation",
+			operation,
+			input,
+			meta: {},
+		};
+
+		// Execute through link chain
+		const result = await this.executeWithLinks(ctx);
 
 		// Update any affected subscriptions
 		this.updateSubscriptionsFromMutation(result);

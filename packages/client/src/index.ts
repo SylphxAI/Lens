@@ -138,11 +138,11 @@ export {
 	createInProcessLinkV2,
 	type InProcessLinkV2Options,
 	type InProcessServerV2,
-	// WebSocket subscription transport
+	// WebSocket subscription transport (V1 - for legacy client)
 	WebSocketSubscriptionTransport,
 	createWebSocketTransport,
-	websocketLink,
-	type WebSocketLinkOptions,
+	websocketLink as websocketLinkV1,
+	type WebSocketLinkOptions as WebSocketLinkV1Options,
 	type WebSocketState,
 	// WebSocket V2 (operations protocol)
 	WebSocketTransportV2,
@@ -212,7 +212,24 @@ export {
 	type MutationsMap as UnifiedMutationsMap,
 	type InferInput as UnifiedInferInput,
 	type InferOutput as UnifiedInferOutput,
+	// Unified link types
+	type UnifiedLink,
+	type UnifiedLinkFn,
+	type UnifiedOperationContext,
 } from "./client/unified";
+
+export {
+	// Unified middleware links
+	unifiedLoggerLink,
+	unifiedRetryLink,
+	unifiedTimingLink,
+	unifiedErrorHandlerLink,
+	// Types
+	type UnifiedLoggerOptions,
+	type UnifiedRetryOptions,
+	type UnifiedTimingOptions,
+	type UnifiedErrorHandlerOptions,
+} from "./client/unified-links";
 
 export {
 	// WebSocket Transport for Unified Client
@@ -233,5 +250,6 @@ export { createUnifiedClient as createClient } from "./client/unified";
 export type { UnifiedClient as LensClient } from "./client/unified";
 export type { UnifiedClientConfig as ClientConfig } from "./client/unified";
 
-// websocketUnifiedTransport = unified transport for unified client
-// Note: websocketLink from ./links is for V1 client, websocketUnifiedTransport is for unified client
+// websocketLink = unified transport for unified client (README-compatible alias)
+export { websocketUnifiedTransport as websocketLink } from "./client/unified-transport";
+export type { WebSocketUnifiedTransportOptions as WebSocketLinkOptions } from "./client/unified-transport";
