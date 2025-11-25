@@ -1,47 +1,47 @@
 {
-	"name": "@sylphx/lens-react",
-	"version": "1.1.2",
-	"description": "React bindings for Lens API framework",
-	"type": "module",
-	"main": "./dist/index.js",
-	"types": "./dist/index.d.ts",
-	"exports": {
-		".": {
-			"import": "./dist/index.js",
-			"types": "./dist/index.d.ts"
-		}
-	},
-	"scripts": {
-		"build": "bun build ./src/index.ts --outdir ./dist --target browser && bun run build:types",
-		"build:types": "tsc --emitDeclarationOnly --outDir ./dist",
-		"typecheck": "tsc --noEmit",
-		"test": "bun test"
-	},
-	"files": [
-		"dist",
-		"src"
-	],
-	"keywords": [
-		"lens",
-		"react",
-		"hooks",
-		"reactive"
-	],
-	"author": "SylphxAI",
-	"license": "MIT",
-	"dependencies": {
-		"@sylphx/lens-client": "workspace:*"
-	},
-	"peerDependencies": {
-		"react": ">=18.0.0"
-	},
-	"devDependencies": {
-		"@happy-dom/global-registrator": "^20.0.10",
-		"@testing-library/react": "^16.2.0",
-		"@types/react": "^18.3.12",
-		"happy-dom": "^17.4.7",
-		"react": "^18.3.1",
-		"react-dom": "^18.3.1",
-		"typescript": "^5.9.3"
-	}
+  "name": "@sylphx/lens-react",
+  "version": "1.0.0",
+  "description": "React bindings for Lens API framework",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target browser && bun run build:types",
+    "build:types": "tsc --emitDeclarationOnly --outDir ./dist",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "keywords": [
+    "lens",
+    "react",
+    "hooks",
+    "reactive"
+  ],
+  "author": "SylphxAI",
+  "license": "MIT",
+  "dependencies": {
+    "@sylphx/lens-client": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@happy-dom/global-registrator": "^20.0.10",
+    "@testing-library/react": "^16.2.0",
+    "@types/react": "^18.3.12",
+    "happy-dom": "^17.4.7",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.9.3"
+  }
 }

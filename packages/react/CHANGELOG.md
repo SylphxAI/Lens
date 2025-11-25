@@ -1,5 +1,54 @@
 # @sylphx/lens-react
 
+## 1.0.0
+
+### Major Changes
+
+- c6293e0: # Initial 1.0.0 Release 🎉
+
+  First stable release of Lens - Type-safe, real-time API framework.
+
+  ## Core Features
+
+  **Transport + Plugin Architecture**
+
+  - Clean separation: Transport handles communication, Plugins add cross-cutting concerns
+  - Built-in transports: HTTP, WebSocket, in-process
+  - Routing: `route()` with glob patterns, `routeByType()`, `routeByPath()`
+  - Built-in plugins: logger, auth, retry, cache, timeout
+
+  **Type Safety**
+
+  - Full end-to-end type safety
+  - Zero codegen required
+  - GraphQL-like developer experience with TypeScript
+
+  **Reactive & Real-time**
+
+  - WebSocket subscriptions with `ctx.emit()`
+  - Optimistic updates with simple DSL
+  - Field selection (like GraphQL)
+  - Framework adapters: React, Vue, Svelte, SolidJS
+
+  ## Architecture Improvements (vs pre-release)
+
+  - Removed signals from QueryResult interface (framework-agnostic)
+  - Removed unnecessary dependencies (React bundle: -49KB)
+  - Clean dependency graph (no circular dependencies)
+  - Lazy connection (createClient is synchronous)
+
+  ## Breaking Changes from Pre-release
+
+  - `client.$store` removed (ReactiveStore still exported for advanced use)
+  - QueryResult no longer has `signal`, `loading`, `error` properties
+  - Framework adapters use `subscribe()` for their own reactivity systems
+  - Signals are now optional peer dependency in client package
+
+### Patch Changes
+
+- Updated dependencies [c6293e0]
+  - @sylphx/lens-client@1.0.0
+
 ## 1.1.2
 
 ### Patch Changes

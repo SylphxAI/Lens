@@ -1,44 +1,44 @@
 {
-	"name": "@sylphx/lens-vue",
-	"version": "1.1.2",
-	"description": "Vue composables for Lens API framework",
-	"type": "module",
-	"main": "./dist/index.js",
-	"types": "./dist/index.d.ts",
-	"exports": {
-		".": {
-			"import": "./dist/index.js",
-			"types": "./dist/index.d.ts"
-		}
-	},
-	"scripts": {
-		"build": "bun build ./src/index.ts --outdir ./dist --target browser && bun run build:types",
-		"build:types": "tsc --emitDeclarationOnly --outDir ./dist",
-		"typecheck": "tsc --noEmit",
-		"test": "bun test"
-	},
-	"files": [
-		"dist",
-		"src"
-	],
-	"keywords": [
-		"lens",
-		"vue",
-		"composables",
-		"composition-api"
-	],
-	"author": "SylphxAI",
-	"license": "MIT",
-	"dependencies": {
-		"@sylphx/lens-client": "workspace:*"
-	},
-	"peerDependencies": {
-		"vue": ">=3.0.0"
-	},
-	"devDependencies": {
-		"@vue/test-utils": "^2.4.6",
-		"happy-dom": "^17.4.7",
-		"typescript": "^5.9.3",
-		"vue": "^3.5.13"
-	}
+  "name": "@sylphx/lens-vue",
+  "version": "1.0.0",
+  "description": "Vue composables for Lens API framework",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/index.ts --outdir ./dist --target browser && bun run build:types",
+    "build:types": "tsc --emitDeclarationOnly --outDir ./dist",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "keywords": [
+    "lens",
+    "vue",
+    "composables",
+    "composition-api"
+  ],
+  "author": "SylphxAI",
+  "license": "MIT",
+  "dependencies": {
+    "@sylphx/lens-client": "workspace:*"
+  },
+  "peerDependencies": {
+    "vue": ">=3.0.0"
+  },
+  "devDependencies": {
+    "@vue/test-utils": "^2.4.6",
+    "happy-dom": "^17.4.7",
+    "typescript": "^5.9.3",
+    "vue": "^3.5.13"
+  }
 }
