@@ -5,8 +5,15 @@
  * Supports multi-server architectures with automatic metadata merging.
  */
 
-import type { Observable } from "../links/types";
-import type { Metadata, Operation, Result, RouteCondition, RouteEntry, Transport } from "./types";
+import type {
+	Metadata,
+	Observable,
+	Operation,
+	Result,
+	RouteCondition,
+	RouteEntry,
+	Transport,
+} from "./types";
 
 // =============================================================================
 // Route Transport

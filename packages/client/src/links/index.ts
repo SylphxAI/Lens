@@ -1,30 +1,16 @@
 /**
- * @sylphx/lens-client - Links
+ * @sylphx/lens-client - Links (Legacy)
  *
- * Composable middleware for request/response processing.
- * Inspired by tRPC's link system.
+ * @deprecated Use the new transport system instead.
+ * This module is kept for backward compatibility with existing code.
  *
- * @example
- * ```typescript
- * import { createClient, loggerLink, retryLink, cacheLink, httpLink } from "@sylphx/lens-client";
- *
- * const client = createClient({
- *   schema,
- *   links: [
- *     loggerLink({ enabled: process.env.NODE_ENV === "development" }),
- *     retryLink({ maxRetries: 3 }),
- *     cacheLink({ ttl: 5000 }),
- *     httpLink({ url: "http://localhost:3000/api" }),
- *   ],
- * });
- * ```
+ * New code should use:
+ * - http(), ws(), inProcess() from ./transport
+ * - logger(), auth(), retry(), cache() plugins from ./transport
  */
 
-// =============================================================================
-// Types
-// =============================================================================
-
 export {
+	// Types
 	type OperationType,
 	type OperationContext,
 	type OperationResult,
@@ -35,61 +21,7 @@ export {
 	type Observable,
 	type Observer,
 	type Unsubscribable,
+	// Functions
 	composeLinks,
 	createOperationContext,
 } from "./types";
-
-// =============================================================================
-// Middleware Links
-// =============================================================================
-
-export { deserializeLink, type DeserializeLinkOptions } from "./deserialize";
-export { loggerLink, type LoggerLinkOptions } from "./logger";
-export { retryLink, type RetryLinkOptions } from "./retry";
-export { cacheLink, createCacheStore, type CacheLinkOptions } from "./cache";
-export { splitLink, splitByType, type SplitLinkOptions } from "./split";
-export { queryOptimizerLink, type QueryOptimizerOptions } from "./query-optimizer";
-export { compressionLink, type CompressionLinkOptions } from "./compression";
-export {
-	msgpackLink,
-	serializeMsgpack,
-	deserializeMsgpack,
-	compareSizes,
-	type MsgpackLinkOptions,
-} from "./msgpack";
-export { timingLink, type TimingLinkOptions } from "./timing";
-export { errorHandlerLink, type ErrorHandlerLinkOptions } from "./error-handler";
-
-// =============================================================================
-// Terminal Links
-// =============================================================================
-
-export { httpLink, httpBatchLink, type HttpLinkOptions } from "./http";
-export {
-	sseLink,
-	SSESubscriptionTransport,
-	createSSETransport,
-	type SSELinkOptions,
-	type SSEState,
-} from "./sse";
-export {
-	inProcessLink,
-	createInProcessLink,
-	type InProcessLinkOptions,
-	type InProcessResolvers,
-} from "./in-process";
-
-// =============================================================================
-// WebSocket Link (Terminal)
-// =============================================================================
-
-export {
-	// Terminal link
-	websocketLink,
-	// Subscription transport (for reactive systems)
-	WebSocketSubscriptionTransport,
-	createWebSocketTransport,
-	// Types
-	type WebSocketLinkOptions,
-	type WebSocketState,
-} from "./websocket";

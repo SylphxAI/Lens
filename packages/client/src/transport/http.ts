@@ -5,8 +5,7 @@
  * Handles query/mutation via POST, subscriptions via polling.
  */
 
-import type { Observable } from "../links/types";
-import type { Metadata, Operation, Result, Transport } from "./types";
+import type { Metadata, Observable, Operation, Result, Transport } from "./types";
 
 // =============================================================================
 // Types

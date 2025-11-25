@@ -9,6 +9,10 @@
 // =============================================================================
 
 export type {
+	// Observable types
+	Observable,
+	Observer,
+	Unsubscribable,
 	// Core types
 	Transport,
 	Operation,

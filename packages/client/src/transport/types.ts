@@ -4,7 +4,26 @@
  * Core interfaces for the transport system.
  */
 
-import type { Observable } from "../links/types";
+// =============================================================================
+// Observable Types (for subscriptions)
+// =============================================================================
+
+/** Observable for subscription results */
+export interface Observable<T> {
+	subscribe(observer: Observer<T>): Unsubscribable;
+}
+
+/** Observer for subscription */
+export interface Observer<T> {
+	next?: (value: T) => void;
+	error?: (err: Error) => void;
+	complete?: () => void;
+}
+
+/** Unsubscribable handle */
+export interface Unsubscribable {
+	unsubscribe(): void;
+}
 
 // =============================================================================
 // Operation Types
