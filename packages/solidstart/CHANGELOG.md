@@ -1,5 +1,14 @@
 # @sylphx/lens-solidstart
 
+## 1.2.2
+
+### Patch Changes
+
+- Updated dependencies
+  - @sylphx/lens-server@1.2.0
+  - @sylphx/lens-client@1.0.6
+  - @sylphx/lens-solid@1.2.2
+
 ## 1.2.1
 
 ### Patch Changes

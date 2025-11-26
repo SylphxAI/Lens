@@ -1,5 +1,11 @@
 # @sylphx/lens-core
 
+## 1.2.0
+
+### Minor Changes
+
+- Re-publish: Type-safe EmitObject and EmitArray interfaces (version bump to avoid npm conflict)
+
 ## 1.1.0
 
 ### Minor Changes

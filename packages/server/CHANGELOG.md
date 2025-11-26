@@ -1,5 +1,16 @@
 # @sylphx/lens-server
 
+## 1.2.0
+
+### Minor Changes
+
+- Re-publish: Type-safe EmitObject and EmitArray interfaces (version bump to avoid npm conflict)
+
+### Patch Changes
+
+- Updated dependencies
+  - @sylphx/lens-core@1.2.0
+
 ## 1.1.0
 
 ### Minor Changes
