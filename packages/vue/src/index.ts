@@ -26,6 +26,7 @@ export {
 	// Mutation composable
 	useMutation,
 	// Types
+	type QueryInput,
 	type UseQueryResult,
 	type UseLazyQueryResult,
 	type UseMutationResult,

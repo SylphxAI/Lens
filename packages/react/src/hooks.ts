@@ -25,7 +25,18 @@
  */
 
 import type { MutationResult, QueryResult } from "@sylphx/lens-client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+// =============================================================================
+// Query Input Types
+// =============================================================================
+
+/** Query input - can be a query, null/undefined, or an accessor function */
+export type QueryInput<T> =
+	| QueryResult<T>
+	| null
+	| undefined
+	| (() => QueryResult<T> | null | undefined);
 
 // =============================================================================
 // Types
@@ -67,10 +78,15 @@ export interface UseQueryOptions {
 // useQuery Hook
 // =============================================================================
 
+/** Helper to resolve query input (handles accessor functions) */
+function resolveQuery<T>(input: QueryInput<T>): QueryResult<T> | null | undefined {
+	return typeof input === "function" ? input() : input;
+}
+
 /**
  * Subscribe to a query with reactive updates
  *
- * @param query - QueryResult from client API call
+ * @param queryInput - QueryResult, null/undefined, or accessor function returning QueryResult
  * @param options - Query options
  *
  * @example
@@ -87,14 +103,23 @@ export interface UseQueryOptions {
  *   return <h1>{user.name}</h1>;
  * }
  *
- * // With select (type-safe field selection)
- * function UserName({ userId }: { userId: string }) {
+ * // Conditional query (null when condition not met)
+ * function SessionInfo({ sessionId }: { sessionId: string | null }) {
  *   const client = useLensClient();
  *   const { data } = useQuery(
- *     client.user.get({ id: userId }).select({ name: true })
+ *     sessionId ? client.session.get({ id: sessionId }) : null
  *   );
- *   // data is { name: string } | null
- *   return <span>{data?.name}</span>;
+ *   // data is null when sessionId is null
+ *   return <span>{data?.totalTokens}</span>;
+ * }
+ *
+ * // Accessor function (reactive inputs)
+ * function ReactiveQuery({ sessionId }: { sessionId: Signal<string | null> }) {
+ *   const client = useLensClient();
+ *   const { data } = useQuery(() =>
+ *     sessionId.value ? client.session.get({ id: sessionId.value }) : null
+ *   );
+ *   return <span>{data?.totalTokens}</span>;
  * }
  *
  * // Skip query conditionally
@@ -104,20 +129,30 @@ export interface UseQueryOptions {
  * }
  * ```
  */
-export function useQuery<T>(query: QueryResult<T>, options?: UseQueryOptions): UseQueryResult<T> {
+export function useQuery<T>(queryInput: QueryInput<T>, options?: UseQueryOptions): UseQueryResult<T> {
+	// Resolve query (handles accessor functions)
+	const query = useMemo(() => resolveQuery(queryInput), [queryInput]);
+
 	const [data, setData] = useState<T | null>(null);
-	const [loading, setLoading] = useState(!options?.skip);
+	const [loading, setLoading] = useState(!options?.skip && query != null);
 	const [error, setError] = useState<Error | null>(null);
 
 	// Track mounted state
 	const mountedRef = useRef(true);
 
+	// Store query ref for refetch
+	const queryRef = useRef(query);
+	queryRef.current = query;
+
 	// Subscribe to query
 	useEffect(() => {
 		mountedRef.current = true;
 
-		if (options?.skip) {
+		// Handle null/undefined query
+		if (query == null || options?.skip) {
+			setData(null);
 			setLoading(false);
+			setError(null);
 			return;
 		}
 
@@ -156,12 +191,13 @@ export function useQuery<T>(query: QueryResult<T>, options?: UseQueryOptions): U
 
 	// Refetch function
 	const refetch = useCallback(() => {
-		if (options?.skip) return;
+		const currentQuery = queryRef.current;
+		if (currentQuery == null || options?.skip) return;
 
 		setLoading(true);
 		setError(null);
 
-		query.then(
+		currentQuery.then(
 			(value) => {
 				if (mountedRef.current) {
 					setData(value);
@@ -175,7 +211,7 @@ export function useQuery<T>(query: QueryResult<T>, options?: UseQueryOptions): U
 				}
 			},
 		);
-	}, [query, options?.skip]);
+	}, [options?.skip]);
 
 	return { data, loading, error, refetch };
 }
@@ -309,7 +345,7 @@ export interface UseLazyQueryResult<T> {
 /**
  * Execute a query on demand (not on mount)
  *
- * @param query - QueryResult from client API call
+ * @param queryInput - QueryResult, null/undefined, or accessor function returning QueryResult
  *
  * @example
  * ```tsx
@@ -338,15 +374,28 @@ export interface UseLazyQueryResult<T> {
  *     </div>
  *   );
  * }
+ *
+ * // With accessor function
+ * function LazyReactiveQuery({ sessionId }: { sessionId: Signal<string | null> }) {
+ *   const client = useLensClient();
+ *   const { execute, data } = useLazyQuery(() =>
+ *     sessionId.value ? client.session.get({ id: sessionId.value }) : null
+ *   );
+ *   return <button onClick={execute}>Load</button>;
+ * }
  * ```
  */
-export function useLazyQuery<T>(query: QueryResult<T>): UseLazyQueryResult<T> {
+export function useLazyQuery<T>(queryInput: QueryInput<T>): UseLazyQueryResult<T> {
 	const [data, setData] = useState<T | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<Error | null>(null);
 
 	// Track mounted state
 	const mountedRef = useRef(true);
+
+	// Store queryInput ref for execute (so it uses latest value)
+	const queryInputRef = useRef(queryInput);
+	queryInputRef.current = queryInput;
 
 	useEffect(() => {
 		mountedRef.current = true;
@@ -357,6 +406,14 @@ export function useLazyQuery<T>(query: QueryResult<T>): UseLazyQueryResult<T> {
 
 	// Execute function
 	const execute = useCallback(async (): Promise<T> => {
+		const query = resolveQuery(queryInputRef.current);
+
+		if (query == null) {
+			setData(null);
+			setLoading(false);
+			return null as T;
+		}
+
 		setLoading(true);
 		setError(null);
 
@@ -379,7 +436,7 @@ export function useLazyQuery<T>(query: QueryResult<T>): UseLazyQueryResult<T> {
 				setLoading(false);
 			}
 		}
-	}, [query]);
+	}, []);
 
 	// Reset function
 	const reset = useCallback(() => {

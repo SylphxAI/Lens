@@ -15,6 +15,7 @@ export {
 	mutation,
 	lazyQuery,
 	// Types
+	type QueryInput,
 	type QueryStore,
 	type MutationStore,
 	type LazyQueryStore,

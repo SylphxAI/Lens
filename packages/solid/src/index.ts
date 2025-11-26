@@ -22,6 +22,7 @@ export {
 	// Mutation primitive
 	createMutation,
 	// Types
+	type QueryInput,
 	type CreateQueryResult,
 	type CreateMutationResult,
 	type CreateLazyQueryResult,

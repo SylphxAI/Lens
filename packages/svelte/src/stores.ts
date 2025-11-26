@@ -9,6 +9,22 @@ import type { MutationResult, QueryResult } from "@sylphx/lens-client";
 import { type Readable, readable, writable } from "svelte/store";
 
 // =============================================================================
+// Query Input Types
+// =============================================================================
+
+/** Query input - can be a query, null/undefined, or an accessor function */
+export type QueryInput<T> =
+	| QueryResult<T>
+	| null
+	| undefined
+	| (() => QueryResult<T> | null | undefined);
+
+/** Helper to resolve query input (handles accessor functions) */
+function resolveQuery<T>(input: QueryInput<T>): QueryResult<T> | null | undefined {
+	return typeof input === "function" ? input() : input;
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -58,6 +74,16 @@ export interface QueryStoreOptions {
  *   import { client } from './client';
  *
  *   const userStore = query(client.queries.getUser({ id: '123' }));
+ *
+ *   // Conditional query (null when condition not met)
+ *   const sessionStore = query(
+ *     sessionId ? client.session.get({ id: sessionId }) : null
+ *   );
+ *
+ *   // With accessor function for reactive inputs
+ *   const reactiveStore = query(
+ *     () => sessionId ? client.session.get({ id: sessionId }) : null
+ *   );
  * </script>
  *
  * {#if $userStore.loading}
@@ -69,13 +95,16 @@ export interface QueryStoreOptions {
  * {/if}
  * ```
  */
-export function query<T>(queryResult: QueryResult<T>, options?: QueryStoreOptions): QueryStore<T> {
+export function query<T>(queryInput: QueryInput<T>, options?: QueryStoreOptions): QueryStore<T> {
 	let refetchFn: (() => void) | null = null;
 
 	const store = readable<QueryStoreValue<T>>(
 		{ data: null, loading: !options?.skip, error: null },
 		(set) => {
-			if (options?.skip) {
+			const queryResult = resolveQuery(queryInput);
+
+			// Handle null/undefined query or skip
+			if (options?.skip || queryResult == null) {
 				set({ data: null, loading: false, error: null });
 				return () => {};
 			}
@@ -213,12 +242,19 @@ export type LazyQueryStore<T> = Readable<QueryStoreValue<T>> & {
  *   import { client } from './client';
  *
  *   let searchTerm = '';
- *   const searchStore = lazyQuery(client.queries.searchUsers({ query: searchTerm }));
+ *   const searchStore = lazyQuery(
+ *     () => client.queries.searchUsers({ query: searchTerm })
+ *   );
  *
  *   async function handleSearch() {
  *     const results = await searchStore.execute();
  *     console.log('Found:', results);
  *   }
+ *
+ *   // Conditional query (null when condition not met)
+ *   const sessionStore = lazyQuery(
+ *     () => sessionId ? client.session.get({ id: sessionId }) : null
+ *   );
  * </script>
  *
  * <input bind:value={searchTerm} />
@@ -227,7 +263,7 @@ export type LazyQueryStore<T> = Readable<QueryStoreValue<T>> & {
  * </button>
  * ```
  */
-export function lazyQuery<T>(queryResult: QueryResult<T>): LazyQueryStore<T> {
+export function lazyQuery<T>(queryInput: QueryInput<T>): LazyQueryStore<T> {
 	const store = writable<QueryStoreValue<T>>({
 		data: null,
 		loading: false,
@@ -235,6 +271,13 @@ export function lazyQuery<T>(queryResult: QueryResult<T>): LazyQueryStore<T> {
 	});
 
 	const execute = async (): Promise<T> => {
+		const queryResult = resolveQuery(queryInput);
+
+		if (queryResult == null) {
+			store.set({ data: null, loading: false, error: null });
+			return null as T;
+		}
+
 		store.set({ data: null, loading: true, error: null });
 
 		try {

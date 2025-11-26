@@ -1,5 +1,43 @@
 # @sylphx/lens-solid
 
+## 1.1.0
+
+### Minor Changes
+
+- Add QueryInput type for conditional queries and accessor functions
+
+  - All framework packages now accept `QueryInput<T>` which can be:
+
+    - `QueryResult<T>` - direct query
+    - `null | undefined` - skip query (returns null data, loading=false)
+    - `() => QueryResult<T> | null | undefined` - accessor function for reactive inputs
+
+  - Enables conditional queries similar to SWR, React Query, and Apollo:
+
+    ```tsx
+    // React
+    const { data } = useQuery(
+      sessionId ? client.session.get({ id: sessionId }) : null
+    );
+
+    // Vue
+    const { data } = useQuery(() =>
+      sessionId.value ? client.session.get({ id: sessionId.value }) : null
+    );
+
+    // Svelte
+    const store = query(() =>
+      sessionId ? client.session.get({ id: sessionId }) : null
+    );
+
+    // Solid
+    const result = createQuery(() =>
+      sessionId() ? client.session.get({ id: sessionId() }) : null
+    );
+    ```
+
+  - Export `QueryInput` type from all framework packages
+
 ## 1.0.5
 
 ### Patch Changes

@@ -22,6 +22,7 @@ export {
 	// Mutation hook
 	useMutation,
 	// Types
+	type QueryInput,
 	type UseQueryResult,
 	type UseLazyQueryResult,
 	type UseMutationResult,

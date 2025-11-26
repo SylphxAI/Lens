@@ -9,6 +9,22 @@ import type { MutationResult, QueryResult } from "@sylphx/lens-client";
 import { type Accessor, createSignal, onCleanup } from "solid-js";
 
 // =============================================================================
+// Query Input Types
+// =============================================================================
+
+/** Query input - can be a query, null/undefined, or an accessor function */
+export type QueryInput<T> =
+	| QueryResult<T>
+	| null
+	| undefined
+	| (() => QueryResult<T> | null | undefined);
+
+/** Helper to resolve query input (handles accessor functions) */
+function resolveQuery<T>(input: QueryInput<T>): QueryResult<T> | null | undefined {
+	return typeof input === "function" ? input() : input;
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -84,10 +100,18 @@ export type MutationFn<TInput, TOutput> = (input: TInput) => Promise<MutationRes
  *     </Show>
  *   );
  * }
+ *
+ * // Conditional query (null when condition not met)
+ * function SessionInfo(props: { sessionId: string | null }) {
+ *   const session = createQuery(() =>
+ *     props.sessionId ? client.session.get({ id: props.sessionId }) : null
+ *   );
+ *   return <span>{session.data()?.totalTokens}</span>;
+ * }
  * ```
  */
 export function createQuery<T>(
-	queryFn: () => QueryResult<T>,
+	queryInput: QueryInput<T>,
 	options?: CreateQueryOptions,
 ): CreateQueryResult<T> {
 	const [data, setData] = createSignal<T | null>(null);
@@ -97,12 +121,18 @@ export function createQuery<T>(
 	let unsubscribe: (() => void) | null = null;
 
 	const executeQuery = () => {
-		if (options?.skip) {
+		const queryResult = resolveQuery(queryInput);
+
+		// Handle null/undefined query or skip
+		if (options?.skip || queryResult == null) {
+			setData(null);
 			setLoading(false);
+			setError(null);
 			return;
 		}
 
-		const queryResult = queryFn();
+		setLoading(true);
+		setError(null);
 
 		// Subscribe to updates
 		unsubscribe = queryResult.subscribe((value) => {
@@ -274,19 +304,31 @@ export function createMutation<TInput, TOutput>(
  *     </div>
  *   );
  * }
+ *
+ * // Conditional query (null when condition not met)
+ * const lazySession = createLazyQuery(() =>
+ *   sessionId() ? client.session.get({ id: sessionId() }) : null
+ * );
  * ```
  */
-export function createLazyQuery<T>(queryFn: () => QueryResult<T>): CreateLazyQueryResult<T> {
+export function createLazyQuery<T>(queryInput: QueryInput<T>): CreateLazyQueryResult<T> {
 	const [data, setData] = createSignal<T | null>(null);
 	const [loading, setLoading] = createSignal(false);
 	const [error, setError] = createSignal<Error | null>(null);
 
 	const execute = async (): Promise<T> => {
+		const queryResult = resolveQuery(queryInput);
+
+		if (queryResult == null) {
+			setData(null);
+			setLoading(false);
+			return null as T;
+		}
+
 		setLoading(true);
 		setError(null);
 
 		try {
-			const queryResult = queryFn();
 			const result = await queryResult;
 			setData(() => result);
 			setLoading(false);

@@ -9,6 +9,22 @@ import type { MutationResult, QueryResult } from "@sylphx/lens-client";
 import { type Ref, type ShallowRef, onUnmounted, ref, shallowRef, watch } from "vue";
 
 // =============================================================================
+// Query Input Types
+// =============================================================================
+
+/** Query input - can be a query, null/undefined, or an accessor function */
+export type QueryInput<T> =
+	| QueryResult<T>
+	| null
+	| undefined
+	| (() => QueryResult<T> | null | undefined);
+
+/** Helper to resolve query input (handles accessor functions) */
+function resolveQuery<T>(input: QueryInput<T>): QueryResult<T> | null | undefined {
+	return typeof input === "function" ? input() : input;
+}
+
+// =============================================================================
 // Types
 // =============================================================================
 
@@ -85,10 +101,15 @@ export type MutationFn<TInput, TOutput> = (input: TInput) => Promise<MutationRes
  *   <div v-else-if="error">Error: {{ error.message }}</div>
  *   <h1 v-else>{{ data?.name }}</h1>
  * </template>
+ *
+ * // Conditional query (null when condition not met)
+ * const { data } = useQuery(
+ *   () => sessionId.value ? client.session.get({ id: sessionId.value }) : null
+ * );
  * ```
  */
 export function useQuery<T>(
-	queryFn: () => QueryResult<T>,
+	queryInput: QueryInput<T>,
 	options?: UseQueryOptions,
 ): UseQueryResult<T> {
 	const data = shallowRef<T | null>(null);
@@ -99,25 +120,28 @@ export function useQuery<T>(
 
 	const executeQuery = () => {
 		const skip = typeof options?.skip === "object" ? options.skip.value : options?.skip;
-		if (skip) {
+		const query = resolveQuery(queryInput);
+
+		// Handle null/undefined query or skip
+		if (skip || query == null) {
+			data.value = null;
 			loading.value = false;
+			error.value = null;
 			return;
 		}
 
 		loading.value = true;
 		error.value = null;
 
-		const queryResult = queryFn();
-
 		// Subscribe to updates
-		unsubscribe = queryResult.subscribe((value) => {
+		unsubscribe = query.subscribe((value) => {
 			data.value = value;
 			loading.value = false;
 			error.value = null;
 		});
 
 		// Handle initial load via promise
-		queryResult.then(
+		query.then(
 			(value) => {
 				data.value = value;
 				loading.value = false;
@@ -273,20 +297,32 @@ export function useMutation<TInput, TOutput>(
  *     <li v-for="user in data" :key="user.id">{{ user.name }}</li>
  *   </ul>
  * </template>
+ *
+ * // Conditional query (null when condition not met)
+ * const { execute, data } = useLazyQuery(
+ *   () => sessionId.value ? client.session.get({ id: sessionId.value }) : null
+ * );
  * ```
  */
-export function useLazyQuery<T>(queryFn: () => QueryResult<T>): UseLazyQueryResult<T> {
+export function useLazyQuery<T>(queryInput: QueryInput<T>): UseLazyQueryResult<T> {
 	const data = shallowRef<T | null>(null);
 	const loading = ref(false);
 	const error = shallowRef<Error | null>(null);
 
 	const execute = async (): Promise<T> => {
+		const query = resolveQuery(queryInput);
+
+		if (query == null) {
+			data.value = null;
+			loading.value = false;
+			return null as T;
+		}
+
 		loading.value = true;
 		error.value = null;
 
 		try {
-			const queryResult = queryFn();
-			const result = await queryResult;
+			const result = await query;
 			data.value = result;
 			loading.value = false;
 			return result;
