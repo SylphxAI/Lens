@@ -16,16 +16,8 @@
 		"typecheck": "tsc --noEmit",
 		"test": "bun test"
 	},
-	"files": [
-		"dist",
-		"src"
-	],
-	"keywords": [
-		"lens",
-		"react",
-		"hooks",
-		"reactive"
-	],
+	"files": ["dist", "src"],
+	"keywords": ["lens", "react", "hooks", "reactive"],
 	"author": "SylphxAI",
 	"license": "MIT",
 	"dependencies": {
