@@ -6,6 +6,40 @@
  */
 
 // =============================================================================
+// Initialization (tRPC-style)
+// =============================================================================
+
+export {
+	// Builder
+	initLens,
+	// Types
+	type LensServerInstance,
+	type LensServerBuilder,
+	type LensServerBuilderWithContext,
+	type LensServerInstanceConfig,
+} from "./init";
+
+// =============================================================================
+// Re-exports from Core (commonly used with server)
+// =============================================================================
+
+export {
+	// Operations
+	query,
+	mutation,
+	router,
+	// Types
+	type QueryBuilder,
+	type MutationBuilder,
+	type QueryDef,
+	type MutationDef,
+	type RouterDef,
+	type RouterRoutes,
+	type ResolverFn,
+	type ResolverContext,
+} from "@sylphx/lens-core";
+
+// =============================================================================
 // Server
 // =============================================================================
 

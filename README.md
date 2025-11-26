@@ -791,7 +791,7 @@ For full type safety across your project, use the tRPC-style `initLens` pattern:
 
 ```typescript
 // lib/lens.ts - Define once, use everywhere
-import { initLens } from '@sylphx/lens-core'
+import { initLens } from '@sylphx/lens-server'
 import type { PrismaClient } from '@prisma/client'
 
 // Define your context type
@@ -826,23 +826,28 @@ export const createUser = lens.mutation()
 ```
 
 ```typescript
-// server.ts - Wire up the context
-import { createServer, router } from '@sylphx/lens-server'
+// server.ts - Create server with typed context
+import { router } from '@sylphx/lens-server'
+import { lens } from './lib/lens'
 import * as userRoutes from './routes/user'
 
-export const server = createServer({
+// lens.createServer enforces context type!
+export const server = lens.createServer({
   router: router({ user: userRoutes }),
   context: async (req) => ({
     db: prisma,
     user: await getUserFromRequest(req),
   }),
 })
+
+export type AppRouter = typeof server
 ```
 
 This gives you:
 - **Full autocomplete** on `ctx` in all resolvers
 - **Type errors** when accessing non-existent properties
 - **Single source of truth** for context type across your codebase
+- **Type-safe server creation** - context function must return the correct type
 
 ---
 
