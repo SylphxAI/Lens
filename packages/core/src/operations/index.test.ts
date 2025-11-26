@@ -78,6 +78,30 @@ describe("query() builder", () => {
 		expect(listUsers._output).toEqual([User]);
 	});
 
+	it("creates a query with Zod schema as return type", () => {
+		const ResponseSchema = z.object({
+			success: z.boolean(),
+			message: z.string(),
+			count: z.number(),
+		});
+
+		const getStatus = query()
+			.returns(ResponseSchema)
+			.resolve(() => ({
+				success: true,
+				message: "OK",
+				count: 42,
+			}));
+
+		expect(getStatus._type).toBe("query");
+		expect(getStatus._output).toBe(ResponseSchema);
+
+		// Type inference check - this should compile
+		type Expected = { success: boolean; message: string; count: number };
+		const _typeCheck: Expected = { success: true, message: "OK", count: 42 };
+		expect(_typeCheck).toBeDefined();
+	});
+
 	it("executes resolver function", async () => {
 		const mockDb = {
 			user: {

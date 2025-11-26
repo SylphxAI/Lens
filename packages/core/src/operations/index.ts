@@ -44,20 +44,29 @@ export interface ZodLikeSchema<T = unknown> {
 	_output: T;
 }
 
-/** Return type specification - can be entity, array, or object of entities */
+/**
+ * Return type specification
+ * - EntityDef: For entity-aware returns (enables normalization, caching)
+ * - [EntityDef]: Array of entities
+ * - ZodLikeSchema: For simple typed returns (no entity features)
+ * - Record: Multiple named returns
+ */
 export type ReturnSpec =
 	| EntityDef<string, EntityDefinition>
 	| [EntityDef<string, EntityDefinition>]
+	| ZodLikeSchema<unknown>
 	| Record<string, EntityDef<string, EntityDefinition> | [EntityDef<string, EntityDefinition>]>;
 
 /** Infer TypeScript type from return spec */
-export type InferReturnType<R extends ReturnSpec> = R extends EntityDef<string, infer F>
-	? { [K in keyof F]: unknown } // Simplified - actual inference would be more complex
-	: R extends [EntityDef<string, infer F>]
-		? { [K in keyof F]: unknown }[]
-		: R extends Record<string, unknown>
-			? { [K in keyof R]: R[K] extends [EntityDef<string, EntityDefinition>] ? unknown[] : unknown }
-			: never;
+export type InferReturnType<R extends ReturnSpec> = R extends ZodLikeSchema<infer T>
+	? T
+	: R extends EntityDef<string, infer F>
+		? { [K in keyof F]: unknown } // Simplified - actual inference would be more complex
+		: R extends [EntityDef<string, infer F>]
+			? { [K in keyof F]: unknown }[]
+			: R extends Record<string, unknown>
+				? { [K in keyof R]: R[K] extends [EntityDef<string, EntityDefinition>] ? unknown[] : unknown }
+				: never;
 
 /**
  * Resolver context - passed directly to resolver function (tRPC style)
