@@ -1,5 +1,18 @@
 # @sylphx/lens-fresh
 
+## 1.2.4
+
+### Patch Changes
+
+- Refactor: remove type workarounds and improve type safety
+
+  - Use method syntax for bivariant `_resolve` types (eliminates `any` workaround)
+  - Replace `any` types in Nuxt package with proper H3 event types
+  - Fix lint errors and remove unused imports
+  - @sylphx/lens-client@1.0.8
+  - @sylphx/lens-server@1.3.1
+  - @sylphx/lens-preact@1.2.4
+
 ## 1.2.3
 
 ### Patch Changes

@@ -1,5 +1,15 @@
 # @sylphx/lens-core
 
+## 1.3.1
+
+### Patch Changes
+
+- Refactor: remove type workarounds and improve type safety
+
+  - Use method syntax for bivariant `_resolve` types (eliminates `any` workaround)
+  - Replace `any` types in Nuxt package with proper H3 event types
+  - Fix lint errors and remove unused imports
+
 ## 1.3.0
 
 ### Minor Changes
