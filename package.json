@@ -16,7 +16,8 @@
 		"typecheck": "turbo typecheck",
 		"changeset": "changeset",
 		"version-packages": "changeset version",
-		"release": "changeset publish"
+		"release": "changeset publish",
+		"prepublishOnly": "test -n \"$CI\" || (echo 'Use changeset publish via CI' && exit 1)"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
