@@ -1,5 +1,16 @@
 # @sylphx/lens-core
 
+## 1.1.0
+
+### Minor Changes
+
+- feat(emit): Type-safe EmitObject and EmitArray interfaces
+
+  - `EmitObject<T>` for object outputs with `set()`, `delta()`, `patch()`, `batch()` methods
+  - `EmitArray<T>` for array outputs with `push()`, `unshift()`, `insert()`, `remove()`, `removeById()`, `update()`, `updateById()`, `merge()`, `mergeById()` methods
+  - GraphStateManager now handles array operations
+  - Full test coverage for emit API and array operations
+
 ## 1.0.4
 
 ### Patch Changes

@@ -1,5 +1,11 @@
 # @sylphx/lens-react
 
+## 1.2.1
+
+### Patch Changes
+
+- @sylphx/lens-client@1.0.5
+
 ## 1.2.0
 
 ### Minor Changes
