@@ -1,5 +1,79 @@
 # @sylphx/lens-server
 
+## 1.3.0
+
+### Minor Changes
+
+- ## Typed Context Inference
+
+  ### Context Type Inference from Router
+
+  Each query/mutation can declare its own context requirements. The router automatically merges them, and `createServer` enforces the final type:
+
+  ```typescript
+  // Each procedure declares only what it uses
+  const getUser = query<{ db: DB }>()
+    .resolve(({ ctx }) => ctx.db.user.find(...))
+
+  const createUser = mutation<{ db: DB; user: User }>()
+    .resolve(({ ctx }) => {
+      if (!ctx.user) throw new Error('Unauthorized')
+      return ctx.db.user.create(...)
+    })
+
+  const getCached = query<{ cache: Cache }>()
+    .resolve(({ ctx }) => ctx.cache.get(...))
+
+  // Router merges all contexts
+  const appRouter = router({
+    user: { get: getUser, create: createUser },
+    cache: { get: getCached },
+  })
+
+  // createServer enforces merged context: { db: DB; user: User; cache: Cache }
+  const server = createServer({
+    router: appRouter,
+    context: () => ({ db, user, cache }),  // Type-checked!
+  })
+  ```
+
+  ### Simple Approach: Shared Context
+
+  For simplicity, you can use the same context type everywhere:
+
+  ```typescript
+  interface Context { db: DB; user: User; cache: Cache }
+
+  // Use directly
+  const getUser = query<Context>().resolve(...)
+
+  // Or wrap it
+  export const typedQuery = () => query<Context>()
+  export const typedMutation = () => mutation<Context>()
+  ```
+
+  ### `.returns()` Now Supports Zod Schemas
+
+  ```typescript
+  const ResponseSchema = z.object({
+    success: z.boolean(),
+    message: z.string(),
+  });
+
+  const getStatus = query()
+    .returns(ResponseSchema) // Zod schema!
+    .resolve(() => ({ success: true, message: "OK" }));
+  ```
+
+  ### Breaking Changes
+
+  - Removed `initLens` - no longer needed with automatic context inference
+
+### Patch Changes
+
+- Updated dependencies
+  - @sylphx/lens-core@1.3.0
+
 ## 1.2.0
 
 ### Minor Changes
