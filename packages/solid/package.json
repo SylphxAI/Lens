@@ -12,7 +12,7 @@
 		}
 	},
 	"scripts": {
-		"build": "bunup",
+		"build": "bun build ./src/index.ts --outdir ./dist --target browser --external solid-js --dts",
 		"typecheck": "tsc --noEmit",
 		"test": "bun test"
 	},
