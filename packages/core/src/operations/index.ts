@@ -562,28 +562,70 @@ export interface RouterDef<TRoutes extends RouterRoutes = RouterRoutes, TContext
 	_context?: TContext;
 }
 
-/** Extract context type from a single value (procedure, router, or routes object) */
-type ExtractContextFromValue<T> = T extends QueryDef<unknown, unknown, infer C>
+/**
+ * Convert union type to intersection type
+ * { a: 1 } | { b: 2 } => { a: 1 } & { b: 2 } => { a: 1; b: 2 }
+ */
+type UnionToIntersection<U> = (U extends unknown ? (x: U) => void : never) extends (x: infer I) => void
+	? I
+	: never;
+
+/**
+ * Extract context from a procedure (non-recursive, single level)
+ */
+type ExtractProcedureContext<T> = T extends QueryDef<unknown, unknown, infer C>
 	? C
 	: T extends MutationDef<unknown, unknown, infer C>
 		? C
-		: T extends RouterDef<infer _R, infer C>
-			? C
-			: unknown;
+		: unknown;
 
-/** Extract context type from routes object - gets first non-unknown context */
-type ExtractContextFromRoutes<T> = T extends Record<string, infer V>
-	? ExtractContextFromValue<V>
+/**
+ * Extract context from router's explicit context or from its routes
+ */
+type ExtractRouterContext<T> = T extends RouterDef<infer R, infer C>
+	? unknown extends C
+		? R extends Record<string, infer V>
+			? ExtractProcedureContext<V>
+			: unknown
+		: C
 	: unknown;
 
-/** Extract context type from router or routes */
-export type InferRouterContext<T> = T extends RouterDef<infer R, infer C>
-	? unknown extends C
-		? ExtractContextFromRoutes<R>
-		: C
-	: T extends Record<string, unknown>
-		? ExtractContextFromRoutes<T>
-		: unknown;
+/**
+ * Extract contexts from a routes object (one level deep)
+ * Handles both direct procedures and nested routers
+ */
+type ExtractRoutesContext<T> = T extends Record<string, infer V>
+	? V extends RouterDef<unknown, unknown>
+		? ExtractRouterContext<V>
+		: ExtractProcedureContext<V>
+	: unknown;
+
+/**
+ * Infer merged context type from router or routes
+ *
+ * Each procedure can declare its own context requirements.
+ * The final context is the intersection of all requirements.
+ *
+ * @example
+ * ```typescript
+ * // Each query declares what it needs
+ * const userGet = query<{ db: DB; user: User }>().resolve(...)
+ * const postList = query<{ db: DB; cache: Cache }>().resolve(...)
+ *
+ * const appRouter = router({ user: { get: userGet }, post: { list: postList } })
+ *
+ * // InferRouterContext<typeof appRouter> = { db: DB; user: User; cache: Cache }
+ * ```
+ */
+export type InferRouterContext<T> = UnionToIntersection<
+	T extends RouterDef<infer R, infer C>
+		? unknown extends C
+			? ExtractRoutesContext<R>
+			: C
+		: T extends Record<string, unknown>
+			? ExtractRoutesContext<T>
+			: unknown
+>;
 
 /** Check if value is a router definition */
 export function isRouterDef(value: unknown): value is RouterDef {

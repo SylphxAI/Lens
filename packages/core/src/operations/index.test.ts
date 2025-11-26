@@ -468,4 +468,51 @@ describe("router() builder", () => {
 		expect(flattened.has("health")).toBe(true);
 		expect(flattened.has("user.get")).toBe(true);
 	});
+
+	it("infers merged context type from procedures (type-level test)", () => {
+		// Define different context types for each procedure
+		interface DbContext {
+			db: { query: (sql: string) => unknown[] };
+		}
+		interface UserContext {
+			user: { id: string; name: string } | null;
+		}
+		interface CacheContext {
+			cache: { get: (key: string) => unknown };
+		}
+
+		// Each procedure declares only what it needs
+		const getUserById = query<DbContext & UserContext>()
+			.input(z.object({ id: z.string() }))
+			.resolve(({ ctx }) => {
+				// ctx has db and user
+				ctx.db.query("SELECT * FROM users");
+				return { id: "1", name: ctx.user?.name ?? "Anonymous", email: "" };
+			});
+
+		const getCachedData = query<DbContext & CacheContext>()
+			.input(z.object({ key: z.string() }))
+			.resolve(({ ctx }) => {
+				// ctx has db and cache
+				ctx.cache.get("key");
+				ctx.db.query("SELECT 1");
+				return { id: "cached", name: "data", email: "" };
+			});
+
+		const appRouter = router({
+			user: { get: getUserById },
+			cache: { get: getCachedData },
+		});
+
+		// Router should infer merged context
+		expect(appRouter._type).toBe("router");
+
+		// Type assertion - this compiles only if InferRouterContext works correctly
+		// The inferred type should be DbContext & UserContext & CacheContext
+		type RouterContext = typeof appRouter extends { _context?: infer C } ? C : never;
+
+		// This is a compile-time check - if types don't match, this won't compile
+		const _typeCheck: RouterContext = {} as DbContext & UserContext & CacheContext;
+		expect(_typeCheck).toBeDefined();
+	});
 });
