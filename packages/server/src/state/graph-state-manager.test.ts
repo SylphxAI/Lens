@@ -331,4 +331,219 @@ describe("GraphStateManager", () => {
 			expect(stats.totalSubscriptions).toBe(3);
 		});
 	});
+
+	describe("array operations", () => {
+		interface User {
+			id: string;
+			name: string;
+		}
+
+		it("emits array data", () => {
+			manager.subscribe("client-1", "Users", "list", "*");
+			mockClient.messages = [];
+
+			manager.emitArray("Users", "list", [
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Bob" },
+			]);
+
+			expect(mockClient.messages.length).toBe(1);
+			expect(mockClient.messages[0]).toMatchObject({
+				type: "update",
+				entity: "Users",
+				id: "list",
+			});
+			expect(mockClient.messages[0].updates._items.data).toEqual([
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Bob" },
+			]);
+		});
+
+		it("gets array state", () => {
+			manager.emitArray("Users", "list", [{ id: "1", name: "Alice" }]);
+
+			expect(manager.getArrayState("Users", "list")).toEqual([{ id: "1", name: "Alice" }]);
+		});
+
+		it("applies push operation", () => {
+			manager.emitArray("Users", "list", [{ id: "1", name: "Alice" }]);
+			manager.emitArrayOperation("Users", "list", {
+				op: "push",
+				item: { id: "2", name: "Bob" },
+			});
+
+			expect(manager.getArrayState("Users", "list")).toEqual([
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Bob" },
+			]);
+		});
+
+		it("applies unshift operation", () => {
+			manager.emitArray("Users", "list", [{ id: "1", name: "Alice" }]);
+			manager.emitArrayOperation("Users", "list", {
+				op: "unshift",
+				item: { id: "0", name: "Zero" },
+			});
+
+			expect(manager.getArrayState("Users", "list")).toEqual([
+				{ id: "0", name: "Zero" },
+				{ id: "1", name: "Alice" },
+			]);
+		});
+
+		it("applies insert operation", () => {
+			manager.emitArray("Users", "list", [
+				{ id: "1", name: "Alice" },
+				{ id: "3", name: "Charlie" },
+			]);
+			manager.emitArrayOperation("Users", "list", {
+				op: "insert",
+				index: 1,
+				item: { id: "2", name: "Bob" },
+			});
+
+			expect(manager.getArrayState("Users", "list")).toEqual([
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Bob" },
+				{ id: "3", name: "Charlie" },
+			]);
+		});
+
+		it("applies remove operation", () => {
+			manager.emitArray("Users", "list", [
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Bob" },
+			]);
+			manager.emitArrayOperation("Users", "list", { op: "remove", index: 0 });
+
+			expect(manager.getArrayState("Users", "list")).toEqual([{ id: "2", name: "Bob" }]);
+		});
+
+		it("applies removeById operation", () => {
+			manager.emitArray("Users", "list", [
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Bob" },
+			]);
+			manager.emitArrayOperation("Users", "list", { op: "removeById", id: "1" });
+
+			expect(manager.getArrayState("Users", "list")).toEqual([{ id: "2", name: "Bob" }]);
+		});
+
+		it("handles removeById for non-existent id", () => {
+			manager.emitArray("Users", "list", [{ id: "1", name: "Alice" }]);
+			manager.emitArrayOperation("Users", "list", { op: "removeById", id: "999" });
+
+			expect(manager.getArrayState("Users", "list")).toEqual([{ id: "1", name: "Alice" }]);
+		});
+
+		it("applies update operation", () => {
+			manager.emitArray("Users", "list", [
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Bob" },
+			]);
+			manager.emitArrayOperation("Users", "list", {
+				op: "update",
+				index: 1,
+				item: { id: "2", name: "Robert" },
+			});
+
+			expect(manager.getArrayState("Users", "list")).toEqual([
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Robert" },
+			]);
+		});
+
+		it("applies updateById operation", () => {
+			manager.emitArray("Users", "list", [
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Bob" },
+			]);
+			manager.emitArrayOperation("Users", "list", {
+				op: "updateById",
+				id: "2",
+				item: { id: "2", name: "Robert" },
+			});
+
+			expect(manager.getArrayState("Users", "list")).toEqual([
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Robert" },
+			]);
+		});
+
+		it("applies merge operation", () => {
+			manager.emitArray("Users", "list", [
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Bob" },
+			]);
+			manager.emitArrayOperation("Users", "list", {
+				op: "merge",
+				index: 0,
+				partial: { name: "Alicia" },
+			});
+
+			expect(manager.getArrayState("Users", "list")).toEqual([
+				{ id: "1", name: "Alicia" },
+				{ id: "2", name: "Bob" },
+			]);
+		});
+
+		it("applies mergeById operation", () => {
+			manager.emitArray("Users", "list", [
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Bob" },
+			]);
+			manager.emitArrayOperation("Users", "list", {
+				op: "mergeById",
+				id: "2",
+				partial: { name: "Bobby" },
+			});
+
+			expect(manager.getArrayState("Users", "list")).toEqual([
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Bobby" },
+			]);
+		});
+
+		it("processCommand handles array operations", () => {
+			manager.emitArray("Users", "list", [{ id: "1", name: "Alice" }]);
+
+			manager.processCommand("Users", "list", {
+				type: "array",
+				operation: { op: "push", item: { id: "2", name: "Bob" } },
+			});
+
+			expect(manager.getArrayState("Users", "list")).toEqual([
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Bob" },
+			]);
+		});
+
+		it("sends array updates to subscribed clients", () => {
+			manager.subscribe("client-1", "Users", "list", "*");
+			mockClient.messages = [];
+
+			manager.emitArray("Users", "list", [{ id: "1", name: "Alice" }]);
+			manager.emitArrayOperation("Users", "list", {
+				op: "push",
+				item: { id: "2", name: "Bob" },
+			});
+
+			expect(mockClient.messages.length).toBe(2);
+			expect(mockClient.messages[1].updates._items.data).toEqual([
+				{ id: "1", name: "Alice" },
+				{ id: "2", name: "Bob" },
+			]);
+		});
+
+		it("does not send update if array unchanged", () => {
+			manager.subscribe("client-1", "Users", "list", "*");
+			manager.emitArray("Users", "list", [{ id: "1", name: "Alice" }]);
+			mockClient.messages = [];
+
+			// Remove by non-existent id (no change)
+			manager.emitArrayOperation("Users", "list", { op: "removeById", id: "999" });
+
+			expect(mockClient.messages.length).toBe(0);
+		});
+	});
 });

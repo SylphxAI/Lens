@@ -14,6 +14,7 @@ import {
 	type Update,
 	type EmitCommand,
 	type InternalFieldUpdate,
+	type ArrayOperation,
 	createUpdate,
 	applyUpdate,
 	makeEntityKey,
@@ -59,6 +60,12 @@ interface ClientEntityState {
 	fields: Set<string> | "*";
 }
 
+/** Per-client state for an array */
+interface ClientArrayState {
+	/** Last array state sent to this client */
+	lastState: unknown[];
+}
+
 /** Configuration */
 export interface GraphStateManagerConfig {
 	/** Called when an entity has no more subscribers */
@@ -97,8 +104,14 @@ export class GraphStateManager {
 	/** Canonical state per entity (server truth) */
 	private canonical = new Map<EntityKey, Record<string, unknown>>();
 
+	/** Canonical array state per entity (server truth for array outputs) */
+	private canonicalArrays = new Map<EntityKey, unknown[]>();
+
 	/** Per-client state tracking */
 	private clientStates = new Map<string, Map<EntityKey, ClientEntityState>>();
+
+	/** Per-client array state tracking */
+	private clientArrayStates = new Map<string, Map<EntityKey, ClientArrayState>>();
 
 	/** Entity → subscribed client IDs */
 	private entitySubscribers = new Map<EntityKey, Set<string>>();
@@ -120,6 +133,7 @@ export class GraphStateManager {
 	addClient(client: StateClient): void {
 		this.clients.set(client.id, client);
 		this.clientStates.set(client.id, new Map());
+		this.clientArrayStates.set(client.id, new Map());
 	}
 
 	/**
@@ -136,6 +150,7 @@ export class GraphStateManager {
 
 		this.clients.delete(clientId);
 		this.clientStates.delete(clientId);
+		this.clientArrayStates.delete(clientId);
 	}
 
 	// ===========================================================================
@@ -345,7 +360,184 @@ export class GraphStateManager {
 			case "batch":
 				this.emitBatch(entity, id, command.updates);
 				break;
+			case "array":
+				this.emitArrayOperation(entity, id, command.operation);
+				break;
 		}
+	}
+
+	// ===========================================================================
+	// Array State Emission
+	// ===========================================================================
+
+	/**
+	 * Emit array data (replace entire array).
+	 *
+	 * @param entity - Entity name
+	 * @param id - Entity ID
+	 * @param items - Array items
+	 */
+	emitArray(entity: string, id: string, items: unknown[]): void {
+		const key = this.makeKey(entity, id);
+		this.canonicalArrays.set(key, [...items]);
+
+		// Push updates to all subscribed clients
+		const subscribers = this.entitySubscribers.get(key);
+		if (!subscribers) return;
+
+		for (const clientId of subscribers) {
+			this.pushArrayToClient(clientId, entity, id, key, items);
+		}
+	}
+
+	/**
+	 * Apply an array operation to the canonical state.
+	 *
+	 * @param entity - Entity name
+	 * @param id - Entity ID
+	 * @param operation - Array operation to apply
+	 */
+	emitArrayOperation(entity: string, id: string, operation: ArrayOperation): void {
+		const key = this.makeKey(entity, id);
+
+		// Get or create canonical array state
+		let currentArray = this.canonicalArrays.get(key);
+		if (!currentArray) {
+			currentArray = [];
+		}
+
+		// Apply operation
+		const newArray = this.applyArrayOperation([...currentArray], operation);
+		this.canonicalArrays.set(key, newArray);
+
+		// Push updates to all subscribed clients
+		const subscribers = this.entitySubscribers.get(key);
+		if (!subscribers) return;
+
+		for (const clientId of subscribers) {
+			this.pushArrayToClient(clientId, entity, id, key, newArray);
+		}
+	}
+
+	/**
+	 * Apply an array operation and return new array.
+	 */
+	private applyArrayOperation(array: unknown[], operation: ArrayOperation): unknown[] {
+		switch (operation.op) {
+			case "push":
+				return [...array, operation.item];
+
+			case "unshift":
+				return [operation.item, ...array];
+
+			case "insert":
+				return [
+					...array.slice(0, operation.index),
+					operation.item,
+					...array.slice(operation.index),
+				];
+
+			case "remove":
+				return [...array.slice(0, operation.index), ...array.slice(operation.index + 1)];
+
+			case "removeById": {
+				const idx = array.findIndex(
+					(item) =>
+						typeof item === "object" &&
+						item !== null &&
+						"id" in item &&
+						(item as { id: string }).id === operation.id,
+				);
+				if (idx === -1) return array;
+				return [...array.slice(0, idx), ...array.slice(idx + 1)];
+			}
+
+			case "update":
+				return array.map((item, i) => (i === operation.index ? operation.item : item));
+
+			case "updateById":
+				return array.map((item) =>
+					typeof item === "object" &&
+					item !== null &&
+					"id" in item &&
+					(item as { id: string }).id === operation.id
+						? operation.item
+						: item,
+				);
+
+			case "merge":
+				return array.map((item, i) =>
+					i === operation.index && typeof item === "object" && item !== null
+						? { ...item, ...(operation.partial as object) }
+						: item,
+				);
+
+			case "mergeById":
+				return array.map((item) =>
+					typeof item === "object" &&
+					item !== null &&
+					"id" in item &&
+					(item as { id: string }).id === operation.id
+						? { ...item, ...(operation.partial as object) }
+						: item,
+				);
+
+			default:
+				return array;
+		}
+	}
+
+	/**
+	 * Push array update to a specific client.
+	 * Computes optimal diff strategy.
+	 */
+	private pushArrayToClient(
+		clientId: string,
+		entity: string,
+		id: string,
+		key: EntityKey,
+		newArray: unknown[],
+	): void {
+		const client = this.clients.get(clientId);
+		if (!client) return;
+
+		const clientArrayStateMap = this.clientArrayStates.get(clientId);
+		if (!clientArrayStateMap) return;
+
+		let clientArrayState = clientArrayStateMap.get(key);
+		if (!clientArrayState) {
+			// Initialize client array state
+			clientArrayState = { lastState: [] };
+			clientArrayStateMap.set(key, clientArrayState);
+		}
+
+		const { lastState } = clientArrayState;
+
+		// Skip if unchanged
+		if (JSON.stringify(lastState) === JSON.stringify(newArray)) {
+			return;
+		}
+
+		// For now, send full array replacement
+		// TODO: Compute array diff for optimal transfer
+		client.send({
+			type: "update",
+			entity,
+			id,
+			updates: {
+				_items: { strategy: "value", data: newArray },
+			},
+		});
+
+		// Update client's last known state
+		clientArrayState.lastState = [...newArray];
+	}
+
+	/**
+	 * Get current canonical array state
+	 */
+	getArrayState(entity: string, id: string): unknown[] | undefined {
+		return this.canonicalArrays.get(this.makeKey(entity, id));
 	}
 
 	/**
@@ -654,7 +846,9 @@ export class GraphStateManager {
 	clear(): void {
 		this.clients.clear();
 		this.canonical.clear();
+		this.canonicalArrays.clear();
 		this.clientStates.clear();
+		this.clientArrayStates.clear();
 		this.entitySubscribers.clear();
 	}
 }

@@ -281,11 +281,16 @@ export {
 export {
 	// Factory
 	createEmit,
+	createEmitObject,
+	createEmitArray,
 	// Types
 	type Emit,
+	type EmitObject,
+	type EmitArray,
 	type FieldUpdate,
 	type EmitCommand,
 	type InternalFieldUpdate,
+	type ArrayOperation,
 } from "./emit/index";
 
 // =============================================================================
