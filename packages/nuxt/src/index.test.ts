@@ -4,82 +4,124 @@
 
 import { describe, expect, test } from "bun:test";
 import {
-	useLensQuery,
-	useLensMutation,
-	createLensPlugin,
+	createLensNuxt,
+	type CreateLensNuxtOptions,
+	type LensNuxtInstance,
 } from "./index";
 
-describe("@sylphx/lens-nuxt exports", () => {
-	test("useLensQuery is exported", () => {
-		expect(typeof useLensQuery).toBe("function");
+// Mock server for testing
+const createMockServer = () => ({
+	execute: async ({ path, input }: { path: string; input?: unknown }) => {
+		if (path === "user.get") {
+			return { data: { id: (input as { id: string }).id, name: "Test User" }, error: null };
+		}
+		if (path === "user.list") {
+			return { data: [{ id: "1", name: "User 1" }], error: null };
+		}
+		return { data: null, error: new Error("Not found") };
+	},
+});
+
+describe("createLensNuxt", () => {
+	test("creates instance with all required properties", () => {
+		const server = createMockServer();
+		const lens = createLensNuxt({ server: server as any });
+
+		expect(lens.handler).toBeDefined();
+		expect(typeof lens.handler).toBe("function");
+		expect(lens.client).toBeDefined();
+		expect(lens.serverClient).toBeDefined();
+		expect(lens.plugin).toBeDefined();
+		expect(typeof lens.plugin).toBe("function");
+		expect(lens.useQuery).toBeDefined();
+		expect(typeof lens.useQuery).toBe("function");
+		expect(lens.useMutation).toBeDefined();
+		expect(typeof lens.useMutation).toBe("function");
 	});
 
-	test("useLensMutation is exported", () => {
-		expect(typeof useLensMutation).toBe("function");
-	});
+	test("uses custom basePath", () => {
+		const server = createMockServer();
+		const lens = createLensNuxt({
+			server: server as any,
+			config: { basePath: "/custom/api" },
+		});
 
-	test("createLensPlugin is exported", () => {
-		expect(typeof createLensPlugin).toBe("function");
+		expect(lens.handler).toBeDefined();
 	});
 });
 
-describe("useLensMutation", () => {
-	test("returns correct shape", () => {
-		const mockMutation = async (input: { name: string }) => ({
-			data: { id: "1", name: input.name },
-		});
+describe("plugin", () => {
+	test("returns plugin with provide", () => {
+		const server = createMockServer();
+		const lens = createLensNuxt({ server: server as any });
 
-		const result = useLensMutation(mockMutation);
+		const plugin = lens.plugin();
 
-		expect(typeof result.mutate).toBe("function");
-		expect(result.data).toBeDefined();
-		expect(result.pending).toBeDefined();
-		expect(result.error).toBeDefined();
-		expect(typeof result.reset).toBe("function");
+		expect(plugin.provide).toBeDefined();
+		expect(plugin.provide.lens).toBe(lens.client);
+	});
+});
+
+describe("serverClient", () => {
+	test("executes queries directly", async () => {
+		const server = createMockServer();
+		const lens = createLensNuxt({ server: server as any });
+
+		const result = await (lens.serverClient as any).user.get({ id: "789" });
+		expect(result).toEqual({ id: "789", name: "Test User" });
+	});
+
+	test("throws on error", async () => {
+		const server = createMockServer();
+		const lens = createLensNuxt({ server: server as any });
+
+		await expect((lens.serverClient as any).unknown.route()).rejects.toThrow("Not found");
+	});
+});
+
+describe("useMutation composable factory", () => {
+	test("creates mutation with correct shape", () => {
+		const server = createMockServer();
+		const lens = createLensNuxt({ server: server as any });
+
+		const mutation = lens.useMutation((client) => (input: { id: string }) =>
+			Promise.resolve({ data: { id: input.id, name: "Created" } }),
+		);
+
+		expect(mutation.mutate).toBeDefined();
+		expect(typeof mutation.mutate).toBe("function");
+		expect(mutation.data).toBeDefined();
+		expect(mutation.pending).toBeDefined();
+		expect(mutation.error).toBeDefined();
+		expect(mutation.reset).toBeDefined();
+		expect(typeof mutation.reset).toBe("function");
 	});
 
 	test("initial state is correct", () => {
-		const mockMutation = async (input: { name: string }) => ({
-			data: { id: "1", name: input.name },
-		});
+		const server = createMockServer();
+		const lens = createLensNuxt({ server: server as any });
 
-		const result = useLensMutation(mockMutation);
+		const mutation = lens.useMutation((client) => (input: { id: string }) =>
+			Promise.resolve({ data: { id: input.id, name: "Created" } }),
+		);
 
-		expect(result.data.value).toBe(null);
-		expect(result.pending.value).toBe(false);
-		expect(result.error.value).toBe(null);
+		expect(mutation.data.value).toBe(null);
+		expect(mutation.pending.value).toBe(false);
+		expect(mutation.error.value).toBe(null);
 	});
 
 	test("reset clears state", () => {
-		const mockMutation = async (input: { name: string }) => ({
-			data: { id: "1", name: input.name },
-		});
+		const server = createMockServer();
+		const lens = createLensNuxt({ server: server as any });
 
-		const result = useLensMutation(mockMutation);
-		result.reset();
+		const mutation = lens.useMutation((client) => (input: { id: string }) =>
+			Promise.resolve({ data: { id: input.id, name: "Created" } }),
+		);
 
-		expect(result.data.value).toBe(null);
-		expect(result.pending.value).toBe(false);
-		expect(result.error.value).toBe(null);
-	});
-});
+		mutation.reset();
 
-describe("createLensPlugin", () => {
-	test("returns plugin factory", () => {
-		const clientFactory = () => ({ test: true });
-		const plugin = createLensPlugin(clientFactory as any);
-
-		expect(typeof plugin).toBe("function");
-	});
-
-	test("plugin provides client", () => {
-		const mockClient = { user: { get: () => {} } };
-		const clientFactory = () => mockClient;
-		const plugin = createLensPlugin(clientFactory as any);
-
-		const result = plugin();
-
-		expect(result.provide).toBeDefined();
-		expect(result.provide.lensClient).toBe(mockClient);
+		expect(mutation.data.value).toBe(null);
+		expect(mutation.pending.value).toBe(false);
+		expect(mutation.error.value).toBe(null);
 	});
 });

@@ -2,138 +2,227 @@
  * @sylphx/lens-fresh
  *
  * Fresh (Deno/Preact) integration for Lens API framework.
- * Provides server-side data fetching and island hydration utilities.
+ * Unified setup for server and client with islands support.
  *
  * @example
+ * ```ts
+ * // lib/lens.ts
+ * import { createLensFresh } from '@sylphx/lens-fresh';
+ * import { server } from './server.ts';
+ *
+ * export const lens = createLensFresh({ server });
+ * ```
+ *
+ * ```ts
+ * // routes/api/lens/[...path].ts
+ * import { lens } from '~/lib/lens.ts';
+ * export const handler = lens.handler;
+ * ```
+ *
  * ```tsx
  * // routes/users/[id].tsx
- * import { Handlers, PageProps } from '$fresh/server.ts';
- * import { fetchQuery } from '@sylphx/lens-fresh';
- * import { serverClient } from '~/lib/lens.ts';
+ * import { lens } from '~/lib/lens.ts';
  * import UserProfile from '~/islands/UserProfile.tsx';
  *
  * export const handler: Handlers = {
  *   async GET(_, ctx) {
- *     const user = await fetchQuery(serverClient.user.get({ id: ctx.params.id }));
- *     return ctx.render({ user });
+ *     const user = await lens.serverClient.user.get({ id: ctx.params.id });
+ *     return ctx.render({ user: lens.serialize(user) });
  *   },
  * };
  *
- * export default function UserPage({ data }: PageProps<{ user: User }>) {
- *   return <UserProfile user={data.user} />;
+ * export default function UserPage({ data }: PageProps) {
+ *   return <UserProfile initialData={data.user} userId={data.user.data.id} />;
+ * }
+ * ```
+ *
+ * ```tsx
+ * // islands/UserProfile.tsx
+ * import { lens } from '~/lib/lens.ts';
+ *
+ * export default function UserProfile({ initialData, userId }: Props) {
+ *   const { data } = lens.useIslandQuery(
+ *     c => c.user.get({ id: userId }),
+ *     { initialData }
+ *   );
+ *
+ *   return <h1>{data?.name}</h1>;
  * }
  * ```
  */
 
-// Re-export Preact hooks and context
-export {
-	LensProvider,
-	useLensClient,
-	useQuery,
-	useLazyQuery,
-	useMutation,
-	type LensProviderProps,
-	type QueryInput,
-	type UseQueryResult,
-	type UseLazyQueryResult,
-	type UseMutationResult,
-	type UseQueryOptions,
-	type MutationFn,
-} from "@sylphx/lens-preact";
-
-// Re-export client utilities
-export { createClient, http, ws, route } from "@sylphx/lens-client";
-export type {
-	LensClientConfig,
-	QueryResult,
-	MutationResult,
-	Transport,
-} from "@sylphx/lens-client";
-
-// =============================================================================
-// Fresh Server Utilities
-// =============================================================================
-
-import type { QueryResult, MutationResult } from "@sylphx/lens-client";
-
-/**
- * Server-side query execution for Fresh handlers.
- *
- * Use this in route handlers to fetch data on the server.
- *
- * @example
- * ```tsx
- * // routes/users/index.tsx
- * import { Handlers } from '$fresh/server.ts';
- * import { fetchQuery } from '@sylphx/lens-fresh';
- * import { serverClient } from '~/lib/lens.ts';
- *
- * export const handler: Handlers = {
- *   async GET(_, ctx) {
- *     const users = await fetchQuery(serverClient.user.list());
- *     return ctx.render({ users });
- *   },
- * };
- * ```
- */
-export async function fetchQuery<T>(query: QueryResult<T>): Promise<T> {
-	return await query;
-}
-
-/**
- * Server-side mutation execution for Fresh handlers.
- *
- * @example
- * ```tsx
- * // routes/api/users.tsx
- * import { Handlers } from '$fresh/server.ts';
- * import { executeMutation } from '@sylphx/lens-fresh';
- * import { serverClient } from '~/lib/lens.ts';
- *
- * export const handler: Handlers = {
- *   async POST(req) {
- *     const body = await req.json();
- *     const result = await executeMutation(serverClient.user.create(body));
- *     return Response.json(result);
- *   },
- * };
- * ```
- */
-export async function executeMutation<T>(
-	mutation: Promise<MutationResult<T>>,
-): Promise<T> {
-	const result = await mutation;
-	return result.data;
-}
-
-// =============================================================================
-// Fresh Handler Factory
-// =============================================================================
-
 import type { LensServer } from "@sylphx/lens-server";
+import { createClient, http, type LensClientConfig } from "@sylphx/lens-client";
+
+// =============================================================================
+// Types
+// =============================================================================
+
+export interface CreateLensFreshOptions<TServer extends LensServer> {
+	/** Lens server instance */
+	server: TServer;
+	/** Configuration options */
+	config?: LensFreshConfig;
+}
+
+export interface LensFreshConfig {
+	/** Base path for API routes (default: '/api/lens') */
+	basePath?: string;
+	/** Client configuration overrides */
+	clientConfig?: Partial<LensClientConfig>;
+}
+
+export interface SerializedData<T> {
+	__lens_data__: true;
+	data: T;
+	timestamp: number;
+}
+
+export interface LensFreshInstance<TClient> {
+	/** Fresh handler for API routes */
+	handler: {
+		GET: (req: Request) => Promise<Response>;
+		POST: (req: Request) => Promise<Response>;
+	};
+
+	/** Typed client for client-side */
+	client: TClient;
+
+	/** Server client for server-side (direct execution) */
+	serverClient: TClient;
+
+	/** Serialize data for passing to islands */
+	serialize: <T>(data: T) => SerializedData<T>;
+
+	/** Check if value is serialized data */
+	isSerializedData: <T>(value: unknown) => value is SerializedData<T>;
+
+	/** Hook for islands with initial data support */
+	useIslandQuery: <T>(
+		queryFn: (client: TClient) => import("@sylphx/lens-client").QueryResult<T>,
+		options?: { initialData?: SerializedData<T> | T; skip?: boolean },
+	) => {
+		data: T | null;
+		loading: boolean;
+		error: Error | null;
+		refetch: () => void;
+	};
+
+	/** Mutation hook for islands */
+	useMutation: <TInput, TOutput>(
+		mutationFn: (client: TClient) => (input: TInput) => Promise<import("@sylphx/lens-client").MutationResult<TOutput>>,
+	) => {
+		data: TOutput | null;
+		loading: boolean;
+		error: Error | null;
+		mutate: (input: TInput) => Promise<import("@sylphx/lens-client").MutationResult<TOutput>>;
+		reset: () => void;
+	};
+}
+
+// =============================================================================
+// Main Factory
+// =============================================================================
 
 /**
- * Create a Fresh handler for Lens API endpoints.
+ * Create a unified Lens integration for Fresh.
  *
  * @example
- * ```tsx
- * // routes/api/lens/[...path].tsx
- * import { createFreshHandler } from '@sylphx/lens-fresh';
- * import { server } from '~/lib/server.ts';
+ * ```ts
+ * // lib/lens.ts
+ * import { createLensFresh } from '@sylphx/lens-fresh';
+ * import { server } from './server.ts';
  *
- * export const handler = createFreshHandler(server);
+ * export const lens = createLensFresh({ server });
  * ```
  */
-export function createFreshHandler(
-	server: LensServer,
-): {
-	GET: (req: Request) => Promise<Response>;
-	POST: (req: Request) => Promise<Response>;
-} {
+export function createLensFresh<TServer extends LensServer>(
+	options: CreateLensFreshOptions<TServer>,
+): LensFreshInstance<InferClient<TServer>> {
+	const { server, config = {} } = options;
+	const basePath = config.basePath ?? "/api/lens";
+
+	// Create server-side client (direct execution)
+	const serverClient = createServerClientProxy(server) as InferClient<TServer>;
+
+	// Create browser client (HTTP transport)
+	const browserClient = createClient({
+		transport: http({ url: basePath }),
+		...config.clientConfig,
+	}) as unknown as InferClient<TServer>;
+
+	// Handler
+	const handler = createHandler(server, basePath);
+
+	// Serialization utilities
+	const serialize = <T>(data: T): SerializedData<T> => ({
+		__lens_data__: true,
+		data,
+		timestamp: Date.now(),
+	});
+
+	const isSerializedData = <T>(value: unknown): value is SerializedData<T> => {
+		return (
+			value !== null &&
+			typeof value === "object" &&
+			"__lens_data__" in value &&
+			(value as SerializedData<T>).__lens_data__ === true
+		);
+	};
+
+	// Hooks
+	const useIslandQuery = createUseIslandQuery(browserClient, isSerializedData);
+	const useMutation = createUseMutation(browserClient);
+
+	return {
+		handler,
+		client: browserClient,
+		serverClient,
+		serialize,
+		isSerializedData,
+		useIslandQuery,
+		useMutation,
+	};
+}
+
+// =============================================================================
+// Server Client (Direct Execution)
+// =============================================================================
+
+function createServerClientProxy(server: LensServer): unknown {
+	function createProxy(path: string): unknown {
+		return new Proxy(() => {}, {
+			get(_, prop) {
+				if (typeof prop === "symbol") return undefined;
+				if (prop === "then") return undefined;
+
+				const newPath = path ? `${path}.${prop}` : String(prop);
+				return createProxy(newPath);
+			},
+			async apply(_, __, args) {
+				const input = args[0];
+				const result = await server.execute({ path, input });
+
+				if (result.error) {
+					throw result.error;
+				}
+
+				return result.data;
+			},
+		});
+	}
+
+	return createProxy("");
+}
+
+// =============================================================================
+// Fresh Handler
+// =============================================================================
+
+function createHandler(server: LensServer, basePath: string) {
 	const handleRequest = async (req: Request): Promise<Response> => {
 		const url = new URL(req.url);
-		// Extract path after /api/lens/
-		const pathMatch = url.pathname.match(/\/api\/lens\/(.+)/);
+		const pathMatch = url.pathname.match(new RegExp(`${basePath}/(.+)`));
 		const path = pathMatch ? pathMatch[1] : "";
 
 		// Handle SSE subscription
@@ -141,12 +230,12 @@ export function createFreshHandler(
 			return handleSSE(server, path, req);
 		}
 
-		// Handle query
+		// Handle query (GET)
 		if (req.method === "GET") {
 			return handleQuery(server, path, url);
 		}
 
-		// Handle mutation
+		// Handle mutation (POST)
 		if (req.method === "POST") {
 			return handleMutation(server, path, req);
 		}
@@ -160,19 +249,12 @@ export function createFreshHandler(
 	};
 }
 
-async function handleQuery(
-	server: LensServer,
-	path: string,
-	url: URL,
-): Promise<Response> {
+async function handleQuery(server: LensServer, path: string, url: URL): Promise<Response> {
 	try {
 		const inputParam = url.searchParams.get("input");
 		const input = inputParam ? JSON.parse(inputParam) : undefined;
 
-		const result = await server.execute({
-			path,
-			input,
-		});
+		const result = await server.execute({ path, input });
 
 		if (result.error) {
 			return Response.json({ error: result.error.message }, { status: 400 });
@@ -187,19 +269,12 @@ async function handleQuery(
 	}
 }
 
-async function handleMutation(
-	server: LensServer,
-	path: string,
-	req: Request,
-): Promise<Response> {
+async function handleMutation(server: LensServer, path: string, req: Request): Promise<Response> {
 	try {
 		const body = await req.json();
 		const input = body.input;
 
-		const result = await server.execute({
-			path,
-			input,
-		});
+		const result = await server.execute({ path, input });
 
 		if (result.error) {
 			return Response.json({ error: result.error.message }, { status: 400 });
@@ -214,11 +289,7 @@ async function handleMutation(
 	}
 }
 
-function handleSSE(
-	server: LensServer,
-	path: string,
-	req: Request,
-): Response {
+function handleSSE(server: LensServer, path: string, req: Request): Response {
 	const url = new URL(req.url);
 	const inputParam = url.searchParams.get("input");
 	const input = inputParam ? JSON.parse(inputParam) : undefined;
@@ -227,10 +298,7 @@ function handleSSE(
 		start(controller) {
 			const encoder = new TextEncoder();
 
-			const result = server.execute({
-				path,
-				input,
-			});
+			const result = server.execute({ path, input });
 
 			if (result && typeof result === "object" && "subscribe" in result) {
 				const observable = result as {
@@ -274,40 +342,198 @@ function handleSSE(
 }
 
 // =============================================================================
-// Island Data Transfer
+// Preact Hooks
 // =============================================================================
 
-/**
- * Serialize data for passing from server to island.
- *
- * Fresh islands receive data as props, which must be serializable.
- * Use this to prepare server data for island hydration.
- *
- * @example
- * ```tsx
- * // routes/users/[id].tsx
- * import { serializeForIsland } from '@sylphx/lens-fresh';
- *
- * export const handler: Handlers = {
- *   async GET(_, ctx) {
- *     const user = await fetchQuery(serverClient.user.get({ id: ctx.params.id }));
- *     return ctx.render({ user: serializeForIsland(user) });
- *   },
- * };
- *
- * // islands/UserProfile.tsx
- * import { useIslandData } from '@sylphx/lens-fresh/islands';
- *
- * export default function UserProfile(props: { user: SerializedData<User> }) {
- *   const user = useIslandData(props.user);
- *   // user is now a reactive value
- * }
- * ```
- */
-export interface SerializedData<T> {
-	__lens_data__: true;
-	data: T;
-	timestamp: number;
+import { useState, useEffect, useCallback, useRef } from "preact/hooks";
+import type { QueryResult, MutationResult } from "@sylphx/lens-client";
+
+function createUseIslandQuery<TClient>(
+	client: TClient,
+	isSerializedData: <T>(value: unknown) => value is SerializedData<T>,
+) {
+	return function useIslandQuery<T>(
+		queryFn: (client: TClient) => QueryResult<T>,
+		options?: { initialData?: SerializedData<T> | T; skip?: boolean },
+	) {
+		// Extract initial data
+		const initialData = options?.initialData
+			? isSerializedData<T>(options.initialData)
+				? options.initialData.data
+				: options.initialData
+			: null;
+
+		const [data, setData] = useState<T | null>(initialData);
+		const [loading, setLoading] = useState(!initialData && !options?.skip);
+		const [error, setError] = useState<Error | null>(null);
+
+		const mountedRef = useRef(true);
+
+		useEffect(() => {
+			mountedRef.current = true;
+
+			if (options?.skip) {
+				return;
+			}
+
+			const query = queryFn(client);
+
+			// Subscribe to updates
+			const unsubscribe = query.subscribe((value) => {
+				if (mountedRef.current) {
+					setData(value);
+					setLoading(false);
+				}
+			});
+
+			// Initial fetch if no initial data
+			if (!initialData) {
+				setLoading(true);
+			}
+
+			query.then(
+				(value) => {
+					if (mountedRef.current) {
+						setData(value);
+						setLoading(false);
+					}
+				},
+				(err) => {
+					if (mountedRef.current) {
+						setError(err instanceof Error ? err : new Error(String(err)));
+						setLoading(false);
+					}
+				},
+			);
+
+			return () => {
+				mountedRef.current = false;
+				unsubscribe();
+			};
+		}, [options?.skip, initialData]);
+
+		const refetch = useCallback(() => {
+			if (options?.skip) return;
+
+			setLoading(true);
+			setError(null);
+
+			const query = queryFn(client);
+			query.then(
+				(value) => {
+					if (mountedRef.current) {
+						setData(value);
+						setLoading(false);
+					}
+				},
+				(err) => {
+					if (mountedRef.current) {
+						setError(err instanceof Error ? err : new Error(String(err)));
+						setLoading(false);
+					}
+				},
+			);
+		}, [options?.skip]);
+
+		return { data, loading, error, refetch };
+	};
+}
+
+function createUseMutation<TClient>(client: TClient) {
+	return function useMutation<TInput, TOutput>(
+		mutationFn: (client: TClient) => (input: TInput) => Promise<MutationResult<TOutput>>,
+	) {
+		const mutation = mutationFn(client);
+
+		const [data, setData] = useState<TOutput | null>(null);
+		const [loading, setLoading] = useState(false);
+		const [error, setError] = useState<Error | null>(null);
+
+		const mountedRef = useRef(true);
+
+		useEffect(() => {
+			mountedRef.current = true;
+			return () => {
+				mountedRef.current = false;
+			};
+		}, []);
+
+		const mutate = useCallback(
+			async (input: TInput): Promise<MutationResult<TOutput>> => {
+				setLoading(true);
+				setError(null);
+
+				try {
+					const result = await mutation(input);
+					if (mountedRef.current) {
+						setData(result.data);
+					}
+					return result;
+				} catch (err) {
+					const mutationError = err instanceof Error ? err : new Error(String(err));
+					if (mountedRef.current) {
+						setError(mutationError);
+					}
+					throw mutationError;
+				} finally {
+					if (mountedRef.current) {
+						setLoading(false);
+					}
+				}
+			},
+			[mutation],
+		);
+
+		const reset = useCallback(() => {
+			setData(null);
+			setLoading(false);
+			setError(null);
+		}, []);
+
+		return { data, loading, error, mutate, reset };
+	};
+}
+
+// =============================================================================
+// Type Inference
+// =============================================================================
+
+export type InferClient<TServer> = TServer extends LensServer
+	? {
+			[key: string]: unknown;
+		}
+	: never;
+
+// =============================================================================
+// Legacy Exports (for backwards compatibility)
+// =============================================================================
+
+export {
+	LensProvider,
+	useLensClient,
+	useQuery,
+	useLazyQuery,
+	useMutation,
+	type LensProviderProps,
+	type QueryInput,
+	type UseQueryResult,
+	type UseLazyQueryResult,
+	type UseMutationResult,
+	type UseQueryOptions,
+	type MutationFn,
+} from "@sylphx/lens-preact";
+
+export { createClient, http, ws, route } from "@sylphx/lens-client";
+export type { LensClientConfig, QueryResult, MutationResult, Transport } from "@sylphx/lens-client";
+
+// Legacy utilities
+export async function fetchQuery<T>(query: QueryResult<T>): Promise<T> {
+	return await query;
+}
+
+export async function executeMutation<T>(mutation: Promise<MutationResult<T>>): Promise<T> {
+	const result = await mutation;
+	return result.data;
 }
 
 export function serializeForIsland<T>(data: T): SerializedData<T> {

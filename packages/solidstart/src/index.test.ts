@@ -4,31 +4,115 @@
 
 import { describe, expect, test } from "bun:test";
 import {
+	createLensSolidStart,
 	createLensQuery,
 	createLensMutation,
-	createServerQuery,
+	createServerQuery_legacy,
 	createServerAction,
+	type CreateLensSolidStartOptions,
+	type LensSolidStartInstance,
 } from "./index";
 
-describe("@sylphx/lens-solidstart exports", () => {
-	test("createLensQuery is exported", () => {
-		expect(typeof createLensQuery).toBe("function");
+// Mock server for testing
+const createMockServer = () => ({
+	execute: async ({ path, input }: { path: string; input?: unknown }) => {
+		if (path === "user.get") {
+			return { data: { id: (input as { id: string }).id, name: "Test User" }, error: null };
+		}
+		if (path === "user.list") {
+			return { data: [{ id: "1", name: "User 1" }], error: null };
+		}
+		return { data: null, error: new Error("Not found") };
+	},
+});
+
+describe("createLensSolidStart", () => {
+	test("creates instance with all required properties", () => {
+		const server = createMockServer();
+		const lens = createLensSolidStart({ server: server as any });
+
+		expect(lens.handler).toBeDefined();
+		expect(typeof lens.handler).toBe("function");
+		expect(lens.client).toBeDefined();
+		expect(lens.serverClient).toBeDefined();
+		expect(lens.createQuery).toBeDefined();
+		expect(typeof lens.createQuery).toBe("function");
+		expect(lens.createMutation).toBeDefined();
+		expect(typeof lens.createMutation).toBe("function");
+		expect(lens.serverQuery).toBeDefined();
+		expect(typeof lens.serverQuery).toBe("function");
 	});
 
-	test("createLensMutation is exported", () => {
-		expect(typeof createLensMutation).toBe("function");
-	});
+	test("uses custom basePath", () => {
+		const server = createMockServer();
+		const lens = createLensSolidStart({
+			server: server as any,
+			config: { basePath: "/custom/api" },
+		});
 
-	test("createServerQuery is exported", () => {
-		expect(typeof createServerQuery).toBe("function");
-	});
-
-	test("createServerAction is exported", () => {
-		expect(typeof createServerAction).toBe("function");
+		expect(lens.handler).toBeDefined();
 	});
 });
 
-describe("createLensMutation", () => {
+describe("handler", () => {
+	test("handles GET requests (queries)", async () => {
+		const server = createMockServer();
+		const lens = createLensSolidStart({ server: server as any });
+
+		const response = await lens.handler({
+			request: new Request("http://localhost/api/lens/user.list", { method: "GET" }),
+		});
+
+		const data = await response.json();
+		expect(data.data).toEqual([{ id: "1", name: "User 1" }]);
+	});
+
+	test("handles POST requests (mutations)", async () => {
+		const server = createMockServer();
+		const lens = createLensSolidStart({ server: server as any });
+
+		const response = await lens.handler({
+			request: new Request("http://localhost/api/lens/user.get", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ input: { id: "456" } }),
+			}),
+		});
+
+		const data = await response.json();
+		expect(data.data).toEqual({ id: "456", name: "Test User" });
+	});
+
+	test("returns 405 for unsupported methods", async () => {
+		const server = createMockServer();
+		const lens = createLensSolidStart({ server: server as any });
+
+		const response = await lens.handler({
+			request: new Request("http://localhost/api/lens/user.get", { method: "DELETE" }),
+		});
+
+		expect(response.status).toBe(405);
+	});
+});
+
+describe("serverClient", () => {
+	test("executes queries directly", async () => {
+		const server = createMockServer();
+		const lens = createLensSolidStart({ server: server as any });
+
+		const result = await (lens.serverClient as any).user.get({ id: "789" });
+		expect(result).toEqual({ id: "789", name: "Test User" });
+	});
+
+	test("throws on error", async () => {
+		const server = createMockServer();
+		const lens = createLensSolidStart({ server: server as any });
+
+		await expect((lens.serverClient as any).unknown.route()).rejects.toThrow("Not found");
+	});
+});
+
+describe("createLensMutation (legacy)", () => {
 	test("returns correct shape", () => {
 		const mockMutation = async (input: { name: string }) => ({
 			data: { id: "1", name: input.name },
@@ -69,7 +153,7 @@ describe("createLensMutation", () => {
 	});
 });
 
-describe("createServerQuery", () => {
+describe("createServerQuery_legacy", () => {
 	test("returns async function", () => {
 		const queryFn = (id: string) => ({
 			then: <T>(resolve: (value: { id: string }) => T) => {
@@ -82,7 +166,7 @@ describe("createServerQuery", () => {
 			},
 		});
 
-		const serverQuery = createServerQuery(queryFn as any);
+		const serverQuery = createServerQuery_legacy(queryFn as any);
 		expect(typeof serverQuery).toBe("function");
 	});
 
@@ -98,7 +182,7 @@ describe("createServerQuery", () => {
 			},
 		});
 
-		const serverQuery = createServerQuery(queryFn as any);
+		const serverQuery = createServerQuery_legacy(queryFn as any);
 		const result = await serverQuery("123");
 		expect(result).toEqual({ id: "123" });
 	});

@@ -2,28 +2,386 @@
  * @sylphx/lens-solidstart
  *
  * SolidStart integration for Lens API framework.
- * Provides SSR-safe primitives with cache and createAsync patterns.
+ * Unified setup for server and client.
  *
  * @example
- * ```tsx
- * // src/routes/users/[id].tsx
- * import { createLensQuery, createLensMutation } from '@sylphx/lens-solidstart';
- * import { client } from '~/lib/lens';
+ * ```ts
+ * // lib/lens.ts
+ * import { createLensSolidStart } from '@sylphx/lens-solidstart';
+ * import { server } from './server';
  *
- * export default function UserPage() {
- *   const params = useParams();
- *   const user = createLensQuery(() => client.user.get({ id: params.id }));
+ * export const lens = createLensSolidStart({ server });
+ * ```
+ *
+ * ```ts
+ * // routes/api/lens/[...path].ts
+ * import { lens } from '~/lib/lens';
+ * export const GET = lens.handler;
+ * export const POST = lens.handler;
+ * ```
+ *
+ * ```tsx
+ * // routes/users.tsx
+ * import { lens } from '~/lib/lens';
+ *
+ * export default function UsersPage() {
+ *   const users = lens.createQuery(c => c.user.list());
  *
  *   return (
  *     <Suspense fallback={<div>Loading...</div>}>
- *       <Show when={user()}>{(u) => <h1>{u().name}</h1>}</Show>
+ *       <For each={users()}>{user => <div>{user.name}</div>}</For>
  *     </Suspense>
  *   );
  * }
  * ```
  */
 
-// Re-export Solid primitives and context
+import type { LensServer } from "@sylphx/lens-server";
+import { createClient, http, type LensClientConfig } from "@sylphx/lens-client";
+import { createSignal, createResource, type Accessor } from "solid-js";
+
+// =============================================================================
+// Types
+// =============================================================================
+
+export interface CreateLensSolidStartOptions<TServer extends LensServer> {
+	/** Lens server instance */
+	server: TServer;
+	/** Configuration options */
+	config?: LensSolidStartConfig;
+}
+
+export interface LensSolidStartConfig {
+	/** Base path for API routes (default: '/api/lens') */
+	basePath?: string;
+	/** Client configuration overrides */
+	clientConfig?: Partial<LensClientConfig>;
+}
+
+export interface LensSolidStartInstance<TClient> {
+	/** API route handler */
+	handler: (event: { request: Request }) => Promise<Response>;
+
+	/** Typed client */
+	client: TClient;
+
+	/** Server client for server-side usage */
+	serverClient: TClient;
+
+	/** Create a reactive query */
+	createQuery: <T>(
+		queryFn: (client: TClient) => import("@sylphx/lens-client").QueryResult<T>,
+		options?: { skip?: boolean },
+	) => Accessor<T | undefined>;
+
+	/** Create a mutation */
+	createMutation: <TInput, TOutput>(
+		mutationFn: (client: TClient) => (input: TInput) => Promise<import("@sylphx/lens-client").MutationResult<TOutput>>,
+	) => {
+		mutate: (input: TInput) => Promise<import("@sylphx/lens-client").MutationResult<TOutput>>;
+		data: Accessor<TOutput | null>;
+		pending: Accessor<boolean>;
+		error: Accessor<Error | null>;
+		reset: () => void;
+	};
+
+	/** Create a server-side query (for route data) */
+	serverQuery: <TArgs extends unknown[], TResult>(
+		queryFn: (client: TClient, ...args: TArgs) => import("@sylphx/lens-client").QueryResult<TResult>,
+	) => (...args: TArgs) => Promise<TResult>;
+}
+
+// =============================================================================
+// Main Factory
+// =============================================================================
+
+/**
+ * Create a unified Lens integration for SolidStart.
+ *
+ * @example
+ * ```ts
+ * // lib/lens.ts
+ * import { createLensSolidStart } from '@sylphx/lens-solidstart';
+ * import { server } from './server';
+ *
+ * export const lens = createLensSolidStart({ server });
+ * ```
+ */
+export function createLensSolidStart<TServer extends LensServer>(
+	options: CreateLensSolidStartOptions<TServer>,
+): LensSolidStartInstance<InferClient<TServer>> {
+	const { server, config = {} } = options;
+	const basePath = config.basePath ?? "/api/lens";
+
+	// Create server-side client (direct execution)
+	const serverClient = createServerClientProxy(server) as InferClient<TServer>;
+
+	// Create browser client (HTTP transport)
+	const browserClient = createClient({
+		transport: http({ url: basePath }),
+		...config.clientConfig,
+	}) as unknown as InferClient<TServer>;
+
+	// Determine which client to use
+	const getClient = () => {
+		if (typeof window === "undefined") {
+			return serverClient;
+		}
+		return browserClient;
+	};
+
+	// API Handler
+	const handler = createHandler(server, basePath);
+
+	// Primitives
+	const createQueryFn = createCreateQuery(getClient);
+	const createMutationFn = createCreateMutation(getClient);
+	const serverQueryFn = createServerQuery(serverClient);
+
+	return {
+		handler,
+		client: browserClient,
+		serverClient,
+		createQuery: createQueryFn,
+		createMutation: createMutationFn,
+		serverQuery: serverQueryFn,
+	};
+}
+
+// =============================================================================
+// Server Client (Direct Execution)
+// =============================================================================
+
+function createServerClientProxy(server: LensServer): unknown {
+	function createProxy(path: string): unknown {
+		return new Proxy(() => {}, {
+			get(_, prop) {
+				if (typeof prop === "symbol") return undefined;
+				if (prop === "then") return undefined;
+
+				const newPath = path ? `${path}.${prop}` : String(prop);
+				return createProxy(newPath);
+			},
+			async apply(_, __, args) {
+				const input = args[0];
+				const result = await server.execute({ path, input });
+
+				if (result.error) {
+					throw result.error;
+				}
+
+				return result.data;
+			},
+		});
+	}
+
+	return createProxy("");
+}
+
+// =============================================================================
+// API Handler
+// =============================================================================
+
+function createHandler(server: LensServer, basePath: string) {
+	return async (event: { request: Request }): Promise<Response> => {
+		const request = event.request;
+		const url = new URL(request.url);
+		const path = url.pathname.replace(basePath, "").replace(/^\//, "");
+
+		// Handle SSE subscription
+		if (request.headers.get("accept") === "text/event-stream") {
+			return handleSSE(server, path, url);
+		}
+
+		// Handle query (GET)
+		if (request.method === "GET") {
+			return handleQuery(server, path, url);
+		}
+
+		// Handle mutation (POST)
+		if (request.method === "POST") {
+			return handleMutation(server, path, request);
+		}
+
+		return new Response("Method not allowed", { status: 405 });
+	};
+}
+
+async function handleQuery(server: LensServer, path: string, url: URL): Promise<Response> {
+	try {
+		const inputParam = url.searchParams.get("input");
+		const input = inputParam ? JSON.parse(inputParam) : undefined;
+
+		const result = await server.execute({ path, input });
+
+		if (result.error) {
+			return Response.json({ error: result.error.message }, { status: 400 });
+		}
+
+		return Response.json({ data: result.data });
+	} catch (error) {
+		return Response.json(
+			{ error: error instanceof Error ? error.message : "Unknown error" },
+			{ status: 500 },
+		);
+	}
+}
+
+async function handleMutation(server: LensServer, path: string, request: Request): Promise<Response> {
+	try {
+		const body = await request.json();
+		const input = body.input;
+
+		const result = await server.execute({ path, input });
+
+		if (result.error) {
+			return Response.json({ error: result.error.message }, { status: 400 });
+		}
+
+		return Response.json({ data: result.data });
+	} catch (error) {
+		return Response.json(
+			{ error: error instanceof Error ? error.message : "Unknown error" },
+			{ status: 500 },
+		);
+	}
+}
+
+function handleSSE(server: LensServer, path: string, url: URL): Response {
+	const inputParam = url.searchParams.get("input");
+	const input = inputParam ? JSON.parse(inputParam) : undefined;
+
+	const stream = new ReadableStream({
+		start(controller) {
+			const encoder = new TextEncoder();
+
+			const result = server.execute({ path, input });
+
+			if (result && typeof result === "object" && "subscribe" in result) {
+				const observable = result as {
+					subscribe: (handlers: {
+						next: (value: { data?: unknown }) => void;
+						error: (err: Error) => void;
+						complete: () => void;
+					}) => { unsubscribe: () => void };
+				};
+
+				observable.subscribe({
+					next: (value) => {
+						const data = `data: ${JSON.stringify(value.data)}\n\n`;
+						controller.enqueue(encoder.encode(data));
+					},
+					error: (err) => {
+						const data = `event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`;
+						controller.enqueue(encoder.encode(data));
+						controller.close();
+					},
+					complete: () => {
+						controller.close();
+					},
+				});
+			}
+		},
+	});
+
+	return new Response(stream, {
+		headers: {
+			"Content-Type": "text/event-stream",
+			"Cache-Control": "no-cache",
+			Connection: "keep-alive",
+		},
+	});
+}
+
+// =============================================================================
+// Solid Primitives
+// =============================================================================
+
+import type { QueryResult, MutationResult } from "@sylphx/lens-client";
+
+function createCreateQuery<TClient>(getClient: () => TClient) {
+	return function createQuery<T>(
+		queryFn: (client: TClient) => QueryResult<T>,
+		options?: { skip?: boolean },
+	): Accessor<T | undefined> {
+		const client = getClient();
+
+		const [resource] = createResource(
+			() => !options?.skip,
+			async (shouldFetch) => {
+				if (!shouldFetch) return undefined;
+				const query = queryFn(client);
+				return await query;
+			},
+		);
+
+		return resource;
+	};
+}
+
+function createCreateMutation<TClient>(getClient: () => TClient) {
+	return function createMutation<TInput, TOutput>(
+		mutationFn: (client: TClient) => (input: TInput) => Promise<MutationResult<TOutput>>,
+	) {
+		const client = getClient();
+		const mutation = mutationFn(client);
+
+		const [pending, setPending] = createSignal(false);
+		const [error, setError] = createSignal<Error | null>(null);
+		const [data, setData] = createSignal<TOutput | null>(null);
+
+		const mutate = async (input: TInput): Promise<MutationResult<TOutput>> => {
+			setPending(true);
+			setError(null);
+
+			try {
+				const result = await mutation(input);
+				setData(() => result.data);
+				return result;
+			} catch (err) {
+				const mutationError = err instanceof Error ? err : new Error(String(err));
+				setError(() => mutationError);
+				throw mutationError;
+			} finally {
+				setPending(false);
+			}
+		};
+
+		const reset = () => {
+			setPending(false);
+			setError(null);
+			setData(null);
+		};
+
+		return { mutate, pending, error, data, reset };
+	};
+}
+
+function createServerQuery<TClient>(serverClient: TClient) {
+	return function serverQuery<TArgs extends unknown[], TResult>(
+		queryFn: (client: TClient, ...args: TArgs) => QueryResult<TResult>,
+	): (...args: TArgs) => Promise<TResult> {
+		return async (...args: TArgs): Promise<TResult> => {
+			const query = queryFn(serverClient, ...args);
+			return await query;
+		};
+	};
+}
+
+// =============================================================================
+// Type Inference
+// =============================================================================
+
+export type InferClient<TServer> = TServer extends LensServer
+	? {
+			[key: string]: unknown;
+		}
+	: never;
+
+// =============================================================================
+// Legacy Exports (for backwards compatibility)
+// =============================================================================
+
 export {
 	LensProvider,
 	useLensClient,
@@ -39,45 +397,13 @@ export {
 	type MutationFn,
 } from "@sylphx/lens-solid";
 
-// Re-export client utilities
 export { createClient, http, ws, route } from "@sylphx/lens-client";
-export type {
-	LensClientConfig,
-	QueryResult,
-	MutationResult,
-	Transport,
-} from "@sylphx/lens-client";
+export type { LensClientConfig, QueryResult, MutationResult, Transport } from "@sylphx/lens-client";
 
-// =============================================================================
-// SolidStart-Specific Primitives
-// =============================================================================
-
-import type { QueryResult, MutationResult } from "@sylphx/lens-client";
-import { createSignal, createResource, type Accessor } from "solid-js";
-
-/**
- * SolidStart-optimized query with automatic SSR support.
- *
- * Uses createResource under the hood for streaming SSR support.
- *
- * @example
- * ```tsx
- * import { createLensQuery } from '@sylphx/lens-solidstart';
- *
- * function UserProfile(props: { userId: string }) {
- *   const user = createLensQuery(() => client.user.get({ id: props.userId }));
- *
- *   return (
- *     <Suspense fallback={<Spinner />}>
- *       <Show when={user()}>{(u) => <h1>{u().name}</h1>}</Show>
- *     </Suspense>
- *   );
- * }
- * ```
- */
+// Legacy helpers
 export function createLensQuery<T>(
 	queryFn: () => QueryResult<T>,
-	options?: CreateLensQueryOptions,
+	options?: { skip?: boolean },
 ): Accessor<T | undefined> {
 	const [resource] = createResource(
 		() => !options?.skip,
@@ -91,49 +417,9 @@ export function createLensQuery<T>(
 	return resource;
 }
 
-export interface CreateLensQueryOptions {
-	/** Skip the query */
-	skip?: boolean;
-	/** Defer loading for streaming SSR */
-	deferStream?: boolean;
-}
-
-/**
- * SolidStart-optimized mutation.
- *
- * @example
- * ```tsx
- * import { createLensMutation } from '@sylphx/lens-solidstart';
- *
- * function CreatePostForm() {
- *   const createPost = createLensMutation(client.post.create);
- *
- *   const handleSubmit = async (e: Event) => {
- *     e.preventDefault();
- *     const form = e.target as HTMLFormElement;
- *     const formData = new FormData(form);
- *
- *     await createPost.mutate({
- *       title: formData.get('title') as string,
- *       content: formData.get('content') as string,
- *     });
- *   };
- *
- *   return (
- *     <form onSubmit={handleSubmit}>
- *       <input name="title" />
- *       <textarea name="content" />
- *       <button disabled={createPost.pending()}>
- *         {createPost.pending() ? 'Creating...' : 'Create'}
- *       </button>
- *     </form>
- *   );
- * }
- * ```
- */
 export function createLensMutation<TInput, TOutput>(
 	mutationFn: (input: TInput) => Promise<MutationResult<TOutput>>,
-): CreateLensMutationResult<TInput, TOutput> {
+) {
 	const [pending, setPending] = createSignal(false);
 	const [error, setError] = createSignal<Error | null>(null);
 	const [data, setData] = createSignal<TOutput | null>(null);
@@ -161,59 +447,10 @@ export function createLensMutation<TInput, TOutput>(
 		setData(null);
 	};
 
-	return {
-		mutate,
-		pending,
-		error,
-		data,
-		reset,
-	};
+	return { mutate, pending, error, data, reset };
 }
 
-export interface CreateLensMutationResult<TInput, TOutput> {
-	mutate: (input: TInput) => Promise<MutationResult<TOutput>>;
-	pending: Accessor<boolean>;
-	error: Accessor<Error | null>;
-	data: Accessor<TOutput | null>;
-	reset: () => void;
-}
-
-// =============================================================================
-// Server Functions
-// =============================================================================
-
-/**
- * Create a cached server function for SolidStart.
- *
- * Use this with SolidStart's cache() for optimal SSR performance.
- *
- * @example
- * ```ts
- * // src/lib/queries.ts
- * import { cache } from '@solidjs/router';
- * import { createServerQuery } from '@sylphx/lens-solidstart';
- * import { serverClient } from './server';
- *
- * export const getUser = cache(
- *   createServerQuery((id: string) => serverClient.user.get({ id })),
- *   'user'
- * );
- *
- * // src/routes/users/[id].tsx
- * import { getUser } from '~/lib/queries';
- *
- * export const route = {
- *   load: ({ params }) => getUser(params.id),
- * };
- *
- * export default function UserPage() {
- *   const params = useParams();
- *   const user = createAsync(() => getUser(params.id));
- *   // ...
- * }
- * ```
- */
-export function createServerQuery<TArgs extends unknown[], TResult>(
+export function createServerQuery_legacy<TArgs extends unknown[], TResult>(
 	queryFn: (...args: TArgs) => QueryResult<TResult>,
 ): (...args: TArgs) => Promise<TResult> {
 	return async (...args: TArgs): Promise<TResult> => {
@@ -222,26 +459,6 @@ export function createServerQuery<TArgs extends unknown[], TResult>(
 	};
 }
 
-/**
- * Create a server action for SolidStart mutations.
- *
- * @example
- * ```ts
- * // src/lib/actions.ts
- * import { action } from '@solidjs/router';
- * import { createServerAction } from '@sylphx/lens-solidstart';
- * import { serverClient } from './server';
- *
- * export const createPost = action(
- *   createServerAction(async (formData: FormData) => {
- *     const title = formData.get('title') as string;
- *     const content = formData.get('content') as string;
- *     return serverClient.post.create({ title, content });
- *   }),
- *   'createPost'
- * );
- * ```
- */
 export function createServerAction<TInput, TOutput>(
 	actionFn: (input: TInput) => Promise<MutationResult<TOutput>>,
 ): (input: TInput) => Promise<TOutput> {

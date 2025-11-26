@@ -2,25 +2,377 @@
  * @sylphx/lens-nuxt
  *
  * Nuxt 3 integration for Lens API framework.
- * Provides SSR-safe composables with useAsyncData integration.
+ * Unified setup for server and client.
  *
  * @example
+ * ```ts
+ * // server/lens.ts
+ * import { createLensNuxt } from '@sylphx/lens-nuxt';
+ * import { server } from './server';
+ *
+ * export const lens = createLensNuxt({ server });
+ * ```
+ *
+ * ```ts
+ * // server/api/lens/[...path].ts
+ * import { lens } from '../lens';
+ * export default defineEventHandler(lens.handler);
+ * ```
+ *
+ * ```ts
+ * // plugins/lens.ts
+ * import { lens } from '~/server/lens';
+ * export default defineNuxtPlugin(() => lens.plugin());
+ * ```
+ *
  * ```vue
- * <script setup lang="ts">
- * import { useLensQuery, useLensMutation } from '@sylphx/lens-nuxt';
- *
- * const { data: users, pending } = await useLensQuery('users', () =>
- *   client.user.list()
- * );
- *
- * const { mutate: createUser, pending: creating } = useLensMutation(
- *   client.user.create
- * );
+ * <!-- pages/users.vue -->
+ * <script setup>
+ * const { data, pending } = await lens.useQuery('users', c => c.user.list());
  * </script>
  * ```
  */
 
-// Re-export Vue composables and context
+import type { LensServer } from "@sylphx/lens-server";
+import { createClient, http, type LensClientConfig } from "@sylphx/lens-client";
+import { ref, computed, type ComputedRef } from "vue";
+
+// =============================================================================
+// Types
+// =============================================================================
+
+export interface CreateLensNuxtOptions<TServer extends LensServer> {
+	/** Lens server instance */
+	server: TServer;
+	/** Configuration options */
+	config?: LensNuxtConfig;
+}
+
+export interface LensNuxtConfig {
+	/** Base path for API routes (default: '/api/lens') */
+	basePath?: string;
+	/** Client configuration overrides */
+	clientConfig?: Partial<LensClientConfig>;
+}
+
+export interface LensNuxtInstance<TClient> {
+	/** Event handler for Nuxt server routes */
+	handler: (event: { node: { req: Request; res: any }; method: string; path: string }) => Promise<any>;
+
+	/** Typed client for client-side usage */
+	client: TClient;
+
+	/** Server client for server-side usage (direct execution) */
+	serverClient: TClient;
+
+	/** Create Nuxt plugin */
+	plugin: () => { provide: { lens: TClient } };
+
+	/** SSR-safe query composable */
+	useQuery: <T>(
+		key: string,
+		queryFn: (client: TClient) => import("@sylphx/lens-client").QueryResult<T>,
+		options?: { lazy?: boolean },
+	) => Promise<{
+		data: ComputedRef<T | null>;
+		pending: ComputedRef<boolean>;
+		error: ComputedRef<Error | null>;
+		refresh: () => Promise<T>;
+	}>;
+
+	/** SSR-safe mutation composable */
+	useMutation: <TInput, TOutput>(
+		mutationFn: (client: TClient) => (input: TInput) => Promise<import("@sylphx/lens-client").MutationResult<TOutput>>,
+	) => {
+		data: ComputedRef<TOutput | null>;
+		pending: ComputedRef<boolean>;
+		error: ComputedRef<Error | null>;
+		mutate: (input: TInput) => Promise<import("@sylphx/lens-client").MutationResult<TOutput>>;
+		reset: () => void;
+	};
+}
+
+// =============================================================================
+// Main Factory
+// =============================================================================
+
+/**
+ * Create a unified Lens integration for Nuxt.
+ *
+ * @example
+ * ```ts
+ * // server/lens.ts
+ * import { createLensNuxt } from '@sylphx/lens-nuxt';
+ * import { server } from './server';
+ *
+ * export const lens = createLensNuxt({ server });
+ * ```
+ */
+export function createLensNuxt<TServer extends LensServer>(
+	options: CreateLensNuxtOptions<TServer>,
+): LensNuxtInstance<InferClient<TServer>> {
+	const { server, config = {} } = options;
+	const basePath = config.basePath ?? "/api/lens";
+
+	// Create server-side client (direct execution)
+	const serverClient = createServerClientProxy(server) as InferClient<TServer>;
+
+	// Create browser client (HTTP transport)
+	const browserClient = createClient({
+		transport: http({ url: basePath }),
+		...config.clientConfig,
+	}) as unknown as InferClient<TServer>;
+
+	// Determine which client to use based on environment
+	const getClient = () => {
+		if (typeof window === "undefined") {
+			return serverClient;
+		}
+		return browserClient;
+	};
+
+	// Handler for Nuxt server routes
+	const handler = createHandler(server, basePath);
+
+	// Plugin factory
+	const plugin = () => ({
+		provide: {
+			lens: browserClient,
+		},
+	});
+
+	// Composables
+	const useQuery = createUseQuery(getClient);
+	const useMutation = createUseMutation(getClient);
+
+	return {
+		handler,
+		client: browserClient,
+		serverClient,
+		plugin,
+		useQuery,
+		useMutation,
+	};
+}
+
+// =============================================================================
+// Server Client (Direct Execution)
+// =============================================================================
+
+function createServerClientProxy(server: LensServer): unknown {
+	function createProxy(path: string): unknown {
+		return new Proxy(() => {}, {
+			get(_, prop) {
+				if (typeof prop === "symbol") return undefined;
+				if (prop === "then") return undefined;
+
+				const newPath = path ? `${path}.${prop}` : String(prop);
+				return createProxy(newPath);
+			},
+			async apply(_, __, args) {
+				const input = args[0];
+				const result = await server.execute({ path, input });
+
+				if (result.error) {
+					throw result.error;
+				}
+
+				return result.data;
+			},
+		});
+	}
+
+	return createProxy("");
+}
+
+// =============================================================================
+// Nuxt Handler
+// =============================================================================
+
+function createHandler(server: LensServer, basePath: string) {
+	return async (event: { node: { req: any; res: any }; method: string; path: string }) => {
+		const path = event.path.replace(basePath, "").replace(/^\//, "");
+
+		// Handle query (GET)
+		if (event.method === "GET") {
+			return handleQuery(server, path, event);
+		}
+
+		// Handle mutation (POST)
+		if (event.method === "POST") {
+			return handleMutation(server, path, event);
+		}
+
+		return { error: "Method not allowed" };
+	};
+}
+
+async function handleQuery(
+	server: LensServer,
+	path: string,
+	event: { node: { req: any } },
+): Promise<any> {
+	try {
+		const url = new URL(event.node.req.url, "http://localhost");
+		const inputParam = url.searchParams.get("input");
+		const input = inputParam ? JSON.parse(inputParam) : undefined;
+
+		const result = await server.execute({ path, input });
+
+		if (result.error) {
+			return { error: result.error.message };
+		}
+
+		return { data: result.data };
+	} catch (error) {
+		return { error: error instanceof Error ? error.message : "Unknown error" };
+	}
+}
+
+async function handleMutation(
+	server: LensServer,
+	path: string,
+	event: { node: { req: any } },
+): Promise<any> {
+	try {
+		// Read body - in Nuxt this would use readBody()
+		const body = await new Promise<any>((resolve) => {
+			let data = "";
+			event.node.req.on("data", (chunk: string) => {
+				data += chunk;
+			});
+			event.node.req.on("end", () => {
+				resolve(JSON.parse(data || "{}"));
+			});
+		});
+
+		const input = body.input;
+		const result = await server.execute({ path, input });
+
+		if (result.error) {
+			return { error: result.error.message };
+		}
+
+		return { data: result.data };
+	} catch (error) {
+		return { error: error instanceof Error ? error.message : "Unknown error" };
+	}
+}
+
+// =============================================================================
+// Vue Composables
+// =============================================================================
+
+import type { QueryResult, MutationResult } from "@sylphx/lens-client";
+
+function createUseQuery<TClient>(getClient: () => TClient) {
+	return async function useQuery<T>(
+		key: string,
+		queryFn: (client: TClient) => QueryResult<T>,
+		options?: { lazy?: boolean },
+	) {
+		const client = getClient();
+		const data = ref<T | null>(null);
+		const pending = ref(!options?.lazy);
+		const error = ref<Error | null>(null);
+
+		const execute = async (): Promise<T> => {
+			pending.value = true;
+			error.value = null;
+
+			try {
+				const query = queryFn(client);
+				const result = await query;
+				data.value = result;
+				return result;
+			} catch (err) {
+				error.value = err instanceof Error ? err : new Error(String(err));
+				throw error.value;
+			} finally {
+				pending.value = false;
+			}
+		};
+
+		// Initial fetch unless lazy
+		if (!options?.lazy) {
+			await execute();
+		}
+
+		// Setup subscription on client
+		if (typeof window !== "undefined") {
+			const query = queryFn(client);
+			query.subscribe((value) => {
+				data.value = value;
+			});
+		}
+
+		return {
+			data: computed(() => data.value),
+			pending: computed(() => pending.value),
+			error: computed(() => error.value),
+			refresh: execute,
+		};
+	};
+}
+
+function createUseMutation<TClient>(getClient: () => TClient) {
+	return function useMutation<TInput, TOutput>(
+		mutationFn: (client: TClient) => (input: TInput) => Promise<MutationResult<TOutput>>,
+	) {
+		const client = getClient();
+		const mutation = mutationFn(client);
+
+		const data = ref<TOutput | null>(null);
+		const pending = ref(false);
+		const error = ref<Error | null>(null);
+
+		const mutate = async (input: TInput): Promise<MutationResult<TOutput>> => {
+			pending.value = true;
+			error.value = null;
+
+			try {
+				const result = await mutation(input);
+				data.value = result.data;
+				return result;
+			} catch (err) {
+				const mutationError = err instanceof Error ? err : new Error(String(err));
+				error.value = mutationError;
+				throw mutationError;
+			} finally {
+				pending.value = false;
+			}
+		};
+
+		const reset = () => {
+			data.value = null;
+			pending.value = false;
+			error.value = null;
+		};
+
+		return {
+			data: computed(() => data.value),
+			pending: computed(() => pending.value),
+			error: computed(() => error.value),
+			mutate,
+			reset,
+		};
+	};
+}
+
+// =============================================================================
+// Type Inference
+// =============================================================================
+
+export type InferClient<TServer> = TServer extends LensServer
+	? {
+			[key: string]: unknown;
+		}
+	: never;
+
+// =============================================================================
+// Legacy Exports (for backwards compatibility)
+// =============================================================================
+
 export {
 	LensClientKey,
 	provideLensClient,
@@ -36,230 +388,5 @@ export {
 	type MutationFn,
 } from "@sylphx/lens-vue";
 
-// Re-export client utilities
 export { createClient, http, ws, route } from "@sylphx/lens-client";
-export type {
-	LensClientConfig,
-	QueryResult,
-	MutationResult,
-	Transport,
-} from "@sylphx/lens-client";
-
-// =============================================================================
-// Nuxt-Specific Composables
-// =============================================================================
-
-import type { QueryResult, MutationResult } from "@sylphx/lens-client";
-import { ref, computed, type ComputedRef } from "vue";
-
-/**
- * SSR-safe query composable with Nuxt's useAsyncData pattern.
- *
- * This composable integrates with Nuxt's SSR hydration system.
- *
- * @example
- * ```vue
- * <script setup lang="ts">
- * import { useLensQuery } from '@sylphx/lens-nuxt';
- *
- * // SSR-safe query with automatic hydration
- * const { data, pending, error, refresh } = await useLensQuery(
- *   'user-profile',
- *   () => client.user.get({ id: userId })
- * );
- * </script>
- * ```
- */
-export async function useLensQuery<T>(
-	key: string,
-	queryFn: () => QueryResult<T>,
-	options?: UseLensQueryOptions,
-): Promise<UseLensQueryResult<T>> {
-	const data = ref<T | null>(null);
-	const pending = ref(true);
-	const error = ref<Error | null>(null);
-
-	// Check for SSR context
-	const isServer = typeof window === "undefined";
-
-	const execute = async () => {
-		pending.value = true;
-		error.value = null;
-
-		try {
-			const query = queryFn();
-			const result = await query;
-			data.value = result;
-			return result;
-		} catch (err) {
-			error.value = err instanceof Error ? err : new Error(String(err));
-			throw error.value;
-		} finally {
-			pending.value = false;
-		}
-	};
-
-	// Initial fetch
-	if (!options?.lazy) {
-		await execute();
-	}
-
-	// Setup client-side subscription
-	if (!isServer && !options?.lazy) {
-		const query = queryFn();
-		query.subscribe((value) => {
-			data.value = value;
-		});
-	}
-
-	return {
-		data: computed(() => data.value),
-		pending: computed(() => pending.value),
-		error: computed(() => error.value),
-		refresh: execute,
-	};
-}
-
-export interface UseLensQueryOptions {
-	/** Don't fetch on mount */
-	lazy?: boolean;
-	/** Cache key for SSR */
-	key?: string;
-}
-
-export interface UseLensQueryResult<T> {
-	data: ComputedRef<T | null>;
-	pending: ComputedRef<boolean>;
-	error: ComputedRef<Error | null>;
-	refresh: () => Promise<T>;
-}
-
-/**
- * SSR-safe mutation composable.
- *
- * @example
- * ```vue
- * <script setup lang="ts">
- * import { useLensMutation } from '@sylphx/lens-nuxt';
- *
- * const { mutate, pending, error, data } = useLensMutation(
- *   client.user.create
- * );
- *
- * async function handleSubmit(formData: FormData) {
- *   await mutate({
- *     name: formData.get('name') as string,
- *     email: formData.get('email') as string,
- *   });
- * }
- * </script>
- * ```
- */
-export function useLensMutation<TInput, TOutput>(
-	mutationFn: (input: TInput) => Promise<MutationResult<TOutput>>,
-): UseLensMutationResult<TInput, TOutput> {
-	const data = ref<TOutput | null>(null);
-	const pending = ref(false);
-	const error = ref<Error | null>(null);
-
-	const mutate = async (input: TInput): Promise<MutationResult<TOutput>> => {
-		pending.value = true;
-		error.value = null;
-
-		try {
-			const result = await mutationFn(input);
-			data.value = result.data;
-			return result;
-		} catch (err) {
-			const mutationError = err instanceof Error ? err : new Error(String(err));
-			error.value = mutationError;
-			throw mutationError;
-		} finally {
-			pending.value = false;
-		}
-	};
-
-	const reset = () => {
-		data.value = null;
-		pending.value = false;
-		error.value = null;
-	};
-
-	return {
-		mutate,
-		data: computed(() => data.value),
-		pending: computed(() => pending.value),
-		error: computed(() => error.value),
-		reset,
-	};
-}
-
-export interface UseLensMutationResult<TInput, TOutput> {
-	mutate: (input: TInput) => Promise<MutationResult<TOutput>>;
-	data: ComputedRef<TOutput | null>;
-	pending: ComputedRef<boolean>;
-	error: ComputedRef<Error | null>;
-	reset: () => void;
-}
-
-// =============================================================================
-// Nuxt Plugin Helper
-// =============================================================================
-
-import type { LensClient } from "@sylphx/lens-client";
-
-/**
- * Create a Nuxt plugin for Lens client.
- *
- * @example
- * ```ts
- * // plugins/lens.ts
- * import { createLensPlugin } from '@sylphx/lens-nuxt';
- * import { createClient, http } from '@sylphx/lens-client';
- *
- * export default createLensPlugin(() =>
- *   createClient({
- *     transport: http({ url: '/api/lens' }),
- *   })
- * );
- * ```
- */
-export function createLensPlugin<T extends LensClient>(
-	clientFactory: () => T,
-): () => { provide: { lensClient: T } } {
-	return () => {
-		const client = clientFactory();
-		return {
-			provide: {
-				lensClient: client,
-			},
-		};
-	};
-}
-
-/**
- * Use Lens client from Nuxt plugin context.
- *
- * @example
- * ```vue
- * <script setup lang="ts">
- * import { useNuxtLensClient } from '@sylphx/lens-nuxt';
- *
- * const client = useNuxtLensClient();
- * const { data } = await useLensQuery('users', () => client.user.list());
- * </script>
- * ```
- */
-export function useNuxtLensClient<T extends LensClient = LensClient>(): T {
-	// This would use useNuxtApp() in actual Nuxt context
-	// For type safety, we provide a placeholder that works at runtime
-	if (typeof window !== "undefined" && (window as any).__NUXT__) {
-		const nuxtApp = (window as any).__NUXT__;
-		return nuxtApp.$lensClient as T;
-	}
-
-	throw new Error(
-		"useNuxtLensClient must be called within a Nuxt application context. " +
-			"Make sure the Lens plugin is registered.",
-	);
-}
+export type { LensClientConfig, QueryResult, MutationResult, Transport } from "@sylphx/lens-client";

@@ -1,5 +1,90 @@
 # @sylphx/lens-fresh
 
+## 1.2.0
+
+### Minor Changes
+
+- feat: unified factory API for all meta-framework packages
+
+  All meta-framework packages now expose a unified factory function that creates both server and client in one call:
+
+  **Next.js:**
+
+  ```ts
+  import { createLensNext } from "@sylphx/lens-next";
+  import { server } from "./server";
+
+  export const lens = createLensNext({ server });
+  export const {
+    handler,
+    client,
+    serverClient,
+    Provider,
+    useQuery,
+    useMutation,
+  } = lens;
+  ```
+
+  **Nuxt:**
+
+  ```ts
+  import { createLensNuxt } from "@sylphx/lens-nuxt";
+  import { server } from "./server";
+
+  export const lens = createLensNuxt({ server });
+  export const {
+    handler,
+    client,
+    serverClient,
+    plugin,
+    useQuery,
+    useMutation,
+  } = lens;
+  ```
+
+  **SolidStart:**
+
+  ```ts
+  import { createLensSolidStart } from "@sylphx/lens-solidstart";
+  import { server } from "./server";
+
+  export const lens = createLensSolidStart({ server });
+  export const {
+    handler,
+    client,
+    serverClient,
+    createQuery,
+    createMutation,
+    serverQuery,
+  } = lens;
+  ```
+
+  **Fresh (Deno/Preact):**
+
+  ```ts
+  import { createLensFresh } from "@sylphx/lens-fresh";
+  import { server } from "./server";
+
+  export const lens = createLensFresh({ server });
+  export const {
+    handler,
+    client,
+    serverClient,
+    serialize,
+    useIslandQuery,
+    useMutation,
+  } = lens;
+  ```
+
+  Each factory returns:
+
+  - `handler` - API route handler for the framework
+  - `client` - Browser client with HTTP transport
+  - `serverClient` - Server-side client with direct execution (no HTTP)
+  - Framework-specific hooks/composables
+
+  Legacy exports are preserved for backwards compatibility.
+
 ## 1.1.0
 
 ### Minor Changes
