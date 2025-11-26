@@ -595,7 +595,7 @@ type ExtractRouterContext<T> = T extends RouterDef<infer R, infer C>
  * Handles both direct procedures and nested routers
  */
 type ExtractRoutesContext<T> = T extends Record<string, infer V>
-	? V extends RouterDef<unknown, unknown>
+	? V extends RouterDef<RouterRoutes, infer _C>
 		? ExtractRouterContext<V>
 		: ExtractProcedureContext<V>
 	: unknown;

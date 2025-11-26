@@ -785,77 +785,69 @@ const server = createServer({
 const getMe = query().resolve(({ ctx }) => ctx.user)
 ```
 
-### Typed Context with `initLens`
+### Typed Context (Automatic Inference)
 
-For full type safety across your project, use the tRPC-style `initLens` pattern:
-
-```typescript
-// lib/lens.ts - Define once, use everywhere
-import { initLens } from '@sylphx/lens-server'
-import type { PrismaClient } from '@prisma/client'
-
-// Define your context type
-interface Context {
-  db: PrismaClient
-  user: { id: string; role: 'admin' | 'user' } | null
-}
-
-// Create typed lens instance
-export const lens = initLens.context<Context>().create()
-```
+Each query/mutation declares its own context requirements. The router automatically merges them, and `createServer` enforces the final type:
 
 ```typescript
-// routes/user.ts - ctx is fully typed!
-import { lens } from '../lib/lens'
+// routes/user.ts - Declare what this query needs
+import { query, mutation } from '@sylphx/lens-server'
 import { z } from 'zod'
 
-export const getUser = lens.query()
+// This query needs db and user in context
+export const getUser = query<{ db: PrismaClient; user: User | null }>()
   .input(z.object({ id: z.string() }))
   .resolve(({ input, ctx }) => {
-    // ctx.db is typed as PrismaClient
-    // ctx.user is typed as { id: string; role: 'admin' | 'user' } | null
+    // ctx.db and ctx.user are fully typed!
     return ctx.db.user.findUnique({ where: { id: input.id } })
   })
 
-export const createUser = lens.mutation()
+// This mutation needs db and user
+export const createUser = mutation<{ db: PrismaClient; user: User | null }>()
   .input(z.object({ name: z.string(), email: z.string() }))
   .resolve(({ input, ctx }) => {
-    if (ctx.user?.role !== 'admin') throw new Error('Unauthorized')
+    if (!ctx.user) throw new Error('Unauthorized')
     return ctx.db.user.create({ data: input })
   })
 ```
 
 ```typescript
-// server.ts - Create server with typed context
-import { router } from '@sylphx/lens-server'
-import { lens } from './lib/lens'
-import * as userRoutes from './routes/user'
+// routes/cache.ts - Different context requirements
+export const getCached = query<{ db: PrismaClient; cache: RedisClient }>()
+  .input(z.object({ key: z.string() }))
+  .resolve(({ input, ctx }) => {
+    // ctx.db and ctx.cache are typed!
+    return ctx.cache.get(input.key) ?? ctx.db.fallback(input.key)
+  })
+```
 
-// lens.createServer enforces context type!
-export const server = lens.createServer({
-  router: router({ user: userRoutes }),
-  context: async (req) => ({
-    db: prisma,
-    user: await getUserFromRequest(req),
-  }),
+```typescript
+// server.ts - Context is automatically inferred & enforced
+import { createServer, router } from '@sylphx/lens-server'
+import * as userRoutes from './routes/user'
+import * as cacheRoutes from './routes/cache'
+
+const appRouter = router({
+  user: userRoutes,
+  cache: cacheRoutes,
 })
 
-export type AppRouter = typeof server
+// Context must satisfy ALL requirements: { db, user, cache }
+const server = createServer({
+  router: appRouter,
+  context: async (req) => ({
+    db: prisma,           // Required by user + cache routes
+    user: await getUser(req),  // Required by user routes
+    cache: redis,         // Required by cache routes
+  }),
+})
 ```
 
 This gives you:
 - **Full autocomplete** on `ctx` in all resolvers
-- **Type errors** when accessing non-existent properties
-- **Single source of truth** for context type across your codebase
-
-> **Note:** You can also use `createServer` directly - it automatically infers the context type from the router:
-> ```typescript
-> // Context type is inferred from router's procedures!
-> const server = createServer({
->   router: appRouter,
->   context: () => ({ db: prisma, user: null }),  // Type-checked against router's context
-> })
-> ```
+- **Dependency injection style** - each procedure declares what it needs
+- **Automatic merging** - router combines all context requirements
+- **Type enforcement** - `createServer` ensures context satisfies all needs
 
 ---
 

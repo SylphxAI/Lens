@@ -6,20 +6,6 @@
  */
 
 // =============================================================================
-// Initialization (tRPC-style)
-// =============================================================================
-
-export {
-	// Builder
-	initLens,
-	// Types
-	type LensServerInstance,
-	type LensServerBuilder,
-	type LensServerBuilderWithContext,
-	type LensServerInstanceConfig,
-} from "./init";
-
-// =============================================================================
 // Re-exports from Core (commonly used with server)
 // =============================================================================
 
