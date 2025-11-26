@@ -37,3 +37,4 @@ yarn-error.log*
 bun.lockb
 
 # Changesets (changeset files ARE tracked for CI workflow)
+.turbo

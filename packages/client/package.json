@@ -16,17 +16,8 @@
 		"typecheck": "tsc --noEmit",
 		"test": "bun test"
 	},
-	"files": [
-		"dist",
-		"src"
-	],
-	"keywords": [
-		"lens",
-		"client",
-		"reactive",
-		"transport",
-		"plugins"
-	],
+	"files": ["dist", "src"],
+	"keywords": ["lens", "client", "reactive", "transport", "plugins"],
 	"author": "SylphxAI",
 	"license": "MIT",
 	"dependencies": {
