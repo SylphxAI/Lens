@@ -28,3 +28,9 @@ const { data, loading, error } = useQuery(() => client.user.get({ id: "1" }));
 ## License
 
 MIT
+
+---
+
+Built with [@sylphx/lens-client](https://github.com/SylphxAI/Lens), [@sylphx/lens-vue](https://github.com/SylphxAI/Lens), and [@sylphx/lens-server](https://github.com/SylphxAI/Lens).
+
+✨ Powered by Sylphx

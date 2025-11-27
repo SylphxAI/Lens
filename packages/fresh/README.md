@@ -24,3 +24,9 @@ export default async function Home() {
 ## License
 
 MIT
+
+---
+
+Built with [@sylphx/lens-client](https://github.com/SylphxAI/Lens), [@sylphx/lens-preact](https://github.com/SylphxAI/Lens), and [@sylphx/lens-server](https://github.com/SylphxAI/Lens).
+
+✨ Powered by Sylphx

@@ -37,3 +37,7 @@ const appRouter = router({
 ## License
 
 MIT
+
+---
+
+✨ Powered by Sylphx

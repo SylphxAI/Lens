@@ -25,3 +25,9 @@ import { t, entity, query, mutation, router } from "@sylphx/lens";
 ## License
 
 MIT
+
+---
+
+Built with [@sylphx/lens-core](https://github.com/SylphxAI/Lens).
+
+✨ Powered by Sylphx

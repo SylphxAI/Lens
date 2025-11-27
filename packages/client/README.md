@@ -33,3 +33,9 @@ client.user.get({ id: "1" }).subscribe((user) => {
 ## License
 
 MIT
+
+---
+
+Built with [@sylphx/lens-core](https://github.com/SylphxAI/Lens) and [@sylphx/lens-server](https://github.com/SylphxAI/Lens).
+
+✨ Powered by Sylphx

@@ -27,3 +27,9 @@ Bun.serve({
 ## License
 
 MIT
+
+---
+
+Built with [@sylphx/lens-core](https://github.com/SylphxAI/Lens).
+
+✨ Powered by Sylphx

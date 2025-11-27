@@ -1247,3 +1247,11 @@ const unsub2 = client.user.get({ id }).select({ email: true }).subscribe(...)
 ## License
 
 MIT © Sylphx AI
+
+---
+
+## Credits
+
+Built with [@sylphx/biome-config](https://github.com/SylphxAI/configs), [@sylphx/tsconfig](https://github.com/SylphxAI/configs), [@sylphx/doctor](https://github.com/SylphxAI/doctor), and [@sylphx/bump](https://github.com/SylphxAI/bump).
+
+✨ Powered by Sylphx

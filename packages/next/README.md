@@ -34,3 +34,9 @@ export default function Page() {
 ## License
 
 MIT
+
+---
+
+Built with [@sylphx/lens-client](https://github.com/SylphxAI/Lens), [@sylphx/lens-react](https://github.com/SylphxAI/Lens), and [@sylphx/lens-server](https://github.com/SylphxAI/Lens).
+
+✨ Powered by Sylphx

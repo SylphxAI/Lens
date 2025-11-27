@@ -28,3 +28,9 @@ function UserProfile() {
 ## License
 
 MIT
+
+---
+
+Built with [@sylphx/lens-client](https://github.com/SylphxAI/Lens).
+
+✨ Powered by Sylphx

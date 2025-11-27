@@ -14,17 +14,13 @@
 		"lint:fix": "biome check --fix .",
 		"format": "biome format --write .",
 		"typecheck": "turbo typecheck",
-		"changeset": "changeset",
-		"version-packages": "changeset version",
-		"release": "changeset publish",
-		"prepublishOnly": "test -n \"$CI\" || (echo 'Use changeset publish via CI' && exit 1)"
+		"prepublishOnly": "test -n \"$CI\" || (echo 'Use CI for releases' && exit 1)"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^1.9.4",
-		"@changesets/cli": "^2.29.7",
 		"@sylphx/biome-config": "^0.1.0",
 		"@sylphx/bump": "^0.6.2",
-		"@sylphx/doctor": "^1.19.1",
+		"@sylphx/doctor": "^1.20.0",
 		"@sylphx/tsconfig": "^0.1.0",
 		"@types/bun": "latest",
 		"@typescript/native-preview": "^7.0.0-dev.20251126.1",
