@@ -35,5 +35,8 @@
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/SylphxAI/Lens.git"
+	},
+	"dependencies": {
+		"happy-dom": "^20.0.10"
 	}
 }
