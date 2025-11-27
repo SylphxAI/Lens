@@ -6,7 +6,7 @@ pre-commit:
   commands:
     format:
       glob: "*.{js,ts,jsx,tsx,json,md}"
-      run: bunx biome format --write {staged_files}
+      run: bunx biome format --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
 
     lint:
