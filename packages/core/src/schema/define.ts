@@ -306,8 +306,10 @@ export interface RelationDef<
 
 /**
  * Relation builder that provides type-safe foreign key accessors.
- * - hasMany/hasOne: FK accessor receives TARGET entity fields
- * - belongsTo: FK accessor receives SOURCE entity fields
+ * - many/one: FK accessor receives TARGET entity fields
+ * - parent: FK accessor receives SOURCE entity fields
+ *
+ * Method names are shortened to avoid bundler name collisions with standalone functions.
  */
 export interface RelationBuilder<Source extends EntityDef<string, EntityDefinition>> {
 	/**
@@ -316,7 +318,7 @@ export interface RelationBuilder<Source extends EntityDef<string, EntityDefiniti
 	 * @param target - Target entity
 	 * @param foreignKey - Accessor for FK field on TARGET entity
 	 */
-	hasMany<Target extends EntityDef<string, EntityDefinition>>(
+	many<Target extends EntityDef<string, EntityDefinition>>(
 		target: Target,
 		foreignKey?: (targetFields: { [K in keyof Target["fields"]]: K }) => keyof Target["fields"],
 	): HasManyType<Target["_name"] & string> & { foreignKey?: string };
@@ -327,7 +329,7 @@ export interface RelationBuilder<Source extends EntityDef<string, EntityDefiniti
 	 * @param target - Target entity
 	 * @param foreignKey - Accessor for FK field on TARGET entity
 	 */
-	hasOne<Target extends EntityDef<string, EntityDefinition>>(
+	one<Target extends EntityDef<string, EntityDefinition>>(
 		target: Target,
 		foreignKey?: (targetFields: { [K in keyof Target["fields"]]: K }) => keyof Target["fields"],
 	): HasOneType<Target["_name"] & string> & { foreignKey?: string };
@@ -338,7 +340,7 @@ export interface RelationBuilder<Source extends EntityDef<string, EntityDefiniti
 	 * @param target - Target entity
 	 * @param foreignKey - Accessor for FK field on SOURCE entity
 	 */
-	belongsTo<Target extends EntityDef<string, EntityDefinition>>(
+	parent<Target extends EntityDef<string, EntityDefinition>>(
 		target: Target,
 		foreignKey?: (sourceFields: { [K in keyof Source["fields"]]: K }) => keyof Source["fields"],
 	): BelongsToType<Target["_name"] & string> & { foreignKey?: string };
@@ -352,7 +354,7 @@ function createRelationBuilder<Source extends EntityDef<string, EntityDefinition
 	_source: Source,
 ): RelationBuilder<Source> {
 	return {
-		hasMany<Target extends EntityDef<string, EntityDefinition>>(
+		many<Target extends EntityDef<string, EntityDefinition>>(
 			target: Target,
 			foreignKeyAccessor?: (
 				targetFields: { [K in keyof Target["fields"]]: K },
@@ -364,7 +366,7 @@ function createRelationBuilder<Source extends EntityDef<string, EntityDefinition
 			return new HasManyType(target._name ?? "", foreignKey);
 		},
 
-		hasOne<Target extends EntityDef<string, EntityDefinition>>(
+		one<Target extends EntityDef<string, EntityDefinition>>(
 			target: Target,
 			foreignKeyAccessor?: (
 				targetFields: { [K in keyof Target["fields"]]: K },
@@ -376,7 +378,7 @@ function createRelationBuilder<Source extends EntityDef<string, EntityDefinition
 			return new HasOneType(target._name ?? "", foreignKey);
 		},
 
-		belongsTo<Target extends EntityDef<string, EntityDefinition>>(
+		parent<Target extends EntityDef<string, EntityDefinition>>(
 			target: Target,
 			foreignKeyAccessor?: (
 				sourceFields: { [K in keyof Source["fields"]]: K },
@@ -400,9 +402,9 @@ function createRelationBuilder<Source extends EntityDef<string, EntityDefinition
  * @example
  * ```typescript
  * // Builder function (recommended - fully type-safe)
- * const postRelations = relation(Post, (rel) => ({
- *   author: rel.belongsTo(User, (post) => post.authorId),  // FK on Post ✅
- *   comments: rel.hasMany(Comment, (comment) => comment.postId),  // FK on Comment ✅
+ * const postRelations = relation(Post, (r) => ({
+ *   author: r.parent(User, (post) => post.authorId),  // FK on Post ✅
+ *   comments: r.many(Comment, (comment) => comment.postId),  // FK on Comment ✅
  * }));
  *
  * // Plain object (backward compatible)
