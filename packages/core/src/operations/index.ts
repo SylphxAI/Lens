@@ -144,11 +144,10 @@ export interface ResolverContext<TInput = unknown, TOutput = unknown, TContext =
 	onCleanup: (fn: () => void) => () => void;
 }
 
-/** Resolver function type */
-export type ResolverFn<TInput, TOutput, TContext = unknown> =
-	| ((ctx: ResolverContext<TInput, TOutput, TContext>) => Promise<TOutput>)
-	| ((ctx: ResolverContext<TInput, TOutput, TContext>) => TOutput)
-	| ((ctx: ResolverContext<TInput, TOutput, TContext>) => AsyncGenerator<TOutput>);
+/** Resolver function type - can return sync, async, or generator */
+export type ResolverFn<TInput, TOutput, TContext = unknown> = (
+	ctx: ResolverContext<TInput, TOutput, TContext>,
+) => TOutput | Promise<TOutput> | AsyncGenerator<TOutput>;
 
 // =============================================================================
 // Optimistic DSL (Declarative - for type-only client imports)
