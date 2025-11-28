@@ -31,6 +31,7 @@
 
 import type { Emit } from "../emit/index";
 import type { EntityDef } from "../schema/define";
+import type { InferScalar, ScalarFields } from "../schema/infer";
 import type { EntityDefinition } from "../schema/types";
 
 // =============================================================================
@@ -57,19 +58,29 @@ export type ReturnSpec =
 	| ZodLikeSchema<unknown>
 	| Record<string, EntityDef<string, EntityDefinition> | [EntityDef<string, EntityDefinition>]>;
 
+/**
+ * Infer entity type from entity definition fields.
+ * Only infers scalar fields (relations require schema context).
+ */
+type InferEntityFromFields<F extends EntityDefinition> = {
+	[K in ScalarFields<F>]: InferScalar<F[K]>;
+};
+
 /** Infer TypeScript type from return spec */
 export type InferReturnType<R extends ReturnSpec> =
 	R extends ZodLikeSchema<infer T>
 		? T
 		: R extends EntityDef<string, infer F>
-			? { [K in keyof F]: unknown } // Simplified - actual inference would be more complex
+			? InferEntityFromFields<F>
 			: R extends [EntityDef<string, infer F>]
-				? { [K in keyof F]: unknown }[]
+				? InferEntityFromFields<F>[]
 				: R extends Record<string, unknown>
 					? {
-							[K in keyof R]: R[K] extends [EntityDef<string, EntityDefinition>]
-								? unknown[]
-								: unknown;
+							[K in keyof R]: R[K] extends [EntityDef<string, infer F>]
+								? InferEntityFromFields<F>[]
+								: R[K] extends EntityDef<string, infer F2>
+									? InferEntityFromFields<F2>
+									: unknown;
 						}
 					: never;
 
