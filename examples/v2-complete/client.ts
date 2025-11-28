@@ -47,7 +47,7 @@ const client = createClient<Api>({
 		logger({ enabled: process.env.NODE_ENV === "development" }),
 
 		// Retry on failure
-		retry({ retries: 3, delay: 1000 }),
+		retry({ attempts: 3, delay: 1000 }),
 	],
 });
 

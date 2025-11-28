@@ -1542,8 +1542,7 @@ export type InferOutput<T> =
  * const client = createClient<Api>({ links: [...] });
  * ```
  */
-export type InferApi<T extends LensServer> =
-	T extends LensServerImpl<infer Q, infer M> ? { queries: Q; mutations: M } : never;
+export type InferApi<T> = T extends { _types: infer Types } ? Types : never;
 
 // =============================================================================
 // Factory
