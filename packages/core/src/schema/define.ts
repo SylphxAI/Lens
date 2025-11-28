@@ -305,30 +305,123 @@ export interface RelationDef<
 }
 
 /**
+ * Relation builder that provides type-safe foreign key accessors.
+ * - hasMany/hasOne: FK accessor receives TARGET entity fields
+ * - belongsTo: FK accessor receives SOURCE entity fields
+ */
+export interface RelationBuilder<Source extends EntityDef<string, EntityDefinition>> {
+	/**
+	 * Create a hasMany relation (one-to-many)
+	 * FK is on the TARGET entity
+	 * @param target - Target entity
+	 * @param foreignKey - Accessor for FK field on TARGET entity
+	 */
+	hasMany<Target extends EntityDef<string, EntityDefinition>>(
+		target: Target,
+		foreignKey?: (targetFields: { [K in keyof Target["fields"]]: K }) => keyof Target["fields"],
+	): HasManyType<Target["_name"] & string> & { foreignKey?: string };
+
+	/**
+	 * Create a hasOne relation (one-to-one, FK on target)
+	 * FK is on the TARGET entity
+	 * @param target - Target entity
+	 * @param foreignKey - Accessor for FK field on TARGET entity
+	 */
+	hasOne<Target extends EntityDef<string, EntityDefinition>>(
+		target: Target,
+		foreignKey?: (targetFields: { [K in keyof Target["fields"]]: K }) => keyof Target["fields"],
+	): HasOneType<Target["_name"] & string> & { foreignKey?: string };
+
+	/**
+	 * Create a belongsTo relation (many-to-one or one-to-one, FK on source)
+	 * FK is on the SOURCE entity (this entity)
+	 * @param target - Target entity
+	 * @param foreignKey - Accessor for FK field on SOURCE entity
+	 */
+	belongsTo<Target extends EntityDef<string, EntityDefinition>>(
+		target: Target,
+		foreignKey?: (sourceFields: { [K in keyof Source["fields"]]: K }) => keyof Source["fields"],
+	): BelongsToType<Target["_name"] & string> & { foreignKey?: string };
+}
+
+/**
+ * Create a relation builder for a source entity.
+ * The builder provides type-safe FK accessors based on where the FK actually lives.
+ */
+function createRelationBuilder<Source extends EntityDef<string, EntityDefinition>>(
+	_source: Source,
+): RelationBuilder<Source> {
+	return {
+		hasMany<Target extends EntityDef<string, EntityDefinition>>(
+			target: Target,
+			foreignKeyAccessor?: (
+				targetFields: { [K in keyof Target["fields"]]: K },
+			) => keyof Target["fields"],
+		): HasManyType<Target["_name"] & string> & { foreignKey?: string } {
+			const foreignKey = foreignKeyAccessor
+				? extractFieldName(foreignKeyAccessor as (entity: unknown) => unknown)
+				: undefined;
+			return new HasManyType(target._name ?? "", foreignKey);
+		},
+
+		hasOne<Target extends EntityDef<string, EntityDefinition>>(
+			target: Target,
+			foreignKeyAccessor?: (
+				targetFields: { [K in keyof Target["fields"]]: K },
+			) => keyof Target["fields"],
+		): HasOneType<Target["_name"] & string> & { foreignKey?: string } {
+			const foreignKey = foreignKeyAccessor
+				? extractFieldName(foreignKeyAccessor as (entity: unknown) => unknown)
+				: undefined;
+			return new HasOneType(target._name ?? "", foreignKey);
+		},
+
+		belongsTo<Target extends EntityDef<string, EntityDefinition>>(
+			target: Target,
+			foreignKeyAccessor?: (
+				sourceFields: { [K in keyof Source["fields"]]: K },
+			) => keyof Source["fields"],
+		): BelongsToType<Target["_name"] & string> & { foreignKey?: string } {
+			const foreignKey = foreignKeyAccessor
+				? extractFieldName(foreignKeyAccessor as (entity: unknown) => unknown)
+				: undefined;
+			return new BelongsToType(target._name ?? "", foreignKey);
+		},
+	};
+}
+
+/**
  * Define relations for an entity separately from the entity definition.
  * This allows for a cleaner separation of concerns.
  *
  * @param entity - The entity to define relations for
- * @param relations - Object of relation definitions
+ * @param relationsOrBuilder - Object of relation definitions OR builder function
  *
  * @example
  * ```typescript
+ * // Builder function (recommended - fully type-safe)
+ * const postRelations = relation(Post, (rel) => ({
+ *   author: rel.belongsTo(User, (post) => post.authorId),  // FK on Post ✅
+ *   comments: rel.hasMany(Comment, (comment) => comment.postId),  // FK on Comment ✅
+ * }));
+ *
+ * // Plain object (backward compatible)
  * const userRelations = relation(User, {
  *   posts: hasMany(Post, e => e.authorId),
  * });
  *
- * const postRelations = relation(Post, {
- *   author: belongsTo(User, e => e.authorId),
- * });
- *
- * // Can be collected as an array
+ * // Collect as array
  * const relations = [userRelations, postRelations];
  * ```
  */
 export function relation<
 	E extends EntityDef<string, EntityDefinition>,
 	R extends Record<string, RelationTypeWithForeignKey>,
->(entity: E, relations: R): RelationDef<E, R> {
+>(entity: E, relationsOrBuilder: R | ((builder: RelationBuilder<E>) => R)): RelationDef<E, R> {
+	const relations =
+		typeof relationsOrBuilder === "function"
+			? relationsOrBuilder(createRelationBuilder(entity))
+			: relationsOrBuilder;
 	return {
 		entity,
 		relations,

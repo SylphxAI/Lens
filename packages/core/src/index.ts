@@ -84,6 +84,8 @@ export {
 	hasMany,
 	hasOne,
 	isEntityDef,
+	// Relation builder (for type-safe FK accessors in relation())
+	type RelationBuilder,
 	type RelationDef,
 	type RelationTypeWithForeignKey,
 	// Separate relation definition

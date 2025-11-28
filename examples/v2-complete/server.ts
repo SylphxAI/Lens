@@ -4,7 +4,7 @@
  * Demonstrates: Entity definitions with relations, router pattern
  */
 
-import { entity, t, query, mutation, router, hasMany, belongsTo, relation } from "@sylphx/lens-core";
+import { entity, t, query, mutation, router, relation } from "@sylphx/lens-core";
 import { createServer } from "@sylphx/lens-server";
 import { z } from "zod";
 
@@ -40,24 +40,27 @@ export const Comment = entity("Comment", {
 });
 
 // =============================================================================
-// Relations
+// Relations (using builder pattern for type-safe FK accessors)
 // =============================================================================
 
 export const relations = [
-	relation(User, {
-		posts: hasMany(Post, (e) => e.authorId),
-		comments: hasMany(Comment, (e) => e.authorId),
-	}),
-	relation(Post, {
-		// belongsTo: foreign key is on source entity (Post), so use string
-		author: belongsTo(User),
-		comments: hasMany(Comment, (e) => e.postId),
-	}),
-	relation(Comment, {
-		// belongsTo: foreign key is on source entity (Comment), so use string
-		author: belongsTo(User),
-		post: belongsTo(Post),
-	}),
+	// User: hasMany relations - FK is on target entities
+	relation(User, (rel) => ({
+		posts: rel.hasMany(Post, (post) => post.authorId),
+		comments: rel.hasMany(Comment, (comment) => comment.authorId),
+	})),
+
+	// Post: belongsTo (FK on Post) + hasMany (FK on Comment)
+	relation(Post, (rel) => ({
+		author: rel.belongsTo(User, (post) => post.authorId), // FK is on Post ✅
+		comments: rel.hasMany(Comment, (comment) => comment.postId),
+	})),
+
+	// Comment: belongsTo relations - FK is on Comment
+	relation(Comment, (rel) => ({
+		author: rel.belongsTo(User, (comment) => comment.authorId), // FK is on Comment ✅
+		post: rel.belongsTo(Post, (comment) => comment.postId), // FK is on Comment ✅
+	})),
 ];
 
 // =============================================================================
