@@ -634,7 +634,28 @@ export interface ResolverRegistry<TContext = FieldResolverContext> {
 		ResolverDef<EntityDef<string, EntityDefinition>, Record<string, FieldDef<any, any>>, TContext>
 	>;
 
-	/** Register a resolver */
+	/**
+	 * Add a resolver for an entity (preferred API - no generics needed)
+	 *
+	 * @example
+	 * ```typescript
+	 * const resolvers = createResolverRegistry<AppContext>();
+	 *
+	 * resolvers.add(User, (f) => ({
+	 *   id: f.expose("id"),
+	 *   name: f.expose("name"),
+	 *   posts: f.many(Post).resolve((user, args, ctx) => {
+	 *     // ctx is AppContext ✅
+	 *   }),
+	 * }));
+	 * ```
+	 */
+	add<TEntity extends EntityDef<string, EntityDefinition>>(
+		entity: TEntity,
+		builder: (f: FieldBuilder<TEntity, TContext>) => Record<string, FieldDef<any, any>>,
+	): void;
+
+	/** Register a resolver (legacy API) */
 	register<TEntity extends EntityDef<string, EntityDefinition>>(
 		resolver: ResolverDef<TEntity, Record<string, FieldDef<any, any>>, TContext>,
 	): void;
@@ -655,25 +676,50 @@ export interface ResolverRegistry<TContext = FieldResolverContext> {
  *
  * @example
  * ```typescript
- * const registry = createResolverRegistry();
+ * const resolvers = createResolverRegistry<AppContext>();
  *
- * registry.register(resolver(User, (f) => ({ ... })));
- * registry.register(resolver(Post, (f) => ({ ... })));
+ * // Preferred API - no generics needed
+ * resolvers.add(User, (f) => ({
+ *   id: f.expose("id"),
+ *   posts: f.many(Post).resolve((user, args, ctx) => ...),
+ * }));
  *
- * // Use in execution engine
- * const userResolver = registry.get('User');
+ * // Legacy API
+ * resolvers.register(resolver(User, (f) => ({ ... })));
  * ```
  */
 export function createResolverRegistry<
 	TContext = FieldResolverContext,
 >(): ResolverRegistry<TContext> {
-	const resolvers = new Map<
+	const resolversMap = new Map<
 		string,
 		ResolverDef<EntityDef<string, EntityDefinition>, Record<string, FieldDef<any, any>>, TContext>
 	>();
 
 	return {
-		resolvers,
+		resolvers: resolversMap,
+
+		add<TEntity extends EntityDef<string, EntityDefinition>>(
+			entity: TEntity,
+			builder: (f: FieldBuilder<TEntity, TContext>) => Record<string, FieldDef<any, any>>,
+		): void {
+			const resolverDef = resolver<TEntity, Record<string, FieldDef<any, any>>, TContext>(
+				entity,
+				builder as (f: FieldBuilder<TEntity, TContext>) => Record<string, FieldDef<any, any>>,
+			);
+			const entityName = entity._name;
+			if (!entityName) {
+				throw new Error("Entity must have a name to register resolver");
+			}
+			resolversMap.set(
+				entityName,
+				resolverDef as ResolverDef<
+					EntityDef<string, EntityDefinition>,
+					Record<string, FieldDef<any, any>>,
+					TContext
+				>,
+			);
+		},
 
 		register<TEntity extends EntityDef<string, EntityDefinition>>(
 			resolverDef: ResolverDef<TEntity, Record<string, FieldDef<any, any>>, TContext>,
@@ -682,7 +728,7 @@ export function createResolverRegistry<
 			if (!entityName) {
 				throw new Error("Entity must have a name to register resolver");
 			}
-			resolvers.set(
+			resolversMap.set(
 				entityName,
 				resolverDef as ResolverDef<
 					EntityDef<string, EntityDefinition>,
@@ -693,11 +739,11 @@ export function createResolverRegistry<
 		},
 
 		get(entityName: string) {
-			return resolvers.get(entityName);
+			return resolversMap.get(entityName);
 		},
 
 		has(entityName: string): boolean {
-			return resolvers.has(entityName);
+			return resolversMap.has(entityName);
 		},
 	};
 }
