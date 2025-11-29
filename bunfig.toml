@@ -1,3 +1,4 @@
 [test]
 # Only run tests in packages directory (excluding react which has its own bunfig)
+# React tests must be run from packages/react directory due to happy-dom preload
 root = "."
