@@ -283,8 +283,8 @@ export interface QueryBuilder<TInput = void, TOutput = unknown, TContext = unkno
 	/** Define return type (optional - for entity outputs) */
 	returns<R extends ReturnSpec>(spec: R): QueryBuilder<TInput, InferReturnType<R>, TContext>;
 
-	/** Define resolver function */
-	resolve<TOut = TOutput>(fn: ResolverFn<TInput, TOut, TContext>): QueryDef<TInput, TOut>;
+	/** Define resolver function - uses TOutput from .returns() */
+	resolve(fn: ResolverFn<TInput, TOutput, TContext>): QueryDef<TInput, TOutput, TContext>;
 }
 
 class QueryBuilderImpl<TInput = void, TOutput = unknown, TContext = unknown>
@@ -312,13 +312,13 @@ class QueryBuilderImpl<TInput = void, TOutput = unknown, TContext = unknown>
 		return builder;
 	}
 
-	resolve<TOut = TOutput>(fn: ResolverFn<TInput, TOut, TContext>): QueryDef<TInput, TOut> {
+	resolve(fn: ResolverFn<TInput, TOutput, TContext>): QueryDef<TInput, TOutput, TContext> {
 		return {
 			_type: "query",
 			_name: this._name,
 			_input: this._inputSchema,
 			_output: this._outputSpec,
-			_brand: {} as { input: TInput; output: TOut },
+			_brand: {} as { input: TInput; output: TOutput },
 			_resolve: fn,
 		};
 	}

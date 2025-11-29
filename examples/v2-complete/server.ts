@@ -176,7 +176,10 @@ const commentResolver = resolver(Comment, (f) => ({
 const userRouter = router({
 	whoami: query()
 		.returns(User)
-		.resolve(({ ctx }) => ctx.currentUser),
+		.resolve(({ ctx }) => {
+			if (!ctx.currentUser) throw new Error("Not authenticated");
+			return ctx.currentUser;
+		}),
 
 	get: query()
 		.input(z.object({ id: z.string() }))
