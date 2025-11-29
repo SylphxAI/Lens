@@ -308,7 +308,7 @@ function handleSSE(server: LensServer, path: string, url: URL): Response {
 					}) => { unsubscribe: () => void };
 				};
 
-				const subscription = observable.subscribe({
+				const _subscription = observable.subscribe({
 					next: (value) => {
 						const data = `data: ${JSON.stringify(value.data)}\n\n`;
 						controller.enqueue(encoder.encode(data));

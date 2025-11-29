@@ -148,12 +148,6 @@ export interface WebSocketLike {
 	onerror?: ((error: unknown) => void) | null;
 }
 
-/** Emit context for streaming resolvers */
-interface EmitContext<T> {
-	emit: (data: T) => void;
-	onCleanup: (fn: () => void) => () => void;
-}
-
 // =============================================================================
 // Protocol Messages
 // =============================================================================
@@ -479,7 +473,7 @@ class LensServerImpl<
 		};
 
 		// Add queries
-		for (const [name, def] of Object.entries(this.queries)) {
+		for (const [name, _def] of Object.entries(this.queries)) {
 			setNested(name, { type: "query" });
 		}
 

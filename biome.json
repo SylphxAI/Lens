@@ -24,9 +24,6 @@
 			},
 			"performance": {
 				"noAccumulatingSpread": "off"
-			},
-			"correctness": {
-				"noUnusedVariables": "off"
 			}
 		}
 	},

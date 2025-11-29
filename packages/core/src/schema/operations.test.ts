@@ -108,7 +108,7 @@ describe("Aggregation types", () => {
 		expect(numeric2).toBe("score");
 
 		// @ts-expect-error - 'name' is string, not numeric
-		const badNumeric: UserNumeric = "name";
+		const _badNumeric: UserNumeric = "name";
 	});
 
 	it("CountInput allows type-safe count options", () => {

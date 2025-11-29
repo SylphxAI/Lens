@@ -329,7 +329,8 @@ describe("GraphStateManager", () => {
 	});
 
 	describe("array operations", () => {
-		interface User {
+		// Interface kept for documentation - shows expected array shape
+		interface _User {
 			id: string;
 			name: string;
 		}

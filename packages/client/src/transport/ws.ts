@@ -180,13 +180,13 @@ export const ws: WsTransport = function ws(options: WsTransportOptions): Transpo
 		socket = null;
 
 		// Reject all pending operations
-		for (const [id, pending] of pendingOperations) {
+		for (const [_id, pending] of pendingOperations) {
 			pending.reject(new Error("WebSocket disconnected"));
 		}
 		pendingOperations.clear();
 
 		// Notify all subscriptions
-		for (const [id, sub] of subscriptions) {
+		for (const [_id, sub] of subscriptions) {
 			sub.observer.error?.(new Error("WebSocket disconnected"));
 		}
 

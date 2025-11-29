@@ -204,16 +204,6 @@ export class Schema<S extends SchemaDefinition> {
 // Schema Creation
 // =============================================================================
 
-/** Helper type that returns never if there are invalid relations, otherwise returns true */
-type HasValidRelations<S extends SchemaDefinition> =
-	InvalidRelationTargets<S> extends never ? true : false;
-
-/** Error type shown when relations are invalid */
-type RelationError<S extends SchemaDefinition> =
-	InvalidRelationTargets<S> extends never
-		? never
-		: `Invalid relation target: "${InvalidRelationTargets<S> & string}". Valid entities are: ${keyof S & string}`;
-
 /**
  * Create a typed schema from entity definitions.
  *

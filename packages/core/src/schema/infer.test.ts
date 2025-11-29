@@ -86,9 +86,9 @@ describe("Type Inference", () => {
 	describe("Scalar Inference", () => {
 		test("infers scalar types correctly", () => {
 			// These are compile-time checks - if they compile, inference works
-			type StringType = InferScalar<ReturnType<typeof t.string>>;
-			type IntType = InferScalar<ReturnType<typeof t.int>>;
-			type BoolType = InferScalar<ReturnType<typeof t.boolean>>;
+			type _StringType = InferScalar<ReturnType<typeof t.string>>;
+			type _IntType = InferScalar<ReturnType<typeof t.int>>;
+			type _BoolType = InferScalar<ReturnType<typeof t.boolean>>;
 
 			// Runtime validation that schema has correct structure
 			const userDef = testSchema.definition.User;
@@ -107,7 +107,7 @@ describe("Type Inference", () => {
 	describe("Entity Inference", () => {
 		test("infers entity with scalar fields", () => {
 			// Type assertion - if this compiles, the inference works
-			type UserType = InferEntity<TestSchemaDefinition["User"], TestSchemaDefinition>;
+			type _UserType = InferEntity<TestSchemaDefinition["User"], TestSchemaDefinition>;
 
 			// The type should include all scalar fields
 			// Runtime check that schema structure is correct

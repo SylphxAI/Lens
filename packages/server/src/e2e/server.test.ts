@@ -40,7 +40,7 @@ const mockUsers = [
 	{ id: "user-2", name: "Bob", email: "bob@example.com", status: "offline" },
 ];
 
-const mockPosts = [
+const _mockPosts = [
 	{ id: "post-1", title: "Hello", content: "World", authorId: "user-1" },
 	{ id: "post-2", title: "Test", content: "Post", authorId: "user-1" },
 ];

@@ -279,7 +279,7 @@ type OptionalScalarFields<E extends EntityDefinition> = {
 /** Create input type with proper optional handling */
 export type CreateInput<
 	E extends EntityDefinition,
-	S extends SchemaDefinition = never,
+	_S extends SchemaDefinition = never,
 > = RequiredScalarFields<E> &
 	OptionalScalarFields<E> & {
 		[K in RelationFields<E>]?: E[K] extends BelongsToType<string>

@@ -360,7 +360,7 @@ describe("Streaming support", () => {
 describe("Input validation", () => {
 	it("input schema validates data", () => {
 		const schema = z.object({ id: z.string() });
-		const getUser = query()
+		const _getUser = query()
 			.input(schema)
 			.returns(User)
 			.resolve(({ input }) => ({ id: input.id, name: "John", email: "john@example.com" }));

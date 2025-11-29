@@ -34,9 +34,6 @@ import type { DeltaOperation, PatchOperation, Update } from "../updates/strategi
 /** Extract string keys from object type */
 type StringKeyOf<T> = Extract<keyof T, string>;
 
-/** Check if T is an array type */
-type IsArray<T> = T extends readonly unknown[] ? true : false;
-
 /** Get array element type */
 type ArrayElement<T> = T extends readonly (infer E)[] ? E : never;
 

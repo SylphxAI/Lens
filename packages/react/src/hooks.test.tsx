@@ -17,7 +17,7 @@ function createMockQueryResult<T>(initialValue: T | null = null): QueryResult<T>
 	_setError: (error: Error) => void;
 } {
 	let currentValue = initialValue;
-	let currentError: Error | null = null;
+	let _currentError: Error | null = null;
 	const subscribers: Array<(value: T) => void> = [];
 	let resolved = false;
 	let resolvePromise: ((value: T) => void) | null = null;
@@ -73,7 +73,7 @@ function createMockQueryResult<T>(initialValue: T | null = null): QueryResult<T>
 			}
 		},
 		_setError(error: Error) {
-			currentError = error;
+			_currentError = error;
 			result.loading.value = false;
 			result.error.value = error;
 			if (!resolved && rejectPromise) {

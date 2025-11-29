@@ -34,7 +34,7 @@ const mockUsers = [
 	{ id: "user-2", name: "Bob", email: "bob@example.com", bio: "Designer" },
 ];
 
-const mockPosts = [
+const _mockPosts = [
 	{ id: "post-1", title: "Hello", content: "World", authorId: "user-1" },
 	{ id: "post-2", title: "Test", content: "Post", authorId: "user-1" },
 ];
@@ -632,12 +632,12 @@ describe("Streaming Support", () => {
 
 describe("Minimum Transfer", () => {
 	it("sends initial data on subscribe", async () => {
-		let emitFn: ((data: unknown) => void) | null = null;
+		let _emitFn: ((data: unknown) => void) | null = null;
 
 		const liveQuery = query()
 			.returns(User)
 			.resolve(({ emit }) => {
-				emitFn = emit;
+				_emitFn = emit;
 				return { id: "1", name: "Alice", email: "alice@example.com" };
 			});
 

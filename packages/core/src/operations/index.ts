@@ -377,13 +377,13 @@ export interface MutationDef<TInput = unknown, TOutput = unknown, TContext = unk
 }
 
 /** Mutation builder - fluent interface */
-export interface MutationBuilder<TInput = unknown, TOutput = unknown, TContext = unknown> {
+export interface MutationBuilder<_TInput = unknown, TOutput = unknown, TContext = unknown> {
 	/** Define input validation schema (required for mutations) */
 	input<T>(schema: ZodLikeSchema<T>): MutationBuilderWithInput<T, TOutput, TContext>;
 }
 
 /** Mutation builder after input is defined */
-export interface MutationBuilderWithInput<TInput, TOutput = unknown, TContext = unknown> {
+export interface MutationBuilderWithInput<TInput, _TOutput = unknown, TContext = unknown> {
 	/** Define return type (optional - for entity outputs) */
 	returns<R extends ReturnSpec>(
 		spec: R,
