@@ -268,6 +268,125 @@ The server automatically selects optimal transfer strategies:
 
 ---
 
+## Entity & Field Resolution
+
+Lens separates entity definition from field resolution to avoid circular reference issues and provide clean separation of concerns.
+
+### 1. Define Entities (Scalar Fields Only)
+
+Entities define the shape of your data with scalar fields. No relations here - this avoids TypeScript circular reference issues:
+
+```typescript
+import { entity, t } from '@sylphx/lens-core'
+
+const User = entity("User", {
+  id: t.id(),
+  name: t.string(),
+  email: t.string(),
+  role: t.enum(["user", "admin"]),
+  createdAt: t.date(),
+})
+
+const Post = entity("Post", {
+  id: t.id(),
+  title: t.string(),
+  content: t.string(),
+  authorId: t.string(),  // FK to User (scalar, not relation)
+  published: t.boolean(),
+})
+```
+
+### 2. Define Field Resolvers
+
+Use `resolver()` to define which fields are exposed and how relations are resolved:
+
+```typescript
+import { resolver, createResolverRegistry } from '@sylphx/lens-core'
+
+const resolvers = createResolverRegistry<AppContext>()
+
+// User resolver
+resolvers.register(
+  resolver(User, (f) => ({
+    // Expose scalar fields from parent data
+    id: f.expose("id"),
+    name: f.expose("name"),
+    email: f.expose("email"),
+    role: f.expose("role"),
+
+    // Define relations with resolve functions
+    posts: f.many(Post).resolve((user, ctx) =>
+      ctx.db.posts.filter(p => p.authorId === user.id)
+    ),
+  }))
+)
+
+// Post resolver
+resolvers.register(
+  resolver(Post, (f) => ({
+    id: f.expose("id"),
+    title: f.expose("title"),
+    content: f.expose("content"),
+    published: f.expose("published"),
+
+    // belongsTo relation
+    author: f.one(User).resolve((post, ctx) =>
+      ctx.db.users.find(u => u.id === post.authorId)
+    ),
+  }))
+)
+```
+
+### 3. Register with Server
+
+```typescript
+const server = createServer({
+  router: appRouter,
+  entities: { User, Post },
+  resolvers,  // Pass the resolver registry
+  context: () => ({ db }),
+})
+```
+
+### Field Builder API
+
+The `resolver()` function provides a field builder with these methods:
+
+| Method | Description | Example |
+|--------|-------------|---------|
+| `f.expose(field)` | Expose a scalar field from parent | `f.expose("name")` |
+| `f.one(Entity)` | Define a singular relation | `f.one(User).resolve(...)` |
+| `f.many(Entity)` | Define a collection relation | `f.many(Post).resolve(...)` |
+| `f.string()` | Define a computed string field | `f.string().resolve((p, ctx) => ...)` |
+| `f.int()` | Define a computed int field | `f.int().resolve(...)` |
+
+### Why This Design?
+
+**Avoids circular references:** Entity definitions are pure data shapes. Relations are defined separately in resolvers.
+
+**GraphQL-like resolution:** Each field can have its own resolver, just like GraphQL. The parent data flows down from operation resolvers.
+
+**Type-safe:** Full TypeScript inference for parent data, context, and return types.
+
+**Flexible:** Choose which fields to expose. Add computed fields. Transform data.
+
+```typescript
+// Parent data comes from operation resolver
+const getUser = query()
+  .returns(User)
+  .resolve(({ input, ctx }) => ctx.db.users.find(input.id))
+  //       ↑ This becomes "parent" in field resolvers
+
+// Field resolver receives parent + context
+resolver(User, (f) => ({
+  fullName: f.string().resolve((user, ctx) =>
+    `${user.name} (${user.role})`  // Computed from parent
+  ),
+}))
+```
+
+---
+
 ## Architecture
 
 ### Data Flow
