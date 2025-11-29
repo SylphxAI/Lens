@@ -2,13 +2,14 @@
  * V2 Complete Example - Server
  *
  * Demonstrates:
+ * - lens<AppContext>() factory for typed builders
  * - Entity definitions (scalar fields only)
- * - resolver() pattern with field builder
+ * - resolver() pattern with pure values (functional)
  * - Field arguments with .args(schema).resolve((parent, args, ctx) => ...)
  * - Relations with f.one() and f.many()
  */
 
-import { entity, t, query, mutation, router, createResolverRegistry } from "@sylphx/lens-core";
+import { entity, t, router, lens } from "@sylphx/lens-core";
 import { createServer } from "@sylphx/lens-server";
 import { z } from "zod";
 
@@ -71,13 +72,17 @@ const db = {
 };
 
 // =============================================================================
-// Field Resolvers (new resolver() pattern)
+// Typed Builders (functional pattern - define context once)
 // =============================================================================
 
-const resolvers = createResolverRegistry<AppContext>();
+const { query, mutation, resolver } = lens<AppContext>();
+
+// =============================================================================
+// Field Resolvers (pure values - no mutable registry)
+// =============================================================================
 
 // User resolver - defines which fields are exposed and how relations are resolved
-resolvers.add(User, (f) => ({
+const userResolver = resolver(User, (f) => ({
 	id: f.expose("id"),
 	name: f.expose("name"),
 	email: f.expose("email"),
@@ -112,7 +117,7 @@ resolvers.add(User, (f) => ({
 }));
 
 // Post resolver
-resolvers.add(Post, (f) => ({
+const postResolver = resolver(Post, (f) => ({
 	id: f.expose("id"),
 	title: f.expose("title"),
 	content: f.expose("content"),
@@ -146,7 +151,7 @@ resolvers.add(Post, (f) => ({
 }));
 
 // Comment resolver
-resolvers.add(Comment, (f) => ({
+const commentResolver = resolver(Comment, (f) => ({
 	id: f.expose("id"),
 	content: f.expose("content"),
 	createdAt: f.expose("createdAt"),
@@ -165,15 +170,15 @@ resolvers.add(Comment, (f) => ({
 }));
 
 // =============================================================================
-// Operations
+// Operations (context type inferred from lens())
 // =============================================================================
 
 const userRouter = router({
-	whoami: query<AppContext>()
+	whoami: query()
 		.returns(User)
 		.resolve(({ ctx }) => ctx.currentUser),
 
-	get: query<AppContext>()
+	get: query()
 		.input(z.object({ id: z.string() }))
 		.returns(User)
 		.resolve(({ input, ctx }) => {
@@ -182,7 +187,7 @@ const userRouter = router({
 			return user;
 		}),
 
-	search: query<AppContext>()
+	search: query()
 		.input(z.object({ query: z.string(), limit: z.number().optional() }))
 		.returns([User])
 		.resolve(({ input, ctx }) => {
@@ -192,7 +197,7 @@ const userRouter = router({
 			return input.limit ? results.slice(0, input.limit) : results;
 		}),
 
-	update: mutation<AppContext>()
+	update: mutation()
 		.input(z.object({
 			id: z.string(),
 			name: z.string().optional(),
@@ -209,7 +214,7 @@ const userRouter = router({
 			return updated;
 		}),
 
-	bulkPromote: mutation<AppContext>()
+	bulkPromote: mutation()
 		.input(z.object({
 			userIds: z.array(z.string()),
 			newRole: z.enum(["user", "admin", "vip"]),
@@ -228,7 +233,7 @@ const userRouter = router({
 });
 
 const postRouter = router({
-	get: query<AppContext>()
+	get: query()
 		.input(z.object({ id: z.string() }))
 		.returns(Post)
 		.resolve(({ input, ctx }) => {
@@ -237,7 +242,7 @@ const postRouter = router({
 			return post;
 		}),
 
-	trending: query<AppContext>()
+	trending: query()
 		.input(z.object({ limit: z.number().default(10) }))
 		.returns([Post])
 		.resolve(({ input, ctx }) => {
@@ -247,7 +252,7 @@ const postRouter = router({
 			return posts.slice(0, input.limit);
 		}),
 
-	create: mutation<AppContext>()
+	create: mutation()
 		.input(z.object({ title: z.string(), content: z.string() }))
 		.returns(Post)
 		.optimistic("create")
@@ -264,7 +269,7 @@ const postRouter = router({
 			return post;
 		}),
 
-	update: mutation<AppContext>()
+	update: mutation()
 		.input(z.object({
 			id: z.string(),
 			title: z.string().optional(),
@@ -280,7 +285,7 @@ const postRouter = router({
 			return updated;
 		}),
 
-	publish: mutation<AppContext>()
+	publish: mutation()
 		.input(z.object({ id: z.string() }))
 		.returns(Post)
 		.optimistic({ merge: { published: true } })
@@ -294,7 +299,7 @@ const postRouter = router({
 });
 
 const commentRouter = router({
-	add: mutation<AppContext>()
+	add: mutation()
 		.input(z.object({ postId: z.string(), content: z.string() }))
 		.returns(Comment)
 		.optimistic("create")
@@ -324,13 +329,13 @@ const appRouter = router({
 export type AppRouter = typeof appRouter;
 
 // =============================================================================
-// Server
+// Server (accepts resolver array - functional pattern)
 // =============================================================================
 
 export const server = createServer({
 	router: appRouter,
 	entities: { User, Post, Comment },
-	resolvers,
+	resolvers: [userResolver, postResolver, commentResolver],  // Array of pure values
 	context: () => ({
 		db,
 		currentUser: db.users.get("1") ?? null,

@@ -759,6 +759,76 @@ export function createResolverRegistry<
 }
 
 // =============================================================================
+// Resolvers Array Support
+// =============================================================================
+
+/** Array of resolver definitions (functional pattern) */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Resolvers = ResolverDef<any, any, any>[];
+
+/**
+ * Convert resolver array to lookup map.
+ *
+ * @example
+ * ```typescript
+ * const resolverMap = toResolverMap([userResolver, postResolver]);
+ * const userDef = resolverMap.get("User");
+ * ```
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function toResolverMap(resolvers: Resolvers): Map<string, ResolverDef<any, any, any>> {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const map = new Map<string, ResolverDef<any, any, any>>();
+	for (const resolver of resolvers) {
+		const entityName = resolver.entity._name;
+		if (!entityName) {
+			throw new Error("Resolver entity must have a name");
+		}
+		map.set(entityName, resolver);
+	}
+	return map;
+}
+
+/** Input type for server - accepts array or registry (backward compatible) */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ResolversInput = ResolverDef<any, any, any>[] | ResolverRegistry<any>;
+
+/**
+ * Check if input is a resolver registry (vs array)
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function isResolverRegistry(input: ResolversInput): input is ResolverRegistry<any> {
+	return input !== null && typeof input === "object" && "resolvers" in input && "get" in input;
+}
+
+/**
+ * Normalize resolver input to map.
+ *
+ * Accepts either:
+ * - ResolverDef[] (new functional pattern)
+ * - ResolverRegistry (legacy imperative pattern)
+ *
+ * @example
+ * ```typescript
+ * // Functional (preferred)
+ * const map = normalizeResolvers([userResolver, postResolver]);
+ *
+ * // Legacy
+ * const registry = createResolverRegistry();
+ * registry.add(User, ...);
+ * const map = normalizeResolvers(registry);
+ * ```
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function normalizeResolvers(input: ResolversInput): Map<string, ResolverDef<any, any, any>> {
+	if (isResolverRegistry(input)) {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		return input.resolvers as Map<string, ResolverDef<any, any, any>>;
+	}
+	return toResolverMap(input);
+}
+
+// =============================================================================
 // Type Guards
 // =============================================================================
 

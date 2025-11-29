@@ -21,8 +21,11 @@ import {
 	isMutationDef,
 	isQueryDef,
 	type MutationDef,
+	normalizeResolvers,
 	type QueryDef,
+	type ResolverDef,
 	type ResolverRegistry,
+	type ResolversInput,
 	type RouterDef,
 	runWithContext,
 	type Update,
@@ -51,6 +54,10 @@ export type MutationsMap = Record<string, MutationDef<unknown, unknown>>;
 
 /** Resolver registry type (optional - uses new resolver() pattern) */
 export type ResolversRegistry = ResolverRegistry;
+
+/** Resolver map type for internal use (uses any to avoid complex variance issues) */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type ResolverMap = Map<string, ResolverDef<any, any, any>>;
 
 /** Operation metadata for handshake */
 export interface OperationMeta {
@@ -83,8 +90,14 @@ export interface LensServerConfig<
 	queries?: QueriesMap;
 	/** Mutation definitions (flat, legacy) */
 	mutations?: MutationsMap;
-	/** Field resolvers registry (new resolver() pattern) */
-	resolvers?: ResolverRegistry;
+	/**
+	 * Field resolvers (new resolver() pattern)
+	 *
+	 * Accepts either:
+	 * - ResolverDef[] array (functional, preferred)
+	 * - ResolverRegistry (legacy imperative pattern)
+	 */
+	resolvers?: ResolversInput;
 	/** Logger for server messages (default: silent) */
 	logger?: LensLogger;
 	/** Context factory - must return the context type expected by the router */
@@ -308,7 +321,7 @@ class LensServerImpl<
 	private queries: Q;
 	private mutations: M;
 	private entities: EntitiesMap;
-	private resolvers?: ResolverRegistry;
+	private resolverMap?: ResolverMap;
 	private contextFactory: (req?: unknown) => TContext | Promise<TContext>;
 	private version: string;
 	private logger: LensLogger;
@@ -347,7 +360,8 @@ class LensServerImpl<
 		this.queries = queries as Q;
 		this.mutations = mutations as M;
 		this.entities = config.entities ?? {};
-		this.resolvers = config.resolvers;
+		// Normalize resolvers input (array or registry) to internal map
+		this.resolverMap = config.resolvers ? normalizeResolvers(config.resolvers) : undefined;
 		this.contextFactory = config.context ?? (() => ({}) as TContext);
 		this.version = config.version ?? "1.0.0";
 		this.logger = config.logger ?? noopLogger;
@@ -1232,10 +1246,10 @@ class LensServerImpl<
 		data: T,
 		select?: SelectionObject,
 	): Promise<T> {
-		if (!data || !select || !this.resolvers) return data;
+		if (!data || !select || !this.resolverMap) return data;
 
 		// Get resolver for this entity
-		const resolverDef = this.resolvers.get(entityName);
+		const resolverDef = this.resolverMap.get(entityName);
 		if (!resolverDef) return data;
 
 		const result = { ...(data as Record<string, unknown>) };
@@ -1406,7 +1420,7 @@ class LensServerImpl<
 					let result = item;
 
 					// Execute entity resolvers for nested data
-					if (select && this.resolvers) {
+					if (select && this.resolverMap) {
 						result = await this.executeEntityResolvers(entityName, item, select);
 					}
 
@@ -1430,7 +1444,7 @@ class LensServerImpl<
 		let result: T = data;
 
 		// Execute entity resolvers for nested data
-		if (select && this.resolvers) {
+		if (select && this.resolverMap) {
 			result = (await this.executeEntityResolvers(entityName, data, select)) as T;
 		}
 
@@ -1558,7 +1572,8 @@ export type ServerConfigWithInferredContext<
 	router: TRouter;
 	queries?: Q;
 	mutations?: M;
-	resolvers?: ResolverRegistry;
+	/** Field resolvers - accepts array (functional) or registry (legacy) */
+	resolvers?: ResolversInput;
 	/** Context factory - type is inferred from router's procedures */
 	context?: (req?: unknown) => InferRouterContext<TRouter> | Promise<InferRouterContext<TRouter>>;
 	version?: string;
@@ -1576,7 +1591,8 @@ export type ServerConfigLegacy<
 	router?: undefined;
 	queries?: Q;
 	mutations?: M;
-	resolvers?: ResolverRegistry;
+	/** Field resolvers - accepts array (functional) or registry (legacy) */
+	resolvers?: ResolversInput;
 	context?: (req?: unknown) => TContext | Promise<TContext>;
 	version?: string;
 };

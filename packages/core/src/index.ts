@@ -263,7 +263,7 @@ export {
 // =============================================================================
 
 export {
-	// Registry
+	// Registry (legacy - prefer lens() factory with resolver array)
 	createResolverRegistry,
 	// Types
 	type ExposedField,
@@ -276,11 +276,17 @@ export {
 	isExposedField,
 	isResolvedField,
 	isResolverDef,
+	isResolverRegistry,
+	normalizeResolvers,
 	type ResolvedField,
 	type ResolverDef,
 	type ResolverRegistry,
+	// Resolver array support (functional pattern)
+	type Resolvers,
+	type ResolversInput,
 	// Main function
 	resolver,
+	toResolverMap,
 } from "./resolvers/index";
 
 // =============================================================================
@@ -317,3 +323,17 @@ export {
 	runWithContext,
 	runWithContextAsync,
 } from "./context/index";
+
+// =============================================================================
+// Lens Factory (Primary API)
+// =============================================================================
+
+export {
+	// Types
+	type Lens,
+	type LensMutation,
+	type LensQuery,
+	type LensResolver,
+	// Main factory
+	lens,
+} from "./lens";
