@@ -3,8 +3,9 @@
  */
 
 import { describe, expect, it, mock } from "bun:test";
+import type { LensServerInterface } from "./http";
 import { http } from "./http";
-import type { Observable, Result } from "./types";
+import type { Metadata, Observable, Operation, Result } from "./types";
 
 // =============================================================================
 // Mock Fetch
@@ -239,6 +240,40 @@ describe("http transport", () => {
 			expect(result.error).toBeInstanceOf(Error);
 			expect(result.error?.message).toBe("Request timeout");
 		});
+
+		it("clears timeout when request completes successfully before timeout", async () => {
+			let timeoutCleared = false;
+			const mockFetch = mock(async (_url: string, _init?: RequestInit) => {
+				// Fast response that completes before timeout
+				return Response.json({ data: { success: true } });
+			}) as unknown as typeof fetch;
+
+			const transport = http({
+				url: "/api",
+				fetch: mockFetch,
+			});
+
+			// Spy on clearTimeout to verify it's called
+			const originalClearTimeout = globalThis.clearTimeout;
+			globalThis.clearTimeout = ((id: ReturnType<typeof setTimeout>) => {
+				timeoutCleared = true;
+				return originalClearTimeout(id);
+			}) as typeof clearTimeout;
+
+			try {
+				const result = (await transport.execute({
+					id: "1",
+					path: "user.get",
+					type: "query",
+					meta: { timeout: 5000 }, // Long timeout - request completes first
+				})) as Result;
+
+				expect(result.data).toEqual({ success: true });
+				expect(timeoutCleared).toBe(true);
+			} finally {
+				globalThis.clearTimeout = originalClearTimeout;
+			}
+		});
 	});
 
 	describe("execute() - subscriptions (polling)", () => {
@@ -417,5 +452,259 @@ describe("http transport", () => {
 			expect(errors.length).toBe(1);
 			expect(errors[0].message).toContain("500");
 		});
+
+		it("handles exception thrown during polling", async () => {
+			const mockFetch = mock(async () => {
+				throw new Error("Unexpected polling error");
+			}) as unknown as typeof fetch;
+
+			const transport = http({
+				url: "/api",
+				fetch: mockFetch,
+				polling: { interval: 20, maxRetries: 3 },
+			});
+
+			const observable = transport.execute({
+				id: "1",
+				path: "data.watch",
+				type: "subscription",
+			}) as Observable<Result>;
+
+			const errors: Error[] = [];
+
+			observable.subscribe({
+				error: (e) => errors.push(e),
+			});
+
+			await new Promise((r) => setTimeout(r, 100));
+
+			expect(errors.length).toBeGreaterThan(0);
+			expect(errors[0].message).toBe("Unexpected polling error");
+		});
+
+		it("does not call error observer after unsubscribe", async () => {
+			const mockFetch = mock(async () => {
+				throw new Error("Polling error");
+			}) as unknown as typeof fetch;
+
+			const transport = http({
+				url: "/api",
+				fetch: mockFetch,
+				polling: { interval: 20 },
+			});
+
+			const observable = transport.execute({
+				id: "1",
+				path: "data.watch",
+				type: "subscription",
+			}) as Observable<Result>;
+
+			const errors: Error[] = [];
+			const sub = observable.subscribe({
+				error: (e) => errors.push(e),
+			});
+
+			// Unsubscribe immediately
+			sub.unsubscribe();
+
+			await new Promise((r) => setTimeout(r, 100));
+
+			// Error observer should not be called after unsubscribe
+			expect(errors.length).toBe(0);
+		});
+
+		it("handles non-serializable data in polling", async () => {
+			// Create a mock response that returns data with circular reference
+			// We need to bypass Response.json() and return the circular data directly
+			const circularData: Record<string, unknown> = { name: "test" };
+			circularData.self = circularData;
+
+			const mockFetch = mock(async () => {
+				return {
+					ok: true,
+					json: async () => ({ data: circularData }),
+				} as Response;
+			}) as unknown as typeof fetch;
+
+			const transport = http({
+				url: "/api",
+				fetch: mockFetch,
+				polling: { interval: 20 },
+			});
+
+			const observable = transport.execute({
+				id: "1",
+				path: "data.watch",
+				type: "subscription",
+			}) as Observable<Result>;
+
+			const errors: Error[] = [];
+
+			observable.subscribe({
+				error: (e) => errors.push(e),
+			});
+
+			await new Promise((r) => setTimeout(r, 100));
+
+			// Should have caught the JSON.stringify error
+			expect(errors.length).toBeGreaterThan(0);
+			expect(errors[0].message).toContain("cyclic");
+		});
+	});
+});
+
+// =============================================================================
+// Tests: http.server() transport
+// =============================================================================
+
+describe("http.server transport", () => {
+	const createMockServer = (): LensServerInterface => ({
+		getMetadata: () => ({
+			version: "1.0.0",
+			operations: {
+				"user.get": { type: "query" },
+				"user.update": { type: "mutation" },
+			},
+		}),
+		execute: async (op: Operation) => {
+			if (op.path === "user.get") {
+				return { data: { id: "123", name: "John" } };
+			}
+			if (op.path === "user.update") {
+				return { data: { id: "123", name: "Updated" } };
+			}
+			if (op.path === "error.test") {
+				throw new Error("Test server error");
+			}
+			return { error: new Error("Unknown operation") };
+		},
+	});
+
+	it("serves metadata at /__lens/metadata endpoint", async () => {
+		const serverTransport = http.server({ port: 3456 });
+		const mockServer = createMockServer();
+
+		serverTransport.listen(mockServer);
+		await new Promise((r) => setTimeout(r, 100));
+
+		const response = await fetch("http://localhost:3456/__lens/metadata");
+		const metadata = (await response.json()) as Metadata;
+
+		expect(response.status).toBe(200);
+		expect(metadata.version).toBe("1.0.0");
+		expect(metadata.operations["user.get"]).toBeDefined();
+	});
+
+	it("handles POST requests to operation endpoint with path prefix", async () => {
+		const serverTransport = http.server({ port: 3457, path: "/api" });
+		const mockServer = createMockServer();
+
+		serverTransport.listen(mockServer);
+		await new Promise((r) => setTimeout(r, 100));
+
+		const response = await fetch("http://localhost:3457/api", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				id: "op-1",
+				path: "user.get",
+				type: "query",
+				input: { id: "123" },
+			}),
+		});
+
+		expect(response.status).toBe(200);
+		const result = (await response.json()) as Result;
+		expect(result.data).toEqual({ id: "123", name: "John" });
+	});
+
+	it("handles path prefix configuration", async () => {
+		const serverTransport = http.server({
+			port: 3458,
+			path: "/api",
+		});
+		const mockServer = createMockServer();
+
+		serverTransport.listen(mockServer);
+		await new Promise((r) => setTimeout(r, 100));
+
+		const metadataResponse = await fetch("http://localhost:3458/api/__lens/metadata");
+		expect(metadataResponse.status).toBe(200);
+
+		const opResponse = await fetch("http://localhost:3458/api", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				id: "op-1",
+				path: "user.get",
+				type: "query",
+			}),
+		});
+		expect(opResponse.status).toBe(200);
+		const result = (await opResponse.json()) as Result;
+		expect(result.data).toEqual({ id: "123", name: "John" });
+	});
+
+	it("handles trailing slash in path prefix", async () => {
+		const serverTransport = http.server({
+			port: 3459,
+			path: "/api/",
+		});
+		const mockServer = createMockServer();
+
+		serverTransport.listen(mockServer);
+		await new Promise((r) => setTimeout(r, 100));
+
+		const response = await fetch("http://localhost:3459/api/__lens/metadata");
+		expect(response.status).toBe(200);
+	});
+
+	it("uses custom hostname when provided", async () => {
+		const serverTransport = http.server({
+			port: 3460,
+			hostname: "127.0.0.1",
+		});
+		const mockServer = createMockServer();
+
+		serverTransport.listen(mockServer);
+		await new Promise((r) => setTimeout(r, 100));
+
+		const response = await fetch("http://127.0.0.1:3460/__lens/metadata");
+		expect(response.status).toBe(200);
+	});
+
+	it("returns 404 for unknown endpoints", async () => {
+		const serverTransport = http.server({ port: 3461 });
+		const mockServer = createMockServer();
+
+		serverTransport.listen(mockServer);
+		await new Promise((r) => setTimeout(r, 100));
+
+		const response = await fetch("http://localhost:3461/unknown");
+		expect(response.status).toBe(404);
+		expect(await response.text()).toBe("Not Found");
+	});
+
+	it("handles server execution errors with 500 status", async () => {
+		const serverTransport = http.server({ port: 3462, path: "/api" });
+		const mockServer = createMockServer();
+
+		serverTransport.listen(mockServer);
+		await new Promise((r) => setTimeout(r, 100));
+
+		const response = await fetch("http://localhost:3462/api", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({
+				id: "op-1",
+				path: "error.test",
+				type: "query",
+			}),
+		});
+
+		expect(response.status).toBe(500);
+		const result = await response.json();
+		expect(result.error).toBeDefined();
+		expect(result.error.message).toBe("Test server error");
 	});
 });

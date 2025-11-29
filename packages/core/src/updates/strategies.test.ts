@@ -47,6 +47,20 @@ describe("Value Strategy", () => {
 		const result = valueStrategy.decode(prev, update);
 		expect(result).toEqual(next);
 	});
+
+	test("estimateSize returns JSON string length", () => {
+		const update = valueStrategy.encode("old", "new");
+		const size = valueStrategy.estimateSize(update);
+		expect(size).toBe(JSON.stringify(update.data).length);
+		expect(size).toBeGreaterThan(0);
+	});
+
+	test("estimateSize works with complex objects", () => {
+		const data = { a: 1, b: "test", c: [1, 2, 3] };
+		const update = valueStrategy.encode({}, data);
+		const size = valueStrategy.estimateSize(update);
+		expect(size).toBe(JSON.stringify(data).length);
+	});
 });
 
 describe("Delta Strategy", () => {
@@ -122,6 +136,14 @@ describe("Delta Strategy", () => {
 		expect(content).toBe(
 			"This is the beginning of a long LLM response that will have streaming tokens appended to it as the model generates more content here and here",
 		);
+	});
+
+	test("estimateSize returns JSON string length", () => {
+		const longText = "a".repeat(200);
+		const update = deltaStrategy.encode(longText, `${longText} more`);
+		const size = deltaStrategy.estimateSize(update);
+		expect(size).toBeGreaterThan(0);
+		expect(size).toBe(JSON.stringify(update.data).length);
 	});
 });
 
@@ -234,6 +256,97 @@ describe("Patch Strategy", () => {
 
 		expect(result).toEqual(next);
 		expect((result as typeof prev).tempField).toBeUndefined();
+	});
+
+	test("estimateSize returns JSON string length", () => {
+		const prev = { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7 };
+		const next = { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 8 };
+		const update = patchStrategy.encode(prev, next);
+		const size = patchStrategy.estimateSize(update);
+		expect(size).toBeGreaterThan(0);
+		expect(size).toBe(JSON.stringify(update.data).length);
+	});
+
+	test("handles move operation", () => {
+		const prev = { a: { value: 1 }, b: { value: 2 }, source: { data: "test" } };
+		const operations = [{ op: "move" as const, from: "/source/data", path: "/destination" }];
+
+		const result = patchStrategy.decode(prev, { strategy: "patch", data: operations });
+		expect(result).toHaveProperty("destination", "test");
+		expect((result as { source: { data?: string } }).source).toEqual({});
+	});
+
+	test("handles copy operation", () => {
+		const prev = { source: { data: "test" }, other: "value" };
+		const operations = [{ op: "copy" as const, from: "/source/data", path: "/destination" }];
+
+		const result = patchStrategy.decode(prev, { strategy: "patch", data: operations });
+		expect(result).toHaveProperty("destination", "test");
+		expect((result as typeof prev).source).toEqual({ data: "test" }); // Source unchanged
+	});
+
+	test("handles test operation (no modification)", () => {
+		const prev = { a: 1, b: 2 };
+		const operations = [{ op: "test" as const, path: "/a", value: 1 }];
+
+		const result = patchStrategy.decode(prev, { strategy: "patch", data: operations });
+		expect(result).toEqual(prev);
+	});
+
+	test("handles move with nested paths", () => {
+		const prev = {
+			nested: { deep: { value: "test" } },
+			other: "data",
+		};
+		const operations = [{ op: "move" as const, from: "/nested/deep/value", path: "/moved" }];
+
+		const result = patchStrategy.decode(prev, { strategy: "patch", data: operations });
+		expect(result).toHaveProperty("moved", "test");
+	});
+
+	test("handles copy with complex objects", () => {
+		const prev = {
+			source: { nested: { data: [1, 2, 3] } },
+		};
+		const operations = [{ op: "copy" as const, from: "/source/nested", path: "/destination" }];
+
+		const result = patchStrategy.decode(prev, { strategy: "patch", data: operations });
+		expect((result as { destination: { data: number[] } }).destination).toEqual({ data: [1, 2, 3] });
+		// Verify it's a deep copy
+		expect((result as { destination: { data: number[] } }).destination).not.toBe((result as typeof prev).source.nested);
+	});
+
+	test("handles setValueAtPath creating missing intermediate objects", () => {
+		const prev = { a: 1 };
+		const operations = [{ op: "add" as const, path: "/new/nested/deep/value", value: "created" }];
+
+		const result = patchStrategy.decode(prev, { strategy: "patch", data: operations });
+		expect((result as { new: { nested: { deep: { value: string } } } }).new.nested.deep.value).toBe("created");
+	});
+
+	test("handles setValueAtPath when intermediate path is not an object", () => {
+		const prev = { a: "not an object" };
+		const operations = [{ op: "add" as const, path: "/a/nested/value", value: "test" }];
+
+		const result = patchStrategy.decode(prev, { strategy: "patch", data: operations });
+		// Should replace non-object with object
+		expect((result as { a: { nested: { value: string } } }).a.nested.value).toBe("test");
+	});
+
+	test("handles removeValueAtPath with non-existent path", () => {
+		const prev = { a: 1 };
+		const operations = [{ op: "remove" as const, path: "/nonexistent/path" }];
+
+		const result = patchStrategy.decode(prev, { strategy: "patch", data: operations });
+		expect(result).toEqual(prev); // Should be unchanged
+	});
+
+	test("handles removeValueAtPath when intermediate is not an object", () => {
+		const prev = { a: "not an object" };
+		const operations = [{ op: "remove" as const, path: "/a/nested/value" }];
+
+		const result = patchStrategy.decode(prev, { strategy: "patch", data: operations });
+		expect(result).toEqual(prev); // Should be unchanged
 	});
 });
 
@@ -356,6 +469,12 @@ describe("createUpdate and applyUpdate", () => {
 		expect(update.strategy).toBe("value");
 		expect(applyUpdate(undefined, update) as unknown as string).toBe("new value");
 	});
+
+	test("applyUpdate handles unknown strategy with default case", () => {
+		const update = { strategy: "unknown" as "value", data: "fallback" };
+		const result = applyUpdate("current", update);
+		expect(result).toBe("fallback");
+	});
 });
 
 // =============================================================================
@@ -464,6 +583,111 @@ describe("Array Diff Strategy", () => {
 				{ op: "remove", index: 4 },
 				{ op: "remove", index: 3 },
 			]);
+		});
+
+		test("falls back to null when positional diff is too large", () => {
+			const prev = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+			const next = [11]; // Only one item, very different
+			const diff = computeArrayDiff(prev, next);
+			expect(diff).toBeNull();
+		});
+
+		test("handles prepend with modifications (not pure prepend)", () => {
+			const prev = [3, 4, 5];
+			const next = [1, 2, 3, 4, 6]; // Last item changed
+			const diff = computeArrayDiff(prev, next);
+			// Should fall back to null since it's not pure prepend
+			expect(diff).toBeNull();
+		});
+
+		test("falls back to null when remove from end has modifications", () => {
+			const prev = [1, 2, 3, 4, 5];
+			const next = [1, 9]; // Second item changed
+			const diff = computeArrayDiff(prev, next);
+			expect(diff).toBeNull();
+		});
+
+		test("detects remove from end stops checking when first difference found", () => {
+			const prev = [1, 2, 3, 4, 5];
+			const next = [9, 2, 3]; // First item changed, only 2 removed from end
+			const diff = computeArrayDiff(prev, next);
+			// lenDiff = -2, abs(-2) = 2, max(5,3)/2 = 2.5, so 2 <= 2.5, passes length check
+			// Then in remove-from-end check, prev[0]=1 != next[0]=9, triggers break
+			expect(diff).toBeNull();
+		});
+
+		test("returns null for large diff vs replace (efficiency check)", () => {
+			// Create arrays where diff would be larger than replace
+			const prev = Array.from({ length: 50 }, (_, i) => ({
+				id: `item-${i}`,
+				data: `data-${i}`.repeat(10),
+			}));
+			const next = Array.from({ length: 50 }, (_, i) => ({
+				id: `item-${i}`,
+				data: `updated-${i}`.repeat(10), // All items updated
+			}));
+
+			const diff = computeArrayDiff(prev, next);
+			// Should return null when diff size > replace size
+			expect(diff).toBeNull();
+		});
+
+		test("returns operations for small diff vs replace (efficiency check with >5 ops)", () => {
+			// Create arrays with >5 operations but diff is still smaller than replace
+			const prev = Array.from({ length: 10 }, (_, i) => ({
+				id: `item-${i}`,
+				name: `name-${i}`,
+			}));
+			const next = [
+				...prev.slice(0, 3),
+				{ id: "new-1", name: "new-1" },
+				{ id: "new-2", name: "new-2" },
+				...prev.slice(3, 6),
+				{ id: "new-3", name: "new-3" },
+			];
+
+			const diff = computeArrayDiff(prev, next);
+			// Should return operations since diff is more efficient than replace
+			expect(diff).not.toBeNull();
+			expect(diff!.length).toBeGreaterThan(0);
+		});
+
+		test("handles insert operation at end boundary", () => {
+			const prev = [{ id: "1", name: "a" }];
+			const next = [
+				{ id: "1", name: "a" },
+				{ id: "2", name: "b" },
+				{ id: "3", name: "c" },
+			];
+			const diff = computeArrayDiff(prev, next);
+			// When adding multiple items at end, should use push
+			expect(diff).not.toBeNull();
+			const pushOps = diff!.filter((op) => op.op === "push");
+			expect(pushOps.length).toBeGreaterThan(0);
+		});
+
+		test("handles mixed insert positions", () => {
+			const prev = [{ id: "1" }, { id: "3" }];
+			const next = [{ id: "1" }, { id: "2" }, { id: "3" }, { id: "4" }];
+			const diff = computeArrayDiff(prev, next);
+			expect(diff).not.toBeNull();
+			// Should have insert for id:2 and push for id:4
+			expect(diff!.some((op) => op.op === "insert" || op.op === "push")).toBe(true);
+		});
+
+		test("empty arrays comparison", () => {
+			const prev: { id: string }[] = [];
+			const next: { id: string }[] = [];
+			const diff = computeArrayDiff(prev, next);
+			expect(diff).toEqual([]);
+		});
+
+		test("handles objects without id falling back to positional", () => {
+			const prev = [{ name: "a" }, { name: "b" }];
+			const next = [{ name: "a" }, { name: "b" }, { name: "c" }];
+			const diff = computeArrayDiff(prev, next);
+			// Should use positional diff and detect append
+			expect(diff).toEqual([{ op: "push", item: { name: "c" } }]);
 		});
 	});
 

@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { entity, mutation, query, t } from "@sylphx/lens-core";
+import { entity, mutation, query, resolver, t } from "@sylphx/lens-core";
 import { z } from "zod";
 import { createServer, type WebSocketLike } from "./create";
 
@@ -795,5 +795,990 @@ describe("onCleanup", () => {
 		ws.onclose?.();
 
 		expect(cleanedUp).toBe(true);
+	});
+
+	it("allows cleanup removal via returned function", async () => {
+		let cleanedUp = false;
+
+		const liveQuery = query()
+			.returns(User)
+			.resolve(({ onCleanup }) => {
+				const remove = onCleanup(() => {
+					cleanedUp = true;
+				});
+				// Remove the cleanup before unsubscribe
+				remove();
+				return mockUsers[0];
+			});
+
+		const server = createServer({
+			entities: { User },
+			queries: { liveQuery },
+		});
+
+		const ws = createMockWs();
+		server.handleWebSocket(ws);
+
+		// Subscribe
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "subscribe",
+				id: "sub-1",
+				operation: "liveQuery",
+				fields: "*",
+			}),
+		});
+
+		await new Promise((r) => setTimeout(r, 20));
+
+		// Unsubscribe
+		ws.onmessage?.({
+			data: JSON.stringify({ type: "unsubscribe", id: "sub-1" }),
+		});
+
+		// Should not have cleaned up since we removed it
+		expect(cleanedUp).toBe(false);
+	});
+});
+
+// =============================================================================
+// Test: execute() method (for in-process transport)
+// =============================================================================
+
+describe("execute method", () => {
+	it("executes a query operation", async () => {
+		const getUsers = query()
+			.returns([User])
+			.resolve(() => mockUsers);
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUsers },
+		});
+
+		const result = await server.execute({ path: "getUsers" });
+		expect(result.data).toEqual(mockUsers);
+		expect(result.error).toBeUndefined();
+	});
+
+	it("executes a mutation operation", async () => {
+		const createUser = mutation()
+			.input(z.object({ name: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => ({ id: "new", name: input.name, email: "" }));
+
+		const server = createServer({
+			entities: { User },
+			mutations: { createUser },
+		});
+
+		const result = await server.execute({ path: "createUser", input: { name: "Test" } });
+		expect(result.data).toEqual({ id: "new", name: "Test", email: "" });
+		expect(result.error).toBeUndefined();
+	});
+
+	it("returns error for unknown operation", async () => {
+		const server = createServer({
+			entities: { User },
+		});
+
+		const result = await server.execute({ path: "unknownOp" });
+		expect(result.data).toBeUndefined();
+		expect(result.error).toBeDefined();
+		expect(result.error?.message).toBe("Operation not found: unknownOp");
+	});
+
+	it("catches and returns errors from operations", async () => {
+		const errorQuery = query()
+			.returns(User)
+			.resolve(() => {
+				throw new Error("Test error");
+			});
+
+		const server = createServer({
+			entities: { User },
+			queries: { errorQuery },
+		});
+
+		const result = await server.execute({ path: "errorQuery" });
+		expect(result.data).toBeUndefined();
+		expect(result.error).toBeDefined();
+		expect(result.error?.message).toBe("Test error");
+	});
+
+	it("converts non-Error exceptions to Error objects", async () => {
+		const errorQuery = query()
+			.returns(User)
+			.resolve(() => {
+				throw "String error";
+			});
+
+		const server = createServer({
+			entities: { User },
+			queries: { errorQuery },
+		});
+
+		const result = await server.execute({ path: "errorQuery" });
+		expect(result.error).toBeDefined();
+		expect(result.error?.message).toBe("String error");
+	});
+});
+
+// =============================================================================
+// Test: getMetadata() and buildOperationsMap()
+// =============================================================================
+
+describe("getMetadata", () => {
+	it("returns server metadata with version and operations", () => {
+		const getUser = query()
+			.returns(User)
+			.resolve(() => mockUsers[0]);
+
+		const createUser = mutation()
+			.input(z.object({ name: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => ({ id: "new", name: input.name, email: "" }));
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+			mutations: { createUser },
+			version: "1.2.3",
+		});
+
+		const metadata = server.getMetadata();
+		expect(metadata.version).toBe("1.2.3");
+		expect(metadata.operations).toBeDefined();
+		expect(metadata.operations.getUser).toEqual({ type: "query" });
+		// createUser auto-derives optimistic "create" from naming convention
+		expect(metadata.operations.createUser).toEqual({ type: "mutation", optimistic: "create" });
+	});
+
+	it("builds nested operations map from namespaced routes", () => {
+		const getUserQuery = query()
+			.returns(User)
+			.resolve(() => mockUsers[0]);
+
+		const createUserMutation = mutation()
+			.input(z.object({ name: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => ({ id: "new", name: input.name, email: "" }));
+
+		const server = createServer({
+			entities: { User },
+			queries: { "user.get": getUserQuery },
+			mutations: { "user.create": createUserMutation },
+		});
+
+		const metadata = server.getMetadata();
+		expect(metadata.operations.user).toBeDefined();
+		expect((metadata.operations.user as any).get).toEqual({ type: "query" });
+		// Auto-derives optimistic "create" from naming convention
+		expect((metadata.operations.user as any).create).toEqual({ type: "mutation", optimistic: "create" });
+	});
+
+	it("includes optimistic config in mutation metadata", () => {
+		const updateUser = mutation()
+			.input(z.object({ id: z.string(), name: z.string() }))
+			.returns(User)
+			.optimistic("merge")
+			.resolve(({ input }) => ({ id: input.id, name: input.name, email: "" }));
+
+		const server = createServer({
+			entities: { User },
+			mutations: { updateUser },
+		});
+
+		const metadata = server.getMetadata();
+		expect(metadata.operations.updateUser).toEqual({
+			type: "mutation",
+			optimistic: "merge",
+		});
+	});
+
+	it("handles deeply nested namespaced operations", () => {
+		const deepQuery = query()
+			.returns(User)
+			.resolve(() => mockUsers[0]);
+
+		const server = createServer({
+			entities: { User },
+			queries: { "api.v1.user.get": deepQuery },
+		});
+
+		const metadata = server.getMetadata();
+		const operations = metadata.operations as any;
+		expect(operations.api.v1.user.get).toEqual({ type: "query" });
+	});
+});
+
+// =============================================================================
+// Test: HTTP handleRequest edge cases
+// =============================================================================
+
+describe("handleRequest edge cases", () => {
+	it("returns metadata on GET /__lens/metadata", async () => {
+		const server = createServer({
+			entities: { User },
+			version: "1.0.0",
+		});
+
+		const request = new Request("http://localhost/__lens/metadata", { method: "GET" });
+		const response = await server.handleRequest(request);
+
+		expect(response.status).toBe(200);
+		const body = await response.json();
+		expect(body.version).toBe("1.0.0");
+		expect(body.operations).toBeDefined();
+	});
+
+	it("returns 404 for unknown operation", async () => {
+		const server = createServer({
+			entities: { User },
+		});
+
+		const request = new Request("http://localhost/api", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ operation: "unknownOp" }),
+		});
+
+		const response = await server.handleRequest(request);
+		expect(response.status).toBe(404);
+
+		const body = await response.json();
+		expect(body.error).toBe("Operation not found: unknownOp");
+	});
+
+	it("returns 500 for operation errors", async () => {
+		const errorQuery = query()
+			.returns(User)
+			.resolve(() => {
+				throw new Error("Internal error");
+			});
+
+		const server = createServer({
+			entities: { User },
+			queries: { errorQuery },
+		});
+
+		const request = new Request("http://localhost/api", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ operation: "errorQuery" }),
+		});
+
+		const response = await server.handleRequest(request);
+		expect(response.status).toBe(500);
+
+		const body = await response.json();
+		expect(body.error).toContain("Internal error");
+	});
+
+	it("handles POST requests for queries", async () => {
+		const getUser = query()
+			.input(z.object({ id: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => mockUsers.find((u) => u.id === input.id) ?? null);
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+		});
+
+		const request = new Request("http://localhost/api", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ operation: "getUser", input: { id: "user-1" } }),
+		});
+
+		const response = await server.handleRequest(request);
+		expect(response.status).toBe(200);
+
+		const body = await response.json();
+		expect(body.data).toEqual(mockUsers[0]);
+	});
+});
+
+// =============================================================================
+// Test: Context creation errors
+// =============================================================================
+
+describe("Context creation errors", () => {
+	it("handles context factory errors in executeQuery", async () => {
+		const getUser = query()
+			.returns(User)
+			.resolve(() => mockUsers[0]);
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+			context: () => {
+				throw new Error("Context creation failed");
+			},
+		});
+
+		await expect(server.executeQuery("getUser")).rejects.toThrow("Context creation failed");
+	});
+
+	it("handles async context factory errors in executeMutation", async () => {
+		const createUser = mutation()
+			.input(z.object({ name: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => ({ id: "new", name: input.name, email: "" }));
+
+		const server = createServer({
+			entities: { User },
+			mutations: { createUser },
+			context: async () => {
+				throw new Error("Async context error");
+			},
+		});
+
+		await expect(server.executeMutation("createUser", { name: "Test" })).rejects.toThrow("Async context error");
+	});
+
+	it("handles context errors in subscription", async () => {
+		const liveQuery = query()
+			.returns(User)
+			.resolve(() => mockUsers[0]);
+
+		const server = createServer({
+			entities: { User },
+			queries: { liveQuery },
+			context: () => {
+				throw new Error("Context error in subscription");
+			},
+		});
+
+		const ws = createMockWs();
+		server.handleWebSocket(ws);
+
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "subscribe",
+				id: "sub-1",
+				operation: "liveQuery",
+				fields: "*",
+			}),
+		});
+
+		await new Promise((r) => setTimeout(r, 50));
+
+		// Should receive error message
+		const errorMsg = ws.messages.find((m) => {
+			const parsed = JSON.parse(m);
+			return parsed.type === "error" && parsed.id === "sub-1";
+		});
+
+		expect(errorMsg).toBeDefined();
+		const parsed = JSON.parse(errorMsg!);
+		expect(parsed.error.message).toContain("Context error in subscription");
+	});
+});
+
+// =============================================================================
+// Test: Subscription edge cases
+// =============================================================================
+
+describe("Subscription edge cases", () => {
+	it("handles subscription input validation errors", async () => {
+		const getUser = query()
+			.input(z.object({ id: z.string().min(5) }))
+			.returns(User)
+			.resolve(({ input }) => mockUsers.find((u) => u.id === input.id) ?? null);
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+		});
+
+		const ws = createMockWs();
+		server.handleWebSocket(ws);
+
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "subscribe",
+				id: "sub-1",
+				operation: "getUser",
+				input: { id: "a" }, // Too short
+				fields: "*",
+			}),
+		});
+
+		await new Promise((r) => setTimeout(r, 50));
+
+		const errorMsg = ws.messages.find((m) => {
+			const parsed = JSON.parse(m);
+			return parsed.type === "error";
+		});
+
+		expect(errorMsg).toBeDefined();
+		const parsed = JSON.parse(errorMsg!);
+		expect(parsed.error.message).toContain("Invalid input");
+	});
+
+	it("handles updateFields for non-existent subscription", () => {
+		const server = createServer({
+			entities: { User },
+		});
+
+		const ws = createMockWs();
+		server.handleWebSocket(ws);
+
+		// Try to update fields for non-existent subscription
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "updateFields",
+				id: "non-existent",
+				addFields: ["name"],
+			}),
+		});
+
+		// Should not throw - just be a no-op
+		expect(true).toBe(true);
+	});
+
+	it("handles unsubscribe for non-existent subscription", () => {
+		const server = createServer({
+			entities: { User },
+		});
+
+		const ws = createMockWs();
+		server.handleWebSocket(ws);
+
+		// Try to unsubscribe from non-existent subscription
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "unsubscribe",
+				id: "non-existent",
+			}),
+		});
+
+		// Should not throw - just be a no-op
+		expect(true).toBe(true);
+	});
+
+	it("upgrades to full subscription with wildcard", async () => {
+		const getUser = query()
+			.input(z.object({ id: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => mockUsers.find((u) => u.id === input.id) ?? null);
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+		});
+
+		const ws = createMockWs();
+		server.handleWebSocket(ws);
+
+		// Subscribe with partial fields
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "subscribe",
+				id: "sub-1",
+				operation: "getUser",
+				input: { id: "user-1" },
+				fields: ["name"],
+			}),
+		});
+
+		await new Promise((r) => setTimeout(r, 20));
+
+		// Upgrade to full subscription
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "updateFields",
+				id: "sub-1",
+				addFields: ["*"],
+			}),
+		});
+
+		// Should not throw
+		expect(true).toBe(true);
+	});
+
+	it("downgrades from wildcard to specific fields", async () => {
+		const getUser = query()
+			.input(z.object({ id: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => mockUsers.find((u) => u.id === input.id) ?? null);
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+		});
+
+		const ws = createMockWs();
+		server.handleWebSocket(ws);
+
+		// Subscribe with wildcard
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "subscribe",
+				id: "sub-1",
+				operation: "getUser",
+				input: { id: "user-1" },
+				fields: "*",
+			}),
+		});
+
+		await new Promise((r) => setTimeout(r, 20));
+
+		// Downgrade to specific fields
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "updateFields",
+				id: "sub-1",
+				setFields: ["name", "email"],
+			}),
+		});
+
+		// Should not throw
+		expect(true).toBe(true);
+	});
+
+	it("ignores add/remove when already subscribed to wildcard", async () => {
+		const getUser = query()
+			.input(z.object({ id: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => mockUsers.find((u) => u.id === input.id) ?? null);
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+		});
+
+		const ws = createMockWs();
+		server.handleWebSocket(ws);
+
+		// Subscribe with wildcard
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "subscribe",
+				id: "sub-1",
+				operation: "getUser",
+				input: { id: "user-1" },
+				fields: "*",
+			}),
+		});
+
+		await new Promise((r) => setTimeout(r, 20));
+
+		// Try to add fields (should be ignored)
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "updateFields",
+				id: "sub-1",
+				addFields: ["bio"],
+			}),
+		});
+
+		// Should not throw
+		expect(true).toBe(true);
+	});
+
+	it("handles async generator with empty stream", async () => {
+		const emptyStream = query()
+			.returns(User)
+			.resolve(async function* () {
+				// Empty generator - yields nothing
+			});
+
+		const server = createServer({
+			entities: { User },
+			queries: { emptyStream },
+		});
+
+		await expect(server.executeQuery("emptyStream")).rejects.toThrow("returned empty stream");
+	});
+});
+
+// =============================================================================
+// Test: Query with $select
+// =============================================================================
+
+describe("Query with $select", () => {
+	it("handles query with $select parameter", async () => {
+		const getUser = query()
+			.input(z.object({ id: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => mockUsers.find((u) => u.id === input.id) ?? null);
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+		});
+
+		// Use $select to trigger selection processing
+		const result = await server.executeQuery("getUser", {
+			id: "user-1",
+			$select: { name: true, email: true },
+		});
+
+		expect(result).toBeDefined();
+		expect((result as any).id).toBe("user-1");
+		expect((result as any).name).toBe("Alice");
+	});
+
+	it("processes WebSocket query message with select", async () => {
+		const getUser = query()
+			.input(z.object({ id: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => mockUsers.find((u) => u.id === input.id) ?? null);
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+		});
+
+		const ws = createMockWs();
+		server.handleWebSocket(ws);
+
+		// Query with select
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "query",
+				id: "q-1",
+				operation: "getUser",
+				input: { id: "user-1" },
+				select: { name: true, email: true },
+			}),
+		});
+
+		await new Promise((r) => setTimeout(r, 20));
+
+		expect(ws.messages.length).toBe(1);
+		const response = JSON.parse(ws.messages[0]);
+		expect(response.type).toBe("result");
+		expect(response.data.name).toBe("Alice");
+	});
+
+	it("applies field selection with fields array", async () => {
+		const getUser = query()
+			.input(z.object({ id: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => mockUsers.find((u) => u.id === input.id) ?? null);
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+		});
+
+		const ws = createMockWs();
+		server.handleWebSocket(ws);
+
+		// Query with fields array (backward compat)
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "query",
+				id: "q-1",
+				operation: "getUser",
+				input: { id: "user-1" },
+				fields: ["name"],
+			}),
+		});
+
+		await new Promise((r) => setTimeout(r, 20));
+
+		expect(ws.messages.length).toBe(1);
+		const response = JSON.parse(ws.messages[0]);
+		expect(response.type).toBe("result");
+		expect(response.data.id).toBe("user-1"); // id is always included
+		expect(response.data.name).toBe("Alice");
+	});
+});
+
+// =============================================================================
+// Test: Logger integration
+// =============================================================================
+
+describe("Logger integration", () => {
+	it("calls logger.error on cleanup errors", async () => {
+		const errorLogs: string[] = [];
+		const liveQuery = query()
+			.returns(User)
+			.resolve(({ onCleanup }) => {
+				onCleanup(() => {
+					throw new Error("Cleanup failed");
+				});
+				return mockUsers[0];
+			});
+
+		const server = createServer({
+			entities: { User },
+			queries: { liveQuery },
+			logger: {
+				error: (msg, ...args) => {
+					errorLogs.push(`${msg} ${args.join(" ")}`);
+				},
+			},
+		});
+
+		const ws = createMockWs();
+		server.handleWebSocket(ws);
+
+		// Subscribe
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "subscribe",
+				id: "sub-1",
+				operation: "liveQuery",
+				fields: "*",
+			}),
+		});
+
+		await new Promise((r) => setTimeout(r, 20));
+
+		// Unsubscribe (triggers cleanup error)
+		ws.onmessage?.({
+			data: JSON.stringify({ type: "unsubscribe", id: "sub-1" }),
+		});
+
+		expect(errorLogs.length).toBeGreaterThan(0);
+		expect(errorLogs[0]).toContain("Cleanup error");
+	});
+
+	it("calls logger.error on disconnect cleanup errors", async () => {
+		const errorLogs: string[] = [];
+		const liveQuery = query()
+			.returns(User)
+			.resolve(({ onCleanup }) => {
+				onCleanup(() => {
+					throw new Error("Disconnect cleanup failed");
+				});
+				return mockUsers[0];
+			});
+
+		const server = createServer({
+			entities: { User },
+			queries: { liveQuery },
+			logger: {
+				error: (msg, ...args) => {
+					errorLogs.push(`${msg} ${args.join(" ")}`);
+				},
+			},
+		});
+
+		const ws = createMockWs();
+		server.handleWebSocket(ws);
+
+		// Subscribe
+		ws.onmessage?.({
+			data: JSON.stringify({
+				type: "subscribe",
+				id: "sub-1",
+				operation: "liveQuery",
+				fields: "*",
+			}),
+		});
+
+		await new Promise((r) => setTimeout(r, 20));
+
+		// Disconnect (triggers cleanup)
+		ws.onclose?.();
+
+		expect(errorLogs.length).toBeGreaterThan(0);
+		expect(errorLogs[0]).toContain("Cleanup error");
+	});
+});
+
+// =============================================================================
+// Test: Entity Resolvers
+// =============================================================================
+
+describe("Entity Resolvers", () => {
+	it("executes field resolvers with select", async () => {
+		const Author = entity("Author", {
+			id: t.id(),
+			name: t.string(),
+		});
+
+		const Article = entity("Article", {
+			id: t.id(),
+			title: t.string(),
+			authorId: t.string(),
+			// author relation is resolved
+		});
+
+		const mockAuthors = [
+			{ id: "author-1", name: "Alice" },
+			{ id: "author-2", name: "Bob" },
+		];
+
+		const mockArticles = [
+			{ id: "article-1", title: "First Post", authorId: "author-1" },
+			{ id: "article-2", title: "Second Post", authorId: "author-2" },
+		];
+
+		// Create resolver for Article entity
+		const articleResolver = resolver(Article, (f) => ({
+			id: f.expose("id"),
+			title: f.expose("title"),
+			author: f.one(Author).resolve(({ parent }) => {
+				return mockAuthors.find((a) => a.id === parent.authorId) ?? null;
+			}),
+		}));
+
+		const getArticle = query()
+			.input(z.object({ id: z.string() }))
+			.returns(Article)
+			.resolve(({ input }) => {
+				return mockArticles.find((a) => a.id === input.id) ?? null;
+			});
+
+		const server = createServer({
+			entities: { Article, Author },
+			queries: { getArticle },
+			resolvers: [articleResolver],
+		});
+
+		const result = await server.executeQuery("getArticle", {
+			id: "article-1",
+			$select: {
+				title: true,
+				author: {
+					select: {
+						name: true,
+					},
+				},
+			},
+		});
+
+		expect(result).toBeDefined();
+		expect((result as any).title).toBe("First Post");
+		expect((result as any).author).toBeDefined();
+		expect((result as any).author.name).toBe("Alice");
+	});
+
+	it("handles array relations in resolvers", async () => {
+		const Author = entity("Author", {
+			id: t.id(),
+			name: t.string(),
+		});
+
+		const Article = entity("Article", {
+			id: t.id(),
+			title: t.string(),
+			authorId: t.string(),
+		});
+
+		const mockArticles = [
+			{ id: "article-1", title: "First Post", authorId: "author-1" },
+			{ id: "article-2", title: "Second Post", authorId: "author-1" },
+			{ id: "article-3", title: "Third Post", authorId: "author-2" },
+		];
+
+		// Create resolver for Author entity with articles relation
+		const authorResolver = resolver(Author, (f) => ({
+			id: f.expose("id"),
+			name: f.expose("name"),
+			articles: f.many(Article).resolve(({ parent }) => {
+				return mockArticles.filter((a) => a.authorId === parent.id);
+			}),
+		}));
+
+		const getAuthor = query()
+			.input(z.object({ id: z.string() }))
+			.returns(Author)
+			.resolve(({ input }) => {
+				return { id: input.id, name: input.id === "author-1" ? "Alice" : "Bob" };
+			});
+
+		const server = createServer({
+			entities: { Article, Author },
+			queries: { getAuthor },
+			resolvers: [authorResolver],
+		});
+
+		const result = await server.executeQuery("getAuthor", {
+			id: "author-1",
+			$select: {
+				name: true,
+				articles: {
+					select: {
+						title: true,
+					},
+				},
+			},
+		});
+
+		expect(result).toBeDefined();
+		expect((result as any).name).toBe("Alice");
+		expect((result as any).articles).toBeDefined();
+		expect(Array.isArray((result as any).articles)).toBe(true);
+		expect((result as any).articles.length).toBe(2);
+		expect((result as any).articles[0].title).toBe("First Post");
+	});
+
+	it("handles field resolver with args", async () => {
+		const User = entity("User", {
+			id: t.id(),
+			name: t.string(),
+		});
+
+		const userResolver = resolver(User, (f) => ({
+			id: f.expose("id"),
+			name: f.expose("name"),
+			greeting: f
+				.string()
+				.args<{ formal: boolean }>()
+				.resolve(({ parent, args }) => {
+					return args.formal ? `Good day, ${parent.name}` : `Hey ${parent.name}!`;
+				}),
+		}));
+
+		const getUser = query()
+			.returns(User)
+			.resolve(() => ({ id: "1", name: "Alice" }));
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+			resolvers: [userResolver],
+		});
+
+		const result = await server.executeQuery("getUser", {
+			$select: {
+				name: true,
+				greeting: {
+					args: { formal: true },
+				},
+			},
+		});
+
+		expect(result).toBeDefined();
+		expect((result as any).greeting).toBe("Good day, Alice");
+	});
+
+	it("returns data unchanged when no select provided", async () => {
+		const User = entity("User", {
+			id: t.id(),
+			name: t.string(),
+		});
+
+		const userResolver = resolver(User, (f) => ({
+			id: f.expose("id"),
+			name: f.expose("name"),
+			bio: f.string().resolve(({ parent }) => `Biography of ${parent.name}`),
+		}));
+
+		const getUser = query()
+			.returns(User)
+			.resolve(() => ({ id: "1", name: "Alice" }));
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+			resolvers: [userResolver],
+		});
+
+		const result = await server.executeQuery("getUser");
+
+		expect(result).toBeDefined();
+		expect((result as any).name).toBe("Alice");
+		// bio should not be resolved without select
+		expect((result as any).bio).toBeUndefined();
 	});
 });

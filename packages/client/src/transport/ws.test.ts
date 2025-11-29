@@ -713,4 +713,105 @@ describe("ws transport", () => {
 			expect(mockInstances.length).toBe(1);
 		});
 	});
+
+	describe("concurrent connection handling", () => {
+		it("waits for ongoing connection attempt when multiple operations start simultaneously", async () => {
+			const transport = ws({ url: "ws://localhost:3000", timeout: 500 });
+
+			// Start multiple operations simultaneously before connection is established
+			const op1Promise = transport.execute({ id: "op-1", path: "a", type: "query" });
+			const op2Promise = transport.execute({ id: "op-2", path: "b", type: "query" });
+
+			// Give operations time to trigger ensureConnection
+			await new Promise((r) => setTimeout(r, 10));
+
+			// Only one WebSocket should be created despite multiple operations
+			expect(mockInstances.length).toBe(1);
+
+			const instance = mockInstances[0];
+			instance.simulateOpen();
+
+			// Wait for connection to be established
+			await new Promise((r) => setTimeout(r, 150));
+
+			// Now resolve the operations
+			instance.simulateMessage({ type: "response", id: "op-1", data: "result-a" });
+			instance.simulateMessage({ type: "response", id: "op-2", data: "result-b" });
+
+			const [result1, result2] = await Promise.all([op1Promise, op2Promise]);
+
+			expect((result1 as Result).data).toBe("result-a");
+			expect((result2 as Result).data).toBe("result-b");
+			// Still only one WebSocket instance
+			expect(mockInstances.length).toBe(1);
+		});
+
+		it("resolves waiting operations when connection succeeds", async () => {
+			const transport = ws({ url: "ws://localhost:3000", timeout: 500 });
+
+			// Start first operation (triggers connection)
+			const op1Promise = transport.execute({ id: "op-1", path: "a", type: "query" });
+
+			// Give it time to start connecting
+			await new Promise((r) => setTimeout(r, 10));
+
+			// Start second operation while first is still connecting
+			const op2Promise = transport.execute({ id: "op-2", path: "b", type: "query" });
+
+			// Give time for second operation to wait
+			await new Promise((r) => setTimeout(r, 50));
+
+			const instance = mockInstances[0];
+			instance.simulateOpen();
+
+			// Wait for connection to be detected by polling
+			await new Promise((r) => setTimeout(r, 150));
+
+			// Resolve both operations
+			instance.simulateMessage({ type: "response", id: "op-1", data: "result-a" });
+			instance.simulateMessage({ type: "response", id: "op-2", data: "result-b" });
+
+			const [result1, result2] = await Promise.all([op1Promise, op2Promise]);
+
+			expect((result1 as Result).data).toBe("result-a");
+			expect((result2 as Result).data).toBe("result-b");
+		});
+
+		it("rejects waiting operations when connection fails", async () => {
+			const transport = ws({ url: "ws://localhost:3000", timeout: 500 });
+
+			// Capture promise rejection errors instead of letting them throw
+			const errors: Error[] = [];
+
+			// Start first operation (triggers connection)
+			const op1 = transport.execute({ id: "op-1", path: "a", type: "query" });
+			if ("then" in op1) {
+				(op1 as Promise<unknown>).catch((e: Error) => errors.push(e));
+			}
+
+			// Give it time to start connecting
+			await new Promise((r) => setTimeout(r, 10));
+
+			// Start second operation while first is still connecting
+			const op2 = transport.execute({ id: "op-2", path: "b", type: "query" });
+			if ("then" in op2) {
+				(op2 as Promise<unknown>).catch((e: Error) => errors.push(e));
+			}
+
+			// Give time for second operation to start waiting and enter the polling loop
+			await new Promise((r) => setTimeout(r, 50));
+
+			const instance = mockInstances[0];
+			// Simulate connection error - this will set isConnecting to false
+			instance.simulateError();
+
+			// Wait for polling to detect that isConnecting is false (check interval is 100ms)
+			await new Promise((r) => setTimeout(r, 150));
+
+			// Both operations should have rejected
+			expect(errors.length).toBe(2);
+			// Second operation should reject with "Connection failed" from the polling logic
+			expect(errors.some((e) => e.message === "Connection failed")).toBe(true);
+		});
+	});
 });
