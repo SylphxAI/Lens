@@ -5,6 +5,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
+import { z } from "zod";
 import { entity } from "../schema/define";
 import { t } from "../schema/types";
 import { createResolverRegistry, isExposedField, isResolvedField, isResolverDef, resolver } from "./index";
@@ -41,9 +42,9 @@ const mockDb = {
 		{ id: "2", name: "Jane", email: "jane@example.com", avatarKey: "jane-avatar" },
 	],
 	posts: [
-		{ id: "p1", title: "Hello", content: "World", authorId: "1" },
-		{ id: "p2", title: "Foo", content: "Bar", authorId: "1" },
-		{ id: "p3", title: "Test", content: "Post", authorId: "2" },
+		{ id: "p1", title: "Hello", content: "World", authorId: "1", published: true },
+		{ id: "p2", title: "Foo", content: "Bar", authorId: "1", published: false },
+		{ id: "p3", title: "Test", content: "Post", authorId: "2", published: true },
 	],
 	comments: [
 		{ id: "c1", content: "Great!", postId: "p1", authorId: "2" },
@@ -116,8 +117,8 @@ describe("Field resolution", () => {
 		}));
 
 		const parent = mockDb.users[0];
-		const id = await userResolver.resolveField("id", parent, mockCtx);
-		const name = await userResolver.resolveField("name", parent, mockCtx);
+		const id = await userResolver.resolveField("id", parent, {}, mockCtx);
+		const name = await userResolver.resolveField("name", parent, {}, mockCtx);
 
 		expect(id).toBe("1");
 		expect(name).toBe("John");
@@ -130,7 +131,7 @@ describe("Field resolution", () => {
 		}));
 
 		const parent = mockDb.users[0];
-		const avatar = await userResolver.resolveField("avatar", parent, mockCtx);
+		const avatar = await userResolver.resolveField("avatar", parent, {}, mockCtx);
 
 		expect(avatar).toBe("https://cdn.example.com/john-avatar");
 	});
@@ -142,7 +143,7 @@ describe("Field resolution", () => {
 		}));
 
 		const parent = mockDb.users[0];
-		const posts = await userResolver.resolveField("posts", parent, mockCtx);
+		const posts = await userResolver.resolveField("posts", parent, {}, mockCtx);
 
 		expect(posts).toHaveLength(2);
 		expect((posts as any[])[0].title).toBe("Hello");
@@ -155,7 +156,7 @@ describe("Field resolution", () => {
 		}));
 
 		const parent = mockDb.posts[0];
-		const author = await postResolver.resolveField("author", parent, mockCtx);
+		const author = await postResolver.resolveField("author", parent, {}, mockCtx);
 
 		expect((author as any).name).toBe("John");
 	});
@@ -206,7 +207,7 @@ describe("Async resolution", () => {
 		}));
 
 		const parent = mockDb.users[0];
-		const posts = await userResolver.resolveField("posts", parent, mockCtx);
+		const posts = await userResolver.resolveField("posts", parent, {}, mockCtx);
 
 		expect(posts).toHaveLength(2);
 	});
@@ -335,8 +336,99 @@ describe("Complex scenarios", () => {
 		}));
 
 		const post = { ...mockDb.posts[0], authorId: "nonexistent" };
-		const author = await postResolver.resolveField("author", post, mockCtx);
+		const author = await postResolver.resolveField("author", post, {}, mockCtx);
 
 		expect(author).toBeNull();
+	});
+});
+
+// =============================================================================
+// Test: Field Arguments
+// =============================================================================
+
+describe("Field arguments", () => {
+	it("resolves field with args using .args() builder", async () => {
+		const userResolver = resolver<typeof User, any, MockContext>(User, (f) => ({
+			id: f.expose("id"),
+			posts: f
+				.many(Post)
+				.args(
+					z.object({
+						limit: z.number().default(10),
+						published: z.boolean().optional(),
+					}),
+				)
+				.resolve((user, args, ctx) => {
+					let posts = ctx.db.posts.filter((p) => p.authorId === user.id);
+					if (args.published !== undefined) {
+						posts = posts.filter((p) => p.published === args.published);
+					}
+					return posts.slice(0, args.limit);
+				}),
+		}));
+
+		const parent = mockDb.users[0];
+
+		// With default args
+		const allPosts = await userResolver.resolveField("posts", parent, {}, mockCtx);
+		expect(allPosts).toHaveLength(2);
+
+		// With limit
+		const limitedPosts = await userResolver.resolveField("posts", parent, { limit: 1 }, mockCtx);
+		expect(limitedPosts).toHaveLength(1);
+
+		// With published filter
+		const publishedPosts = await userResolver.resolveField("posts", parent, { published: true }, mockCtx);
+		expect(publishedPosts).toHaveLength(1);
+		expect((publishedPosts as any[])[0].title).toBe("Hello");
+	});
+
+	it("resolves scalar field with args", async () => {
+		const postResolver = resolver<typeof Post, any, MockContext>(Post, (f) => ({
+			id: f.expose("id"),
+			excerpt: f
+				.string()
+				.args(z.object({ length: z.number().default(100) }))
+				.resolve((post, args) => post.content.slice(0, args.length) + "..."),
+		}));
+
+		const parent = mockDb.posts[0]; // content = "World"
+
+		// With default length
+		const excerpt1 = await postResolver.resolveField("excerpt", parent, {}, mockCtx);
+		expect(excerpt1).toBe("World...");
+
+		// With custom length
+		const excerpt2 = await postResolver.resolveField("excerpt", parent, { length: 3 }, mockCtx);
+		expect(excerpt2).toBe("Wor...");
+	});
+
+	it("getArgsSchema returns schema for field with args", () => {
+		const userResolver = resolver<typeof User, any, MockContext>(User, (f) => ({
+			id: f.expose("id"),
+			posts: f
+				.many(Post)
+				.args(z.object({ limit: z.number() }))
+				.resolve((user, args, ctx) => ctx.db.posts.slice(0, args.limit)),
+		}));
+
+		expect(userResolver.getArgsSchema("id")).toBeNull();
+		expect(userResolver.getArgsSchema("posts")).toBeDefined();
+	});
+
+	it("validates args against schema", async () => {
+		const userResolver = resolver<typeof User, any, MockContext>(User, (f) => ({
+			id: f.expose("id"),
+			posts: f
+				.many(Post)
+				.args(z.object({ limit: z.number().min(1).max(100) }))
+				.resolve((user, args, ctx) => ctx.db.posts.slice(0, args.limit)),
+		}));
+
+		const parent = mockDb.users[0];
+
+		// Invalid args should throw
+		await expect(userResolver.resolveField("posts", parent, { limit: 0 }, mockCtx)).rejects.toThrow();
+		await expect(userResolver.resolveField("posts", parent, { limit: 101 }, mockCtx)).rejects.toThrow();
 	});
 });

@@ -1239,9 +1239,20 @@ class LensServerImpl<
 			// Check if this field has a resolver
 			if (!resolverDef.hasField(fieldName)) continue;
 
-			// Execute field resolver
+			// Extract field args from selection
+			const fieldArgs =
+				typeof fieldSelect === "object" && fieldSelect !== null && "args" in fieldSelect
+					? ((fieldSelect as { args?: Record<string, unknown> }).args ?? {})
+					: {};
+
+			// Execute field resolver with args
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			result[fieldName] = await resolverDef.resolveField(fieldName, data as any, context as any);
+			result[fieldName] = await resolverDef.resolveField(
+				fieldName,
+				data as any,
+				fieldArgs,
+				context as any,
+			);
 
 			// Recursively resolve nested selections
 			const nestedSelect = (fieldSelect as { select?: SelectionObject }).select;

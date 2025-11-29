@@ -46,6 +46,7 @@
  * ```
  */
 
+import type { z } from "zod";
 import type { EntityDef } from "../schema/define";
 import type { InferScalar } from "../schema/infer";
 import type { EntityDefinition, FieldType } from "../schema/types";
@@ -61,8 +62,15 @@ export type FieldResolverContext = Record<string, unknown>;
 // Resolver Function Types
 // =============================================================================
 
-/** Resolver function signature */
-export type FieldResolverFn<TParent, TContext, TResult> = (
+/** Resolver function signature (GraphQL-style: parent, args, ctx) */
+export type FieldResolverFn<TParent, TArgs, TContext, TResult> = (
+	parent: TParent,
+	args: TArgs,
+	ctx: TContext,
+) => TResult | Promise<TResult>;
+
+/** Resolver function without args (for backward compatibility) */
+export type FieldResolverFnNoArgs<TParent, TContext, TResult> = (
 	parent: TParent,
 	ctx: TContext,
 ) => TResult | Promise<TResult>;
@@ -79,37 +87,74 @@ export interface ExposedField<T = unknown> {
 }
 
 /** Resolved field - uses resolver function */
-export interface ResolvedField<T = unknown, TContext = FieldResolverContext> {
+export interface ResolvedField<
+	T = unknown,
+	TArgs = Record<string, never>,
+	TContext = FieldResolverContext,
+> {
 	readonly _kind: "resolved";
 	readonly _returnType: T;
-	readonly _resolver: FieldResolverFn<unknown, TContext, T>;
+	readonly _argsSchema: z.ZodType<TArgs> | null;
+	readonly _resolver: FieldResolverFn<unknown, TArgs, TContext, T>;
 }
 
 /** Field definition (exposed or resolved) */
-export type FieldDef<T = unknown, TContext = FieldResolverContext> =
+export type FieldDef<T = unknown, TArgs = unknown, TContext = FieldResolverContext> =
 	| ExposedField<T>
-	| ResolvedField<T, TContext>;
+	| ResolvedField<T, TArgs, TContext>;
 
 // =============================================================================
 // Field Builder Types
 // =============================================================================
 
-/** Scalar field builder with resolve method */
+/** Scalar field builder with args method */
 export interface ScalarFieldBuilder<T, TParent, TContext> {
-	/** Define how to resolve this field */
-	resolve(fn: FieldResolverFn<TParent, TContext, T>): ResolvedField<T, TContext>;
+	/** Add field arguments (GraphQL-style) */
+	args<TArgs extends z.ZodRawShape>(
+		schema: z.ZodObject<TArgs>,
+	): ScalarFieldBuilderWithArgs<T, TParent, z.infer<z.ZodObject<TArgs>>, TContext>;
+
+	/** Define how to resolve this field (no args) */
+	resolve(
+		fn: FieldResolverFnNoArgs<TParent, TContext, T>,
+	): ResolvedField<T, Record<string, never>, TContext>;
 
 	/** Make the field nullable */
 	nullable(): ScalarFieldBuilder<T | null, TParent, TContext>;
 }
 
-/** Relation field builder with resolve method */
+/** Scalar field builder with args already defined */
+export interface ScalarFieldBuilderWithArgs<T, TParent, TArgs, TContext> {
+	/** Define how to resolve this field with args */
+	resolve(fn: FieldResolverFn<TParent, TArgs, TContext, T>): ResolvedField<T, TArgs, TContext>;
+
+	/** Make the field nullable */
+	nullable(): ScalarFieldBuilderWithArgs<T | null, TParent, TArgs, TContext>;
+}
+
+/** Relation field builder with args method */
 export interface RelationFieldBuilder<T, TParent, TContext> {
-	/** Define how to resolve this relation */
-	resolve(fn: FieldResolverFn<TParent, TContext, T>): ResolvedField<T, TContext>;
+	/** Add field arguments (GraphQL-style) */
+	args<TArgs extends z.ZodRawShape>(
+		schema: z.ZodObject<TArgs>,
+	): RelationFieldBuilderWithArgs<T, TParent, z.infer<z.ZodObject<TArgs>>, TContext>;
+
+	/** Define how to resolve this relation (no args) */
+	resolve(
+		fn: FieldResolverFnNoArgs<TParent, TContext, T>,
+	): ResolvedField<T, Record<string, never>, TContext>;
 
 	/** Make the relation nullable */
 	nullable(): RelationFieldBuilder<T | null, TParent, TContext>;
+}
+
+/** Relation field builder with args already defined */
+export interface RelationFieldBuilderWithArgs<T, TParent, TArgs, TContext> {
+	/** Define how to resolve this relation with args */
+	resolve(fn: FieldResolverFn<TParent, TArgs, TContext, T>): ResolvedField<T, TArgs, TContext>;
+
+	/** Make the relation nullable */
+	nullable(): RelationFieldBuilderWithArgs<T | null, TParent, TArgs, TContext>;
 }
 
 /** Infer parent type from entity fields */
@@ -210,7 +255,7 @@ export type ResolverFields<TContext = FieldResolverContext> = Record<
 /** Resolver definition for an entity */
 export interface ResolverDef<
 	TEntity extends EntityDef<string, EntityDefinition> = EntityDef<string, EntityDefinition>,
-	TFields extends Record<string, FieldDef<any, any>> = Record<string, FieldDef<any, any>>,
+	TFields extends Record<string, FieldDef<any, any, any>> = Record<string, FieldDef<any, any, any>>,
 	TContext = FieldResolverContext,
 > {
 	/** The entity this resolver is for */
@@ -228,24 +273,47 @@ export interface ResolverDef<
 	/** Check if field is exposed (vs resolved) */
 	isExposed(name: string): boolean;
 
-	/** Resolve a single field */
+	/** Get the args schema for a field (if any) */
+	getArgsSchema(name: string): z.ZodType | null;
+
+	/** Resolve a single field with args */
 	resolveField<K extends keyof TFields>(
 		name: K,
 		parent: InferParent<TEntity["fields"]>,
+		args: Record<string, unknown>,
 		ctx: TContext,
 	): Promise<unknown>;
 
-	/** Resolve all fields for a parent */
+	/** Resolve all fields for a parent with args per field */
 	resolveAll(
 		parent: InferParent<TEntity["fields"]>,
 		ctx: TContext,
-		select?: string[],
+		select?: Array<{ name: string; args?: Record<string, unknown> }> | string[],
 	): Promise<Record<string, unknown>>;
 }
 
 // =============================================================================
 // Implementation
 // =============================================================================
+
+/** Create a scalar field builder with args */
+function createScalarFieldBuilderWithArgs<T, TParent, TArgs, TContext>(
+	argsSchema: z.ZodType<TArgs>,
+): ScalarFieldBuilderWithArgs<T, TParent, TArgs, TContext> {
+	return {
+		resolve(fn: FieldResolverFn<TParent, TArgs, TContext, T>): ResolvedField<T, TArgs, TContext> {
+			return {
+				_kind: "resolved",
+				_returnType: undefined as T,
+				_argsSchema: argsSchema,
+				_resolver: fn as FieldResolverFn<unknown, TArgs, TContext, T>,
+			};
+		},
+		nullable(): ScalarFieldBuilderWithArgs<T | null, TParent, TArgs, TContext> {
+			return createScalarFieldBuilderWithArgs<T | null, TParent, TArgs, TContext>(argsSchema);
+		},
+	};
+}
 
 /** Create a scalar field builder */
 function createScalarFieldBuilder<T, TParent, TContext>(): ScalarFieldBuilder<
@@ -254,15 +322,50 @@ function createScalarFieldBuilder<T, TParent, TContext>(): ScalarFieldBuilder<
 	TContext
 > {
 	return {
-		resolve(fn: FieldResolverFn<TParent, TContext, T>): ResolvedField<T, TContext> {
+		args<TArgs extends z.ZodRawShape>(
+			schema: z.ZodObject<TArgs>,
+		): ScalarFieldBuilderWithArgs<T, TParent, z.infer<z.ZodObject<TArgs>>, TContext> {
+			return createScalarFieldBuilderWithArgs<T, TParent, z.infer<z.ZodObject<TArgs>>, TContext>(
+				schema,
+			);
+		},
+		resolve(
+			fn: FieldResolverFnNoArgs<TParent, TContext, T>,
+		): ResolvedField<T, Record<string, never>, TContext> {
+			// Wrap the no-args function to match the args signature
+			const wrappedFn: FieldResolverFn<TParent, Record<string, never>, TContext, T> = (
+				parent,
+				_args,
+				ctx,
+			) => fn(parent, ctx);
 			return {
 				_kind: "resolved",
 				_returnType: undefined as T,
-				_resolver: fn as FieldResolverFn<unknown, TContext, T>,
+				_argsSchema: null,
+				_resolver: wrappedFn as FieldResolverFn<unknown, Record<string, never>, TContext, T>,
 			};
 		},
 		nullable(): ScalarFieldBuilder<T | null, TParent, TContext> {
 			return createScalarFieldBuilder<T | null, TParent, TContext>();
+		},
+	};
+}
+
+/** Create a relation field builder with args */
+function createRelationFieldBuilderWithArgs<T, TParent, TArgs, TContext>(
+	argsSchema: z.ZodType<TArgs>,
+): RelationFieldBuilderWithArgs<T, TParent, TArgs, TContext> {
+	return {
+		resolve(fn: FieldResolverFn<TParent, TArgs, TContext, T>): ResolvedField<T, TArgs, TContext> {
+			return {
+				_kind: "resolved",
+				_returnType: undefined as T,
+				_argsSchema: argsSchema,
+				_resolver: fn as FieldResolverFn<unknown, TArgs, TContext, T>,
+			};
+		},
+		nullable(): RelationFieldBuilderWithArgs<T | null, TParent, TArgs, TContext> {
+			return createRelationFieldBuilderWithArgs<T | null, TParent, TArgs, TContext>(argsSchema);
 		},
 	};
 }
@@ -274,11 +377,27 @@ function createRelationFieldBuilder<T, TParent, TContext>(): RelationFieldBuilde
 	TContext
 > {
 	return {
-		resolve(fn: FieldResolverFn<TParent, TContext, T>): ResolvedField<T, TContext> {
+		args<TArgs extends z.ZodRawShape>(
+			schema: z.ZodObject<TArgs>,
+		): RelationFieldBuilderWithArgs<T, TParent, z.infer<z.ZodObject<TArgs>>, TContext> {
+			return createRelationFieldBuilderWithArgs<T, TParent, z.infer<z.ZodObject<TArgs>>, TContext>(
+				schema,
+			);
+		},
+		resolve(
+			fn: FieldResolverFnNoArgs<TParent, TContext, T>,
+		): ResolvedField<T, Record<string, never>, TContext> {
+			// Wrap the no-args function to match the args signature
+			const wrappedFn: FieldResolverFn<TParent, Record<string, never>, TContext, T> = (
+				parent,
+				_args,
+				ctx,
+			) => fn(parent, ctx);
 			return {
 				_kind: "resolved",
 				_returnType: undefined as T,
-				_resolver: fn as FieldResolverFn<unknown, TContext, T>,
+				_argsSchema: null,
+				_resolver: wrappedFn as FieldResolverFn<unknown, Record<string, never>, TContext, T>,
 			};
 		},
 		nullable(): RelationFieldBuilder<T | null, TParent, TContext> {
@@ -346,7 +465,7 @@ function createFieldBuilder<
 /** Resolver definition implementation */
 class ResolverDefImpl<
 	TEntity extends EntityDef<string, EntityDefinition>,
-	TFields extends Record<string, FieldDef<any, any>>,
+	TFields extends Record<string, FieldDef<any, any, any>>,
 	TContext = FieldResolverContext,
 > implements ResolverDef<TEntity, TFields, TContext>
 {
@@ -368,9 +487,19 @@ class ResolverDefImpl<
 		return field?._kind === "exposed";
 	}
 
+	getArgsSchema(name: string): z.ZodType | null {
+		const field = this.fields[name];
+		if (!field || field._kind === "exposed") {
+			return null;
+		}
+		const resolvedField = field as ResolvedField<unknown, unknown, TContext>;
+		return resolvedField._argsSchema ?? null;
+	}
+
 	async resolveField<K extends keyof TFields>(
 		name: K,
 		parent: InferParent<TEntity["fields"]>,
+		args: Record<string, unknown>,
 		ctx: TContext,
 	): Promise<unknown> {
 		const field = this.fields[name];
@@ -383,22 +512,36 @@ class ResolverDefImpl<
 			return (parent as Record<string, unknown>)[exposedField._fieldName];
 		}
 
-		const resolvedField = field as ResolvedField<unknown, TContext>;
-		return resolvedField._resolver(parent, ctx);
+		const resolvedField = field as ResolvedField<unknown, unknown, TContext>;
+
+		// Parse and validate args if schema exists
+		let parsedArgs: Record<string, unknown> = args;
+		if (resolvedField._argsSchema) {
+			parsedArgs = resolvedField._argsSchema.parse(args) as Record<string, unknown>;
+		}
+
+		return resolvedField._resolver(parent, parsedArgs, ctx);
 	}
 
 	async resolveAll(
 		parent: InferParent<TEntity["fields"]>,
 		ctx: TContext,
-		select?: string[],
+		select?: Array<{ name: string; args?: Record<string, unknown> }> | string[],
 	): Promise<Record<string, unknown>> {
-		const fieldsToResolve = select ?? this.getFieldNames().map(String);
+		// Normalize select to array of { name, args }
+		const fieldsToResolve: Array<{ name: string; args?: Record<string, unknown> }> =
+			select === undefined
+				? this.getFieldNames().map((name) => ({ name: String(name) }))
+				: Array.isArray(select) && typeof select[0] === "string"
+					? (select as string[]).map((name) => ({ name }))
+					: (select as Array<{ name: string; args?: Record<string, unknown> }>);
+
 		const result: Record<string, unknown> = {};
 
 		await Promise.all(
-			fieldsToResolve.map(async (fieldName) => {
-				if (this.hasField(fieldName)) {
-					result[fieldName] = await this.resolveField(fieldName as keyof TFields, parent, ctx);
+			fieldsToResolve.map(async ({ name, args }) => {
+				if (this.hasField(name)) {
+					result[name] = await this.resolveField(name as keyof TFields, parent, args ?? {}, ctx);
 				}
 			}),
 		);
@@ -564,14 +707,14 @@ export function createResolverRegistry<
 // =============================================================================
 
 /** Check if field is exposed */
-export function isExposedField(field: FieldDef): field is ExposedField {
+export function isExposedField(field: FieldDef<any, any, any>): field is ExposedField<any> {
 	return field._kind === "exposed";
 }
 
 /** Check if field is resolved */
 export function isResolvedField<TContext = FieldResolverContext>(
-	field: FieldDef<unknown, TContext>,
-): field is ResolvedField<unknown, TContext> {
+	field: FieldDef<any, any, TContext>,
+): field is ResolvedField<any, any, TContext> {
 	return field._kind === "resolved";
 }
 
