@@ -162,9 +162,24 @@ export interface RelationFieldBuilderWithArgs<T, TParent, TArgs, TContext> {
 	nullable(): RelationFieldBuilderWithArgs<T | null, TParent, TArgs, TContext>;
 }
 
-/** Infer parent type from entity fields */
+/** Check if a field is optional */
+type IsOptionalField<T> = T extends { _optional: true } ? true : false;
+
+/** Extract required field keys */
+type RequiredFieldKeys<E extends EntityDefinition> = {
+	[K in keyof E]: IsOptionalField<E[K]> extends true ? never : K;
+}[keyof E];
+
+/** Extract optional field keys */
+type OptionalFieldKeys<E extends EntityDefinition> = {
+	[K in keyof E]: IsOptionalField<E[K]> extends true ? K : never;
+}[keyof E];
+
+/** Infer parent type from entity fields (with proper optional handling) */
 type InferParent<E extends EntityDefinition> = {
-	[K in keyof E]: E[K] extends FieldType ? InferScalar<E[K]> : never;
+	[K in RequiredFieldKeys<E>]: E[K] extends FieldType ? InferScalar<E[K]> : never;
+} & {
+	[K in OptionalFieldKeys<E>]?: E[K] extends FieldType ? InferScalar<E[K]> : never;
 };
 
 /** Field builder for an entity */
