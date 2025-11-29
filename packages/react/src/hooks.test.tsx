@@ -1,8 +1,17 @@
 /**
  * Tests for React Hooks (Operations-based API)
+ *
+ * NOTE: These tests require DOM environment (happy-dom).
+ * Run from packages/react directory: cd packages/react && bun test
  */
 
-import { describe, expect, test } from "bun:test";
+// Skip all tests if DOM is not available (when run from root)
+const hasDom = typeof document !== "undefined";
+
+import { test as bunTest, describe, expect } from "bun:test";
+
+const test = hasDom ? bunTest : bunTest.skip;
+
 import type { MutationResult, QueryResult } from "@sylphx/lens-client";
 import { signal } from "@sylphx/lens-client";
 import { act, renderHook, waitFor } from "@testing-library/react";
