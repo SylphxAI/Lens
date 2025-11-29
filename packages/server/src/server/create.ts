@@ -1611,7 +1611,9 @@ export function createServer<
 	M extends MutationsMap = MutationsMap,
 >(
 	config: ServerConfigWithInferredContext<TRouter, Q, M>,
-): LensServer & { _types: { queries: Q; mutations: M; context: InferRouterContext<TRouter> } };
+): LensServer & {
+	_types: { router: TRouter; queries: Q; mutations: M; context: InferRouterContext<TRouter> };
+};
 
 export function createServer<
 	TContext extends ContextValue = ContextValue,

@@ -15,6 +15,7 @@ import type {
 	RouterRoutes,
 } from "@sylphx/lens-core";
 import { normalizeOptimisticDSL } from "@sylphx/lens-core";
+import type { TypedTransport } from "../transport/in-process";
 import type { Plugin } from "../transport/plugin";
 import type { Metadata, Observable, Operation, Result, Transport } from "../transport/types";
 
@@ -34,9 +35,9 @@ export interface SelectionObject {
 }
 
 /** Client configuration */
-export interface LensClientConfig {
-	/** Transport for server communication */
-	transport: Transport;
+export interface LensClientConfig<TApi = unknown> {
+	/** Transport for server communication (can be typed for inference) */
+	transport: Transport | TypedTransport<TApi>;
 	/** Plugins for request/response processing */
 	plugins?: Plugin[];
 	/** Enable optimistic updates (default: true) */
@@ -101,10 +102,13 @@ export type InferOutput<T> =
 // Router Types
 // =============================================================================
 
-/** Router-based API shape */
+/** Router-based API shape (matches server's _types) */
 export interface RouterApiShape<TRouter extends RouterDef = RouterDef> {
 	router: TRouter;
 }
+
+/** Extract router from server's _types */
+type ExtractRouter<T> = T extends { router: infer R extends RouterDef } ? R : never;
 
 /** Infer client type from router routes */
 export type InferRouterClientType<TRoutes extends RouterRoutes> = {
@@ -686,30 +690,54 @@ class ClientImpl {
 // =============================================================================
 
 /**
+ * Config with typed transport for automatic type inference.
+ */
+export interface TypedClientConfig<TApi> {
+	/** Typed transport with server type marker */
+	transport: TypedTransport<TApi>;
+	/** Plugins for request/response processing */
+	plugins?: Plugin[];
+	/** Enable optimistic updates (default: true) */
+	optimistic?: boolean;
+}
+
+/**
  * Create Lens client (sync return, eager handshake)
  *
  * Connection starts immediately in background. First operation waits
  * for handshake to complete, then uses metadata to determine operation type.
  *
- * @example
+ * Type inference from transport (recommended):
+ * ```typescript
+ * const server = createServer({ router: appRouter });
+ * const client = createClient({
+ *   transport: inProcess({ server }),
+ * });
+ * // client is fully typed automatically!
+ * ```
+ *
+ * Explicit type parameter (for HTTP transport):
  * ```typescript
  * import type { AppRouter } from './server';
  *
- * // Sync creation - no await needed!
  * const client = createClient<RouterApiShape<AppRouter>>({
  *   transport: http({ url: '/api' }),
- *   plugins: [logger(), auth({ getToken: () => token })],
  * });
- *
- * // First operation waits for handshake, then executes
- * const user = await client.user.get({ id: '123' });
- * await client.user.update({ id: '123', name: 'New Name' });
  * ```
  */
+// Overload 1: Infer from typed transport (inProcess)
+export function createClient<TApi extends { router: RouterDef }>(
+	config: TypedClientConfig<TApi>,
+): RouterLensClient<ExtractRouter<TApi>>;
+
+// Overload 2: Explicit generic (for http transport)
 export function createClient<TApi extends RouterApiShape>(
 	config: LensClientConfig,
-): RouterLensClient<TApi extends RouterApiShape<infer R> ? R : never> {
-	const impl = new ClientImpl(config);
+): RouterLensClient<TApi extends RouterApiShape<infer R> ? R : never>;
+
+// Implementation
+export function createClient(config: LensClientConfig | TypedClientConfig<unknown>): unknown {
+	const impl = new ClientImpl(config as LensClientConfig);
 
 	// Create nested proxy for router-based access
 	function createNestedProxy(prefix: string): unknown {
@@ -732,9 +760,7 @@ export function createClient<TApi extends RouterApiShape>(
 		return new Proxy(() => {}, handler);
 	}
 
-	return createNestedProxy("") as RouterLensClient<
-		TApi extends RouterApiShape<infer R> ? R : never
-	>;
+	return createNestedProxy("");
 }
 
 export type { Plugin } from "../transport/plugin";

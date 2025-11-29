@@ -12,7 +12,7 @@ import type { Metadata, Observable, Operation, Result, Transport } from "./types
 // =============================================================================
 
 /**
- * Lens server interface for in-process transport.
+ * Base Lens server interface for in-process transport.
  */
 export interface LensServerInterface {
 	/** Get operation metadata */
@@ -22,12 +22,30 @@ export interface LensServerInterface {
 }
 
 /**
- * In-process transport options.
+ * Extract _types from a server (if present).
+ * Handles both `{ _types: T }` and intersection types.
  */
-export interface InProcessTransportOptions {
+type ExtractServerTypes<T> = T extends { _types: infer Types } ? Types : unknown;
+
+/**
+ * In-process transport options with typed server.
+ * TServer is the full server type including _types for inference.
+ */
+export interface InProcessTransportOptions<
+	TServer extends LensServerInterface = LensServerInterface,
+> {
 	/** Lens server instance */
-	server: LensServerInterface;
+	server: TServer;
 }
+
+/**
+ * Transport with type marker for inference.
+ * The _api property is a phantom type - never accessed at runtime.
+ */
+export type TypedTransport<TApi = unknown> = Transport & {
+	/** Type marker for API inference (phantom type - never accessed at runtime) */
+	readonly _api: TApi;
+};
 
 // =============================================================================
 // In-Process Transport
@@ -43,17 +61,26 @@ export interface InProcessTransportOptions {
  * - Server-Side Rendering (SSR)
  * - Same-process communication
  *
+ * Type inference works automatically when using typed server:
+ * ```typescript
+ * const server = createServer({ router: appRouter });
+ * const client = createClient({
+ *   transport: inProcess({ server }),
+ * });
+ * // client is fully typed!
+ * ```
+ *
  * @example
  * ```typescript
  * // Testing
  * const server = createServer({ router: appRouter })
- * const client = await createClient({
+ * const client = createClient({
  *   transport: inProcess({ server }),
  * })
  *
  * // SSR
  * export async function getServerSideProps() {
- *   const client = await createClient({
+ *   const client = createClient({
  *     transport: inProcess({ server }),
  *   })
  *   const user = await client.user.get({ id: '123' })
@@ -61,9 +88,12 @@ export interface InProcessTransportOptions {
  * }
  * ```
  */
-export function inProcess(options: InProcessTransportOptions): Transport {
+export function inProcess<TServer extends LensServerInterface>(
+	options: InProcessTransportOptions<TServer>,
+): TypedTransport<ExtractServerTypes<TServer>> {
 	const { server } = options;
 
+	// Cast to TypedTransport - _api is a phantom type, never accessed at runtime
 	return {
 		/**
 		 * Get metadata directly from server.
@@ -80,5 +110,5 @@ export function inProcess(options: InProcessTransportOptions): Transport {
 		execute(op: Operation): Promise<Result> | Observable<Result> {
 			return server.execute(op);
 		},
-	};
+	} as TypedTransport<ExtractServerTypes<TServer>>;
 }

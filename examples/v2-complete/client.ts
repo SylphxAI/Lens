@@ -2,23 +2,24 @@
  * V2 Complete Example - Client
  *
  * Demonstrates: Type-safe client usage with router
+ *
+ * Type inference works automatically from inProcess transport:
+ * - Server carries router type via _types phantom type
+ * - inProcess() extracts and forwards this type
+ * - createClient() infers the client type automatically
  */
 
 import { createClient, inProcess } from "@sylphx/lens-client";
-import type { InferRouterClient } from "@sylphx/lens-core";
-import { server, type AppRouter } from "./server";
+import { server } from "./server";
 
 // =============================================================================
 // Create Client
 // =============================================================================
 
-// Type-safe client from router definition
-type Client = InferRouterClient<AppRouter>;
-
-// In-process transport for demo (use http/ws in production)
+// Full type inference from server - no manual type annotation needed!
 const client = createClient({
 	transport: inProcess({ server }),
-}) as unknown as Client;
+});
 
 // =============================================================================
 // Basic Usage
