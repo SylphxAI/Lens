@@ -139,17 +139,17 @@ const getUser = query()
 
 ## TODO
 
-### v1.2.0 - Field Arguments
+### v1.2.0 - Field Arguments ✅
 
 - [x] Design field arguments API
 - [x] Update README with GraphQL-like design
 - [x] Implement resolver() with field builder
-- [ ] Add .args() method to FieldBuilder
-- [ ] Update resolver signature to (parent, args, ctx)
-- [ ] Add field args support in client selection types
-- [ ] Update server to process field arguments
-- [ ] Add tests for field arguments
-- [ ] Update v2-complete example
+- [x] Add .args() method to FieldBuilder
+- [x] Update resolver signature to (parent, args, ctx)
+- [x] Add field args support in client selection types
+- [x] Update server to process field arguments
+- [x] Add tests for field arguments
+- [x] Update v2-complete example
 
 ### Backlog
 
