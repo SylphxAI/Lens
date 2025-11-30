@@ -5,6 +5,9 @@
  */
 
 export {
+	applyDeferredOperation,
+	applyDeferredOperations,
+	type DeferredOperation,
 	type EvaluatedOperation,
 	type EvaluationContext,
 	evaluateMultiEntityDSL,

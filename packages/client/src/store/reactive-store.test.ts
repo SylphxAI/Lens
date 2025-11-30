@@ -584,4 +584,297 @@ describe("ReactiveStore", () => {
 			expect(txId).toBe("");
 		});
 	});
+
+	describe("V2 Operators", () => {
+		test("applies $increment operator", () => {
+			const store = createStore();
+
+			// Set up existing entity with count
+			store.setEntity("User", "user-1", { id: "user-1", postCount: 5 });
+
+			const dsl = {
+				user: {
+					$entity: "User",
+					$op: "update" as const,
+					$id: "user-1",
+					postCount: { $increment: 1 },
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			const user = store.getEntity("User", "user-1").value.data as Record<string, unknown>;
+			expect(user.postCount).toBe(6);
+		});
+
+		test("applies $decrement operator", () => {
+			const store = createStore();
+
+			store.setEntity("User", "user-1", { id: "user-1", credits: 100 });
+
+			const dsl = {
+				user: {
+					$entity: "User",
+					$op: "update" as const,
+					$id: "user-1",
+					credits: { $decrement: 10 },
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			const user = store.getEntity("User", "user-1").value.data as Record<string, unknown>;
+			expect(user.credits).toBe(90);
+		});
+
+		test("applies $push operator", () => {
+			const store = createStore();
+
+			store.setEntity("Post", "post-1", { id: "post-1", tags: ["javascript"] });
+
+			const dsl = {
+				post: {
+					$entity: "Post",
+					$op: "update" as const,
+					$id: "post-1",
+					tags: { $push: "typescript" },
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			const post = store.getEntity("Post", "post-1").value.data as Record<string, unknown>;
+			expect(post.tags).toEqual(["javascript", "typescript"]);
+		});
+
+		test("applies $pull operator", () => {
+			const store = createStore();
+
+			store.setEntity("Post", "post-1", { id: "post-1", tags: ["a", "b", "c"] });
+
+			const dsl = {
+				post: {
+					$entity: "Post",
+					$op: "update" as const,
+					$id: "post-1",
+					tags: { $pull: "b" },
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			const post = store.getEntity("Post", "post-1").value.data as Record<string, unknown>;
+			expect(post.tags).toEqual(["a", "c"]);
+		});
+
+		test("applies $addToSet operator (no duplicates)", () => {
+			const store = createStore();
+
+			store.setEntity("User", "user-1", { id: "user-1", roles: ["user"] });
+
+			const dsl = {
+				user: {
+					$entity: "User",
+					$op: "update" as const,
+					$id: "user-1",
+					roles: { $addToSet: "user" }, // Already exists
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			const user = store.getEntity("User", "user-1").value.data as Record<string, unknown>;
+			expect(user.roles).toEqual(["user"]); // Not duplicated
+		});
+
+		test("applies $addToSet operator (adds new)", () => {
+			const store = createStore();
+
+			store.setEntity("User", "user-1", { id: "user-1", roles: ["user"] });
+
+			const dsl = {
+				user: {
+					$entity: "User",
+					$op: "update" as const,
+					$id: "user-1",
+					roles: { $addToSet: "admin" }, // New role
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			const user = store.getEntity("User", "user-1").value.data as Record<string, unknown>;
+			expect(user.roles).toEqual(["user", "admin"]);
+		});
+
+		test("applies $default operator (uses default for undefined)", () => {
+			const store = createStore();
+
+			store.setEntity("User", "user-1", { id: "user-1", name: "John" }); // No bio
+
+			const dsl = {
+				user: {
+					$entity: "User",
+					$op: "update" as const,
+					$id: "user-1",
+					bio: { $default: "No bio provided" },
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			const user = store.getEntity("User", "user-1").value.data as Record<string, unknown>;
+			expect(user.bio).toBe("No bio provided");
+		});
+
+		test("applies $default operator (keeps existing value)", () => {
+			const store = createStore();
+
+			store.setEntity("User", "user-1", { id: "user-1", bio: "Existing bio" });
+
+			const dsl = {
+				user: {
+					$entity: "User",
+					$op: "update" as const,
+					$id: "user-1",
+					bio: { $default: "No bio provided" },
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			const user = store.getEntity("User", "user-1").value.data as Record<string, unknown>;
+			expect(user.bio).toBe("Existing bio");
+		});
+
+		test("applies $if operator (condition true)", () => {
+			const store = createStore();
+
+			store.setEntity("User", "user-1", { id: "user-1", status: "pending" });
+
+			const dsl = {
+				user: {
+					$entity: "User",
+					$op: "update" as const,
+					$id: "user-1",
+					status: {
+						$if: {
+							condition: true,
+							then: "active",
+							else: "inactive",
+						},
+					},
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			const user = store.getEntity("User", "user-1").value.data as Record<string, unknown>;
+			expect(user.status).toBe("active");
+		});
+
+		test("applies $if operator (condition false)", () => {
+			const store = createStore();
+
+			store.setEntity("User", "user-1", { id: "user-1", status: "pending" });
+
+			const dsl = {
+				user: {
+					$entity: "User",
+					$op: "update" as const,
+					$id: "user-1",
+					status: {
+						$if: {
+							condition: false,
+							then: "active",
+							else: "inactive",
+						},
+					},
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			const user = store.getEntity("User", "user-1").value.data as Record<string, unknown>;
+			expect(user.status).toBe("inactive");
+		});
+
+		test("applies bulk update with $ids", () => {
+			const store = createStore();
+
+			// Set up multiple posts
+			store.setEntity("Post", "post-1", { id: "post-1", published: false });
+			store.setEntity("Post", "post-2", { id: "post-2", published: false });
+			store.setEntity("Post", "post-3", { id: "post-3", published: false });
+
+			const dsl = {
+				posts: {
+					$entity: "Post",
+					$op: "update" as const,
+					$ids: ["post-1", "post-2"],
+					published: true,
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			// post-1 and post-2 should be updated
+			expect((store.getEntity("Post", "post-1").value.data as Record<string, unknown>).published).toBe(true);
+			expect((store.getEntity("Post", "post-2").value.data as Record<string, unknown>).published).toBe(true);
+			// post-3 should remain unchanged
+			expect((store.getEntity("Post", "post-3").value.data as Record<string, unknown>).published).toBe(false);
+		});
+
+		test("applies bulk update with $where", () => {
+			const store = createStore();
+
+			// Set up multiple posts by same author
+			store.setEntity("Post", "post-1", { id: "post-1", authorId: "user-1", archived: false });
+			store.setEntity("Post", "post-2", { id: "post-2", authorId: "user-1", archived: false });
+			store.setEntity("Post", "post-3", { id: "post-3", authorId: "user-2", archived: false });
+
+			const dsl = {
+				posts: {
+					$entity: "Post",
+					$op: "update" as const,
+					$where: { authorId: "user-1" },
+					archived: true,
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			// Only user-1's posts should be archived
+			expect((store.getEntity("Post", "post-1").value.data as Record<string, unknown>).archived).toBe(true);
+			expect((store.getEntity("Post", "post-2").value.data as Record<string, unknown>).archived).toBe(true);
+			// user-2's post should remain unchanged
+			expect((store.getEntity("Post", "post-3").value.data as Record<string, unknown>).archived).toBe(false);
+		});
+
+		test("combines multiple v2 operators", () => {
+			const store = createStore();
+
+			store.setEntity("User", "user-1", {
+				id: "user-1",
+				postCount: 5,
+				tags: ["developer"],
+			});
+
+			const dsl = {
+				user: {
+					$entity: "User",
+					$op: "update" as const,
+					$id: "user-1",
+					postCount: { $increment: 1 },
+					tags: { $push: "author" },
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			const user = store.getEntity("User", "user-1").value.data as Record<string, unknown>;
+			expect(user.postCount).toBe(6);
+			expect(user.tags).toEqual(["developer", "author"]);
+		});
+	});
 });

@@ -237,6 +237,7 @@ export {
 	isQueryDef,
 	isRouterDef,
 	isTempId,
+	isV2Operator,
 	isValueRef,
 	// Types
 	type MultiEntityDSL,
@@ -246,7 +247,15 @@ export {
 	mutation,
 	// Helpers
 	normalizeOptimisticDSL,
+	// V2 Operators
+	type OpAddToSet,
+	type OpDecrement,
+	type OpDefault,
 	type Operations,
+	type OpIf,
+	type OpIncrement,
+	type OpPull,
+	type OpPush,
 	type OptimisticDSL,
 	type OptimisticUpdateManyConfig,
 	operations,
@@ -257,6 +266,7 @@ export {
 	type RefInput,
 	type RefNow,
 	type RefSibling,
+	type RefState,
 	type RefTemp,
 	type ResolverContext,
 	type ResolverFn,
@@ -266,6 +276,7 @@ export {
 	resetTempIdCounter,
 	router,
 	tempId,
+	type V2Operator,
 	type ValueRef,
 	type ZodLikeSchema,
 } from "./operations/index";
@@ -335,6 +346,9 @@ export {
 // =============================================================================
 
 export {
+	applyDeferredOperation,
+	applyDeferredOperations,
+	type DeferredOperation,
 	type EvaluatedOperation,
 	type EvaluationContext,
 	evaluateMultiEntityDSL,

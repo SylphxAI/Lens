@@ -6,6 +6,7 @@
 
 import type { EntityKey, MultiEntityDSL, Update } from "@sylphx/lens-core";
 import {
+	applyDeferredOperations,
 	applyUpdate,
 	type EvaluatedOperation,
 	evaluateMultiEntityDSL,
@@ -433,6 +434,13 @@ export class ReactiveStore {
 	/**
 	 * Apply multi-entity optimistic update from DSL
 	 * Returns transaction ID for confirmation/rollback
+	 *
+	 * Supports v2 operators:
+	 * - $increment, $decrement for numeric fields
+	 * - $push, $pull, $addToSet for array fields
+	 * - $default for fallback values
+	 * - $if for conditional updates
+	 * - $ids, $where for bulk operations
 	 */
 	applyMultiEntityOptimistic(dsl: MultiEntityDSL, input: Record<string, unknown>): string {
 		if (!this.config.optimistic) {
@@ -449,37 +457,51 @@ export class ReactiveStore {
 
 		batch(() => {
 			for (const op of operations) {
-				const key = this.makeKey(op.entity, op.id);
-				const entitySignal = this.entities.get(key);
+				// Handle bulk operations ($ids or $where)
+				const targetIds = this.resolveTargetIds(op);
 
-				// Save original data
-				originalData.set(key, entitySignal?.value.data ?? null);
+				for (const entityId of targetIds) {
+					const key = this.makeKey(op.entity, entityId);
+					const entitySignal = this.entities.get(key);
+					const currentState = (entitySignal?.value.data ?? {}) as Record<string, unknown>;
 
-				switch (op.op) {
-					case "create":
-						this.setEntity(op.entity, op.id, { id: op.id, ...op.data });
-						break;
+					// Save original data
+					if (!originalData.has(key)) {
+						originalData.set(key, entitySignal?.value.data ?? null);
+					}
 
-					case "update":
-						if (entitySignal?.value.data) {
-							this.setEntity(op.entity, op.id, {
-								...(entitySignal.value.data as object),
-								...op.data,
-							});
-						} else {
-							// Entity not in cache, create with optimistic data
-							this.setEntity(op.entity, op.id, { id: op.id, ...op.data });
+					switch (op.op) {
+						case "create": {
+							// Apply deferred operations with empty state for create
+							const resolvedData = applyDeferredOperations(op, {});
+							this.setEntity(op.entity, entityId, { id: entityId, ...resolvedData });
+							break;
 						}
-						break;
 
-					case "delete":
-						if (entitySignal) {
-							entitySignal.value = {
-								...entitySignal.value,
-								data: null,
-							};
+						case "update": {
+							// Apply deferred operations with current state
+							const resolvedData = applyDeferredOperations(op, currentState);
+							if (entitySignal?.value.data) {
+								this.setEntity(op.entity, entityId, {
+									...(entitySignal.value.data as object),
+									...resolvedData,
+								});
+							} else {
+								// Entity not in cache, create with optimistic data
+								this.setEntity(op.entity, entityId, { id: entityId, ...resolvedData });
+							}
+							break;
 						}
-						break;
+
+						case "delete":
+							if (entitySignal) {
+								entitySignal.value = {
+									...entitySignal.value,
+									data: null,
+								};
+							}
+							break;
+					}
 				}
 			}
 		});
@@ -493,6 +515,48 @@ export class ReactiveStore {
 		});
 
 		return txId;
+	}
+
+	/**
+	 * Resolve target entity IDs from an operation
+	 * Handles $id (single), $ids (array), and $where (query)
+	 */
+	private resolveTargetIds(op: EvaluatedOperation): string[] {
+		// Bulk by explicit IDs
+		if (op.ids && op.ids.length > 0) {
+			return op.ids;
+		}
+
+		// Bulk by query filter ($where)
+		if (op.where) {
+			// Find all cached entities matching the where clause
+			const matching: string[] = [];
+			for (const [key, entitySignal] of this.entities) {
+				const [entityName] = key.split(":") as [string, string];
+				if (entityName !== op.entity) continue;
+
+				const data = entitySignal.value.data as Record<string, unknown> | null;
+				if (data && this.matchesWhere(data, op.where)) {
+					matching.push(data.id as string);
+				}
+			}
+			return matching;
+		}
+
+		// Single entity
+		return [op.id];
+	}
+
+	/**
+	 * Check if entity data matches a where clause (simple equality check)
+	 */
+	private matchesWhere(data: Record<string, unknown>, where: Record<string, unknown>): boolean {
+		for (const [key, value] of Object.entries(where)) {
+			if (data[key] !== value) {
+				return false;
+			}
+		}
+		return true;
 	}
 
 	/**

@@ -188,14 +188,90 @@ export interface RefNow {
 	$now: true;
 }
 
-/** All value reference types */
-export type ValueRef = RefInput | RefSibling | RefTemp | RefNow;
+// -----------------------------------------------------------------------------
+// V2 Operators
+// -----------------------------------------------------------------------------
+
+/** Increment/decrement numeric field */
+export interface OpIncrement {
+	$increment: number;
+}
+
+/** Decrement numeric field (shorthand for negative $increment) */
+export interface OpDecrement {
+	$decrement: number;
+}
+
+/** Push item(s) to array */
+export interface OpPush {
+	$push: unknown | unknown[];
+}
+
+/** Pull item(s) from array */
+export interface OpPull {
+	$pull: unknown | unknown[];
+}
+
+/** Add to set (push if not exists) */
+export interface OpAddToSet {
+	$addToSet: unknown | unknown[];
+}
+
+/** Default value (use if field is undefined) */
+export interface OpDefault {
+	$default: unknown;
+}
+
+/** Conditional operator */
+export interface OpIf {
+	$if: {
+		/** Condition - can reference $input, $state, etc. */
+		condition: ValueRef | boolean;
+		/** Value if condition is true */
+		then: unknown | ValueRef;
+		/** Value if condition is false (optional) */
+		else?: unknown | ValueRef;
+	};
+}
+
+/** Read current entity state */
+export interface RefState {
+	$state: string;
+}
+
+/** All v2 operator types */
+export type V2Operator =
+	| OpIncrement
+	| OpDecrement
+	| OpPush
+	| OpPull
+	| OpAddToSet
+	| OpDefault
+	| OpIf;
+
+/** All value reference types (v1 + v2) */
+export type ValueRef = RefInput | RefSibling | RefTemp | RefNow | RefState;
 
 /** Check if value is a reference */
 export function isValueRef(value: unknown): value is ValueRef {
 	if (!value || typeof value !== "object") return false;
 	const obj = value as Record<string, unknown>;
-	return "$input" in obj || "$ref" in obj || "$temp" in obj || "$now" in obj;
+	return "$input" in obj || "$ref" in obj || "$temp" in obj || "$now" in obj || "$state" in obj;
+}
+
+/** Check if value is a v2 operator */
+export function isV2Operator(value: unknown): value is V2Operator {
+	if (!value || typeof value !== "object") return false;
+	const obj = value as Record<string, unknown>;
+	return (
+		"$increment" in obj ||
+		"$decrement" in obj ||
+		"$push" in obj ||
+		"$pull" in obj ||
+		"$addToSet" in obj ||
+		"$default" in obj ||
+		"$if" in obj
+	);
 }
 
 // -----------------------------------------------------------------------------
@@ -208,10 +284,14 @@ export interface EntityOperation {
 	$entity: string;
 	/** Operation type */
 	$op: "create" | "update" | "delete";
-	/** Target entity ID (required for update/delete) */
+	/** Target entity ID (required for update/delete on single entity) */
 	$id?: string | ValueRef;
+	/** Multiple entity IDs for bulk operations */
+	$ids?: string[] | ValueRef;
+	/** Query filter for bulk operations */
+	$where?: Record<string, unknown>;
 	/** Data fields (any key without $ prefix) */
-	[field: string]: unknown | ValueRef;
+	[field: string]: unknown | ValueRef | V2Operator;
 }
 
 /** Check if value is an EntityOperation */
