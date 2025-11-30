@@ -668,8 +668,13 @@ describe("Optimistic DSL Helpers", () => {
 			).toBe(true);
 		});
 
-		it("identifies object with custom", () => {
-			expect(isOptimisticDSL({ custom: {} })).toBe(true);
+		it("identifies multi-entity DSL", () => {
+			expect(
+				isOptimisticDSL({
+					session: { $entity: "Session", $op: "create", title: "Test" },
+					message: { $entity: "Message", $op: "create", sessionId: { $ref: "session.id" } },
+				}),
+			).toBe(true);
 		});
 
 		it("returns false for non-DSL strings", () => {

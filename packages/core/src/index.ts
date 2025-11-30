@@ -223,17 +223,23 @@ export {
 
 export {
 	type AnyProcedure,
+	// Multi-entity DSL
+	type EntityOperation,
 	flattenRouter,
 	type InferRouterClient,
 	type InferRouterContext,
 	// Type guards
+	isEntityOperation,
+	isMultiEntityDSL,
 	isMutationDef,
 	isOperationDef,
 	isOptimisticDSL,
 	isQueryDef,
 	isRouterDef,
 	isTempId,
+	isValueRef,
 	// Types
+	type MultiEntityDSL,
 	type MutationDef,
 	type MutationResultType,
 	// Builders
@@ -247,6 +253,11 @@ export {
 	type QueryDef,
 	type QueryResultType,
 	query,
+	// Value references
+	type RefInput,
+	type RefNow,
+	type RefSibling,
+	type RefTemp,
 	type ResolverContext,
 	type ResolverFn,
 	type ReturnSpec,
@@ -255,6 +266,7 @@ export {
 	resetTempIdCounter,
 	router,
 	tempId,
+	type ValueRef,
 	type ZodLikeSchema,
 } from "./operations/index";
 
@@ -317,6 +329,18 @@ export {
 	runWithContext,
 	runWithContextAsync,
 } from "./context/index";
+
+// =============================================================================
+// Optimistic DSL Evaluator
+// =============================================================================
+
+export {
+	type EvaluatedOperation,
+	type EvaluationContext,
+	evaluateMultiEntityDSL,
+	evaluateMultiEntityDSLMap,
+	OptimisticEvaluationError,
+} from "./optimistic/index";
 
 // =============================================================================
 // Lens Factory (Primary API)

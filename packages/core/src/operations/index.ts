@@ -164,52 +164,90 @@ export type ResolverFn<TInput, TOutput, TContext = unknown> = (
 // Optimistic DSL (Declarative - for type-only client imports)
 // =============================================================================
 
-/**
- * Declarative optimistic update DSL
- *
- * Simple, minimal syntax for common cases:
- * - String shorthand: 'merge', 'create', 'delete'
- * - Object for additional fields: { merge: { published: true } }
- * - Full object for cross-entity: { updateMany: { ... } }
- *
- * @example
- * ```typescript
- * // Simple (90% of cases)
- * .optimistic('merge')   // UPDATE: merge input into entity
- * .optimistic('create')  // CREATE: auto tempId
- * .optimistic('delete')  // DELETE: mark deleted
- *
- * // With additional fields
- * .optimistic({ merge: { published: true } })
- * .optimistic({ create: { status: 'draft' } })
- *
- * // Cross-entity update
- * .optimistic({
- *   updateMany: {
- *     entity: 'User',
- *     ids: '$userIds',      // $ = reference input field
- *     set: { role: '$newRole' }
- *   }
- * })
- * ```
- *
- * Future: Could auto-derive from naming convention:
- * - updateX → merge
- * - createX → create
- * - deleteX → delete
- */
-export type OptimisticDSL =
-	// String shorthand (simple cases)
-	| "merge"
-	| "create"
-	| "delete"
-	// Object with additional fields
-	| { merge: Record<string, unknown> }
-	| { create: Record<string, unknown> }
-	// Cross-entity
-	| { updateMany: OptimisticUpdateManyConfig };
+// -----------------------------------------------------------------------------
+// Value References (for runtime values in DSL)
+// -----------------------------------------------------------------------------
 
-/** Config for updateMany */
+/** Reference value from mutation input */
+export interface RefInput {
+	$input: string;
+}
+
+/** Reference value from sibling operation result */
+export interface RefSibling {
+	$ref: string;
+}
+
+/** Generate temporary ID */
+export interface RefTemp {
+	$temp: true;
+}
+
+/** Current timestamp */
+export interface RefNow {
+	$now: true;
+}
+
+/** All value reference types */
+export type ValueRef = RefInput | RefSibling | RefTemp | RefNow;
+
+/** Check if value is a reference */
+export function isValueRef(value: unknown): value is ValueRef {
+	if (!value || typeof value !== "object") return false;
+	const obj = value as Record<string, unknown>;
+	return "$input" in obj || "$ref" in obj || "$temp" in obj || "$now" in obj;
+}
+
+// -----------------------------------------------------------------------------
+// Multi-Entity Operation
+// -----------------------------------------------------------------------------
+
+/** Single entity operation in multi-entity DSL */
+export interface EntityOperation {
+	/** Target entity type name */
+	$entity: string;
+	/** Operation type */
+	$op: "create" | "update" | "delete";
+	/** Target entity ID (required for update/delete) */
+	$id?: string | ValueRef;
+	/** Data fields (any key without $ prefix) */
+	[field: string]: unknown | ValueRef;
+}
+
+/** Check if value is an EntityOperation */
+export function isEntityOperation(value: unknown): value is EntityOperation {
+	if (!value || typeof value !== "object") return false;
+	const obj = value as Record<string, unknown>;
+	return (
+		typeof obj.$entity === "string" &&
+		(obj.$op === "create" || obj.$op === "update" || obj.$op === "delete")
+	);
+}
+
+/** Multi-entity optimistic DSL (object of named operations) */
+export type MultiEntityDSL = Record<string, EntityOperation>;
+
+/** Check if value is a MultiEntityDSL */
+export function isMultiEntityDSL(value: unknown): value is MultiEntityDSL {
+	if (!value || typeof value !== "object") return false;
+	const obj = value as Record<string, unknown>;
+
+	// Must have at least one key
+	const keys = Object.keys(obj);
+	if (keys.length === 0) return false;
+
+	// Check for simple DSL indicators (not multi-entity)
+	if ("merge" in obj || "create" in obj || "updateMany" in obj) return false;
+
+	// All values must be EntityOperations
+	return keys.every((key) => isEntityOperation(obj[key]));
+}
+
+// -----------------------------------------------------------------------------
+// Legacy Single-Entity DSL (backwards compatible)
+// -----------------------------------------------------------------------------
+
+/** Config for updateMany (legacy) */
 export interface OptimisticUpdateManyConfig {
 	/** Target entity type */
 	entity: string;
@@ -218,6 +256,57 @@ export interface OptimisticUpdateManyConfig {
 	/** Fields to set (use $ prefix for input references) */
 	set: Record<string, unknown>;
 }
+
+// -----------------------------------------------------------------------------
+// Full OptimisticDSL Type
+// -----------------------------------------------------------------------------
+
+/**
+ * Declarative optimistic update DSL
+ *
+ * **Tier 1: Simple (single entity)**
+ * ```typescript
+ * .optimistic('merge')   // UPDATE: merge input into entity
+ * .optimistic('create')  // CREATE: auto tempId
+ * .optimistic('delete')  // DELETE: mark deleted
+ * .optimistic({ merge: { published: true } })  // With additional fields
+ * ```
+ *
+ * **Tier 2: Multi-entity**
+ * ```typescript
+ * .optimistic({
+ *   session: {
+ *     $entity: 'Session',
+ *     $op: 'create',
+ *     title: { $input: 'title' },
+ *     createdAt: { $now: true },
+ *   },
+ *   userMessage: {
+ *     $entity: 'Message',
+ *     $op: 'create',
+ *     sessionId: { $ref: 'session.id' },
+ *     role: 'user',
+ *   },
+ * })
+ * ```
+ *
+ * **Value References:**
+ * - `{ $input: 'field' }` - Value from mutation input
+ * - `{ $ref: 'sibling.field' }` - Value from sibling operation result
+ * - `{ $temp: true }` - Generate temporary ID
+ * - `{ $now: true }` - Current timestamp
+ */
+export type OptimisticDSL =
+	// Tier 1: Simple (single entity)
+	| "merge"
+	| "create"
+	| "delete"
+	| { merge: Record<string, unknown> }
+	| { create: Record<string, unknown> }
+	// Legacy: updateMany
+	| { updateMany: OptimisticUpdateManyConfig }
+	// Tier 2: Multi-entity
+	| MultiEntityDSL;
 
 /**
  * Check if value is an OptimisticDSL
@@ -230,7 +319,14 @@ export function isOptimisticDSL(value: unknown): value is OptimisticDSL {
 	// Object form
 	if (value && typeof value === "object") {
 		const obj = value as Record<string, unknown>;
-		return "merge" in obj || "create" in obj || "updateMany" in obj || "custom" in obj;
+		// Simple DSL
+		if ("merge" in obj || "create" in obj || "updateMany" in obj) {
+			return true;
+		}
+		// Multi-entity DSL
+		if (isMultiEntityDSL(obj)) {
+			return true;
+		}
 	}
 	return false;
 }
@@ -239,19 +335,31 @@ export function isOptimisticDSL(value: unknown): value is OptimisticDSL {
  * Normalize DSL to internal format for interpreter
  */
 export function normalizeOptimisticDSL(dsl: OptimisticDSL): {
-	type: "merge" | "create" | "delete" | "updateMany";
+	type: "merge" | "create" | "delete" | "updateMany" | "multi";
 	set?: Record<string, unknown>;
 	config?: OptimisticUpdateManyConfig;
+	operations?: MultiEntityDSL;
 } {
 	// String shorthand
 	if (dsl === "merge") return { type: "merge" };
 	if (dsl === "create") return { type: "create" };
 	if (dsl === "delete") return { type: "delete" };
 
-	// Object form
-	if ("merge" in dsl) return { type: "merge", set: dsl.merge };
-	if ("create" in dsl) return { type: "create", set: dsl.create };
-	if ("updateMany" in dsl) return { type: "updateMany", config: dsl.updateMany };
+	// Object form - simple
+	if ("merge" in dsl)
+		return { type: "merge", set: (dsl as { merge: Record<string, unknown> }).merge };
+	if ("create" in dsl)
+		return { type: "create", set: (dsl as { create: Record<string, unknown> }).create };
+	if ("updateMany" in dsl)
+		return {
+			type: "updateMany",
+			config: (dsl as { updateMany: OptimisticUpdateManyConfig }).updateMany,
+		};
+
+	// Multi-entity
+	if (isMultiEntityDSL(dsl)) {
+		return { type: "multi", operations: dsl };
+	}
 
 	return { type: "merge" }; // fallback
 }

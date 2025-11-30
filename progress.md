@@ -151,8 +151,174 @@ const getUser = query()
 - [x] Add tests for field arguments
 - [x] Update v2-complete example
 
+### v1.3.0 - Multi-Entity Optimistic DSL (WIP)
+
+- [ ] Design multi-entity optimistic DSL
+- [ ] Update README optimistic section
+- [ ] Implement OptimisticDSL types in core
+- [ ] Sync types to client package
+- [ ] Implement DSL parser and evaluator
+- [ ] Add comprehensive tests
+- [ ] Transaction-based rollback
+
 ### Backlog
 
 - [ ] Align dependency versions across packages
 - [ ] DataLoader integration for batching
 - [ ] Field-level authorization
+
+---
+
+## Multi-Entity Optimistic DSL Design
+
+### Problem
+
+Single-entity DSL (`'merge' | 'create' | 'delete'`) cannot express:
+- Creating multiple related entities (Session + Messages)
+- Update related entities (create Post + increment User.postCount)
+- Cross-entity dependencies (Message.sessionId references Session.id)
+
+### Solution: Multi-Entity DSL
+
+```typescript
+// Tier 1: Simple (single entity) - existing
+.optimistic('merge' | 'create' | 'delete')
+
+// Tier 2: Multi-entity (new)
+.optimistic({
+  session: {
+    $entity: 'Session',
+    $op: 'create',
+    title: { $input: 'title' },
+    createdAt: { $now: true },
+  },
+  userMessage: {
+    $entity: 'Message',
+    $op: 'create',
+    sessionId: { $ref: 'session.id' },  // Reference sibling
+    role: 'user',
+    content: { $input: 'content' },
+  },
+  assistantMessage: {
+    $entity: 'Message',
+    $op: 'create',
+    sessionId: { $ref: 'session.id' },
+    role: 'assistant',
+    status: 'pending',
+  },
+})
+```
+
+### DSL Types
+
+```typescript
+// =============================================================================
+// Value References
+// =============================================================================
+
+type RefInput = { $input: string }      // From mutation input
+type RefSibling = { $ref: string }      // From sibling result (e.g., 'session.id')
+type RefTemp = { $temp: true }          // Generate temp ID (auto for create)
+type RefNow = { $now: true }            // Current timestamp
+
+type ValueRef = RefInput | RefSibling | RefTemp | RefNow
+
+// =============================================================================
+// Entity Operation
+// =============================================================================
+
+interface EntityOperation {
+  // Meta (required)
+  $entity: string
+  $op: 'create' | 'update' | 'delete'
+
+  // Target (required for update/delete)
+  $id?: string | ValueRef
+
+  // Data fields (any key without $ prefix)
+  [field: string]: unknown | ValueRef
+}
+
+// =============================================================================
+// Full OptimisticDSL Type
+// =============================================================================
+
+type OptimisticDSL =
+  // Tier 1: Simple (single entity)
+  | 'merge' | 'create' | 'delete'
+  | { merge: Record<string, unknown> }
+  | { create: Record<string, unknown> }
+
+  // Tier 2: Multi-entity
+  | { [key: string]: EntityOperation }
+```
+
+### Examples
+
+#### Create Multiple Entities
+
+```typescript
+.optimistic({
+  session: {
+    $entity: 'Session',
+    $op: 'create',
+    title: { $input: 'title' },
+    createdAt: { $now: true },
+  },
+  userMessage: {
+    $entity: 'Message',
+    $op: 'create',
+    sessionId: { $ref: 'session.id' },
+    role: 'user',
+  },
+})
+```
+
+#### Update Existing Entity
+
+```typescript
+.optimistic({
+  post: {
+    $entity: 'Post',
+    $op: 'update',
+    $id: { $input: 'postId' },
+    title: { $input: 'newTitle' },
+    updatedAt: { $now: true },
+  },
+})
+```
+
+#### Delete Entity
+
+```typescript
+.optimistic({
+  deleted: {
+    $entity: 'Post',
+    $op: 'delete',
+    $id: { $input: 'postId' },
+  },
+})
+```
+
+### Execution Flow
+
+1. **Parse DSL** - Extract operations from object
+2. **Build dependency graph** - Track `$ref` dependencies
+3. **Topological sort** - Determine execution order
+4. **Cycle detection** - Error on circular dependencies
+5. **Execute in order** - Resolve refs, generate temp IDs
+6. **Apply to state** - Update client entity cache
+7. **On error** - Transaction rollback (all-or-nothing)
+
+### v2 Extensions (Future)
+
+| Feature | Description |
+|---------|-------------|
+| `$ids` | Bulk operations |
+| `$where` | Query-based targeting |
+| `$increment` | Increment numeric field |
+| `$push` | Append to array field |
+| `$pull` | Remove from array field |
+| `$default` | Default value if input missing |
+| `$if` | Conditional operation |
+| `$state` | Read from current client state |

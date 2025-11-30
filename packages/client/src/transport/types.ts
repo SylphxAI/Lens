@@ -56,19 +56,35 @@ export interface Result<T = unknown> {
 }
 
 // =============================================================================
-// Metadata Types
+// Optimistic DSL Types
 // =============================================================================
 
-/**
- * Optimistic update DSL.
- */
-export type OptimisticDSL =
-	| "merge"
-	| "create"
-	| "delete"
-	| { merge: Record<string, unknown> }
-	| { create: Record<string, unknown> }
-	| { delete: true };
+// Re-export from core for consistency
+import type { OptimisticDSL as OptimisticDSLType } from "@sylphx/lens-core";
+
+export type {
+	EntityOperation,
+	MultiEntityDSL,
+	OptimisticDSL,
+	OptimisticUpdateManyConfig,
+	RefInput,
+	RefNow,
+	RefSibling,
+	RefTemp,
+	ValueRef,
+} from "@sylphx/lens-core";
+
+export {
+	isEntityOperation,
+	isMultiEntityDSL,
+	isOptimisticDSL,
+	isValueRef,
+	normalizeOptimisticDSL,
+} from "@sylphx/lens-core";
+
+// =============================================================================
+// Metadata Types
+// =============================================================================
 
 /**
  * Operation metadata from server handshake.
@@ -77,7 +93,7 @@ export interface OperationMeta {
 	/** Operation type */
 	type: "query" | "mutation" | "subscription";
 	/** Optimistic update strategy (for mutations) */
-	optimistic?: OptimisticDSL | unknown;
+	optimistic?: OptimisticDSLType | unknown;
 }
 
 /**

@@ -861,7 +861,9 @@ const client = createClient<AppRouter>({
 
 ## Optimistic Updates
 
-Mutations can define optimistic behavior for instant UI feedback:
+Mutations can define optimistic behavior for instant UI feedback.
+
+### Simple (Single Entity)
 
 ```typescript
 // Server: Define optimistic strategy
@@ -877,11 +879,105 @@ const updateUser = mutation()
 await client.user.update({ id: '123', name: 'New Name' })
 ```
 
-Optimistic strategies:
-- `'merge'` - Merge input into existing entity (auto-derived from `updateX` naming)
-- `'create'` - Create with temporary ID (auto-derived from `createX` naming)
-- `'delete'` - Mark entity as deleted (auto-derived from `deleteX` naming)
+Simple strategies:
+- `'merge'` - Merge input into existing entity
+- `'create'` - Create with temporary ID
+- `'delete'` - Mark entity as deleted
 - `{ merge: { field: value } }` - Merge with additional fields
+
+### Multi-Entity Optimistic
+
+For mutations that affect multiple entities (e.g., creating a chat session with messages):
+
+```typescript
+const createChatSession = mutation()
+  .input(z.object({ title: z.string(), content: z.string() }))
+  .returns(z.object({
+    session: Session,
+    userMessage: Message,
+    assistantMessage: Message,
+  }))
+  .optimistic({
+    session: {
+      $entity: 'Session',
+      $op: 'create',
+      title: { $input: 'title' },
+      createdAt: { $now: true },
+    },
+    userMessage: {
+      $entity: 'Message',
+      $op: 'create',
+      sessionId: { $ref: 'session.id' },  // Reference sibling result
+      role: 'user',
+      content: { $input: 'content' },
+    },
+    assistantMessage: {
+      $entity: 'Message',
+      $op: 'create',
+      sessionId: { $ref: 'session.id' },
+      role: 'assistant',
+      status: 'pending',
+    },
+  })
+  .resolve(...)
+```
+
+### DSL Reference
+
+**Meta Fields:**
+| Field | Description |
+|-------|-------------|
+| `$entity` | Target entity type name |
+| `$op` | Operation: `'create'` \| `'update'` \| `'delete'` |
+| `$id` | Target entity ID (required for update/delete) |
+
+**Value References:**
+| Syntax | Description |
+|--------|-------------|
+| `{ $input: 'field' }` | Value from mutation input |
+| `{ $ref: 'sibling.field' }` | Value from sibling operation result |
+| `{ $temp: true }` | Generate temporary ID |
+| `{ $now: true }` | Current timestamp |
+
+**More Examples:**
+
+```typescript
+// Update existing entity
+.optimistic({
+  post: {
+    $entity: 'Post',
+    $op: 'update',
+    $id: { $input: 'postId' },
+    title: { $input: 'newTitle' },
+    updatedAt: { $now: true },
+  },
+})
+
+// Delete entity
+.optimistic({
+  deleted: {
+    $entity: 'Post',
+    $op: 'delete',
+    $id: { $input: 'postId' },
+  },
+})
+
+// Mixed operations
+.optimistic({
+  newPost: {
+    $entity: 'Post',
+    $op: 'create',
+    title: { $input: 'title' },
+    authorId: { $input: 'authorId' },
+  },
+  notification: {
+    $entity: 'Notification',
+    $op: 'create',
+    type: 'new_post',
+    postId: { $ref: 'newPost.id' },
+  },
+})
+```
 
 ---
 
