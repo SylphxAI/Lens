@@ -885,50 +885,46 @@ Simple strategies:
 - `'delete'` - Mark entity as deleted
 - `{ merge: { field: value } }` - Merge with additional fields
 
-### Multi-Entity Optimistic
+### Multi-Entity Optimistic (Reify Pipeline)
 
-For mutations that affect multiple entities (e.g., creating a chat session with messages):
-
-```typescript
-const createChatSession = mutation()
-  .input(z.object({ title: z.string(), content: z.string() }))
-  .returns(z.object({
-    session: Session,
-    userMessage: Message,
-    assistantMessage: Message,
-  }))
-  .optimistic({
-    session: {
-      $entity: 'Session',
-      $op: 'create',
-      title: { $input: 'title' },
-      createdAt: { $now: true },
-    },
-    userMessage: {
-      $entity: 'Message',
-      $op: 'create',
-      sessionId: { $ref: 'session.id' },  // Reference sibling result
-      role: 'user',
-      content: { $input: 'content' },
-    },
-    assistantMessage: {
-      $entity: 'Message',
-      $op: 'create',
-      sessionId: { $ref: 'session.id' },
-      role: 'assistant',
-      status: 'pending',
-    },
-  })
-  .resolve(...)
-```
-
-### DSL Builder (Recommended)
-
-Use the type-safe `pipeline()` builder for optimistic updates with full autocomplete:
+For mutations that affect multiple entities, use Reify pipelines - **"Describe once, execute anywhere"**:
 
 ```typescript
-import { pipeline, op, ref, when } from '@sylphx/lens-core';
+import { pipe, udsl, temp, ref, now, branch, inc, push } from '@sylphx/lens-core';
 
+const sendMessagePipeline = pipe(({ input }) => [
+  // Step 1: Conditional upsert - create or update session
+  branch(input.sessionId)
+    .then(udsl.update('Session', {
+      id: input.sessionId,
+      updatedAt: now()
+    }))
+    .else(udsl.create('Session', {
+      id: temp(),
+      title: input.title,
+      createdAt: now()
+    }))
+    .as('session'),
+
+  // Step 2: Create message (references session from step 1)
+  udsl.create('Message', {
+    id: temp(),
+    sessionId: ref('session').id,  // Reference sibling operation result
+    role: 'user',
+    content: input.content,
+    createdAt: now(),
+  }).as('message'),
+
+  // Step 3: Update user stats with operators
+  udsl.update('User', {
+    id: input.userId,
+    messageCount: inc(1),          // Increment by 1
+    tags: push('active'),          // Append to array
+    lastActiveAt: now(),
+  }).as('userStats'),
+]);
+
+// Use in mutation
 const createChatSession = mutation()
   .input(z.object({
     sessionId: z.string().optional(),
@@ -936,122 +932,49 @@ const createChatSession = mutation()
     content: z.string(),
     userId: z.string(),
   }))
-  .returns({ Session, Message })
-  .optimistic(
-    pipeline(({ input }) => [
-      // Upsert session - conditional operation flow
-      when(input.sessionId)
-        .then([
-          op.update('Session', {
-            id: input.sessionId,
-            updatedAt: ref.now(),
-          }).as('session'),
-        ])
-        .else([
-          op.create('Session', {
-            id: ref.temp(),
-            title: input.title,
-            createdAt: ref.now(),
-          }).as('session'),
-        ]),
-
-      // Create user message
-      op.create('Message', {
-        sessionId: ref.from('session').id,  // Reference sibling operation
-        role: 'user',
-        content: input.content,
-      }).as('userMessage'),
-
-      // Update user stats with field operators
-      op.update('User', {
-        id: input.userId,
-        messageCount: ref.increment(1),
-        tags: ref.push('active'),
-        lastActiveAt: ref.now(),
-      }).as('userStats'),
-    ])
-  )
+  .returns(Message)
+  .optimistic(sendMessagePipeline)  // 🔥 Same pipeline executes on client (cache) and server (DB)
   .resolve(...)
 ```
 
-**Builder Features:**
-- `input.field` → Type-safe input references (via Proxy)
-- `ref.from('name').field` → Reference sibling operation results
-- `when(condition).then([...]).else([...])` → Conditional operation flows (supports multiple ops)
-- `op.create/update/delete().as('name')` → Operation builders with optional naming
-- `ref.increment/push/pull/now/temp` → Field operators and special values
+**Why Reify?**
+- Same pipeline definition works for **client optimistic updates** (cache) and **server execution** (Prisma/DB)
+- Pipelines are **serializable** - can be sent over the wire
+- Operations are **composable** - build complex flows from simple steps
 
 ### DSL Reference
 
-**Operations:**
-| Builder | Description |
-|---------|-------------|
-| `op.create(entity, data).as('name')` | Create new entity |
-| `op.update(entity, data).as('name')` | Update existing entity (data includes `id`) |
-| `op.delete(entity, id).as('name')` | Delete entity |
-| `op.updateMany(entity, { where, data }).as('name')` | Bulk update by query |
+**Pipeline Builder:**
+| Function | Description |
+|----------|-------------|
+| `pipe(({ input }) => [...])` | Create pipeline from steps |
+| `udsl.create(entity, data).as('name')` | Create entity |
+| `udsl.update(entity, data).as('name')` | Update entity (data includes `id`) |
+| `udsl.delete(entity, id).as('name')` | Delete entity |
 
-**Input References:**
-| Builder | Description |
-|---------|-------------|
+**Value References:**
+| Function | Description |
+|----------|-------------|
 | `input.field` | Value from mutation input |
-| `input.nested.field` | Nested input value |
+| `ref('sibling').field` | Value from sibling operation result |
+| `temp()` | Generate temporary ID |
+| `now()` | Current timestamp |
 
-**Special Values (ref.*):**
-| Builder | Description |
-|---------|-------------|
-| `ref.from('sibling').field` | Value from sibling operation result |
-| `ref.temp()` | Generate temporary ID |
-| `ref.now()` | Current timestamp |
-
-**Field Operators (ref.*):**
-| Builder | Description |
-|---------|-------------|
-| `ref.increment(n)` | Increment numeric field by n |
-| `ref.decrement(n)` | Decrement numeric field by n |
-| `ref.push(...items)` | Append item(s) to array |
-| `ref.pull(...items)` | Remove item(s) from array |
-| `ref.addToSet(...items)` | Add item(s) if not already in array |
-| `ref.default(value)` | Use value if field is undefined |
-| `ref.if(condition, then, else?)` | Conditional value |
+**Field Operators:**
+| Function | Description |
+|----------|-------------|
+| `inc(n)` | Increment numeric field by n |
+| `dec(n)` | Decrement numeric field by n |
+| `push(...items)` | Append item(s) to array |
+| `pull(...items)` | Remove item(s) from array |
+| `addToSet(...items)` | Add unique item(s) to array |
+| `defaultTo(value)` | Use value if field is undefined |
 
 **Conditional Flows:**
-| Builder | Description |
-|---------|-------------|
-| `when(condition).then([ops])` | Execute ops if condition truthy |
-| `when(condition).then([ops]).else([ops])` | If-else operation flow |
-
-### Raw DSL (Alternative)
-
-You can also use raw JSON DSL directly:
-
-```typescript
-.optimistic({
-  session: {
-    $entity: 'Session',
-    $op: { $if: { condition: { $input: 'sessionId' }, then: 'update', else: 'create' } },
-    $id: { $input: 'sessionId' },
-    title: { $input: 'title' },
-    updatedAt: { $now: true },
-  },
-  message: {
-    $entity: 'Message',
-    $op: 'create',
-    sessionId: { $ref: 'session.id' },
-    content: { $input: 'content' },
-  },
-})
-```
-
-**Raw DSL Syntax:**
-| Syntax | Description |
-|--------|-------------|
-| `{ $input: 'field' }` | Value from mutation input |
-| `{ $ref: 'sibling.field' }` | Value from sibling operation |
-| `{ $temp: true }` | Generate temporary ID |
-| `{ $now: true }` | Current timestamp |
-| `{ $increment: n }` | Increment field |
-| `{ $if: { condition, then, else } }` | Conditional value |
+| Function | Description |
+|----------|-------------|
+| `branch(condition).then(op).else(op).as('name')` | Conditional operation |
+| `when(condition, value)` | Conditional value |
 
 ---
 

@@ -380,13 +380,11 @@ export {
 	now,
 	type Operation,
 	OptimisticEvaluationError,
-	// DSL Builder (legacy)
+	// Reify DSL
 	op,
 	type Pipeline,
 	type Plugin,
-	// UDSL (new unified DSL)
 	pipe,
-	pipeline,
 	pull,
 	push,
 	ref,

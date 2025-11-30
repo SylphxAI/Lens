@@ -1,24 +1,20 @@
 /**
  * @sylphx/lens-core - Optimistic Updates
  *
- * DSL evaluation and utilities for optimistic updates.
+ * Reify-powered DSL for optimistic updates.
+ * "Describe once, execute anywhere"
  */
 
 // =============================================================================
-// UDSL - New API (recommended)
+// Reify DSL API
 // =============================================================================
 
-// Re-export everything from UDSL
 export * from "./udsl";
 
 // =============================================================================
-// Legacy API (deprecated, will be removed in v2)
+// Evaluator (for legacy MultiEntityDSL format)
 // =============================================================================
 
-// DSL Builder (legacy)
-export { op, pipeline, ref, when } from "./builder";
-
-// Evaluator (legacy)
 export {
 	applyDeferredOperation,
 	applyDeferredOperations,
