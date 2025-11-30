@@ -32,7 +32,7 @@
 	"license": "MIT",
 	"dependencies": {
 		"@sylphx/lens-core": "workspace:*",
-		"@sylphx/reify": "file:../../../udsl/packages/reify",
+		"@sylphx/reify": "^0.1.2",
 		"@msgpack/msgpack": "^3.1.2"
 	},
 	"peerDependencies": {

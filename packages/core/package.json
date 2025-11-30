@@ -30,11 +30,8 @@
 	"author": "SylphxAI",
 	"license": "MIT",
 	"dependencies": {
-		"@sylphx/reify": "file:../../../udsl/packages/reify",
-		"@sylphx/reify-core": "file:../../../udsl/packages/core",
-		"@sylphx/reify-entity": "file:../../../udsl/packages/entity",
-		"@sylphx/reify-adapter-cache": "file:../../../udsl/packages/adapter-cache",
-		"@sylphx/reify-adapter-prisma": "file:../../../udsl/packages/adapter-prisma"
+		"@sylphx/reify": "^0.1.2",
+		"@sylphx/standard-entity": "^0.1.0"
 	},
 	"devDependencies": {
 		"typescript": "^5.9.3",

@@ -5,6 +5,7 @@
     "": {
       "name": "lens",
       "dependencies": {
+        "@sylphx/reify": "^0.1.2",
         "@sylphx/standard-entity": "^0.1.0",
         "happy-dom": "^20.0.10",
       },
@@ -48,7 +49,7 @@
         "@sylphx/lens-client": "workspace:*",
         "@sylphx/lens-core": "workspace:*",
         "@sylphx/lens-server": "workspace:*",
-        "@sylphx/reify": "file:../../../udsl/packages/reify",
+        "@sylphx/reify": "^0.1.2",
         "zod": "^4.1.13",
       },
       "devDependencies": {
@@ -61,7 +62,7 @@
       "dependencies": {
         "@msgpack/msgpack": "^3.1.2",
         "@sylphx/lens-core": "workspace:*",
-        "@sylphx/reify": "file:../../../udsl/packages/reify",
+        "@sylphx/reify": "^0.1.2",
       },
       "devDependencies": {
         "@preact/signals-core": "^1.8.0",
@@ -80,11 +81,8 @@
       "name": "@sylphx/lens-core",
       "version": "1.11.0",
       "dependencies": {
-        "@sylphx/reify": "file:../../../udsl/packages/reify",
-        "@sylphx/reify-adapter-cache": "file:../../../udsl/packages/adapter-cache",
-        "@sylphx/reify-adapter-prisma": "file:../../../udsl/packages/adapter-prisma",
-        "@sylphx/reify-core": "file:../../../udsl/packages/core",
-        "@sylphx/reify-entity": "file:../../../udsl/packages/entity",
+        "@sylphx/reify": "^0.1.2",
+        "@sylphx/standard-entity": "^0.1.0",
       },
       "devDependencies": {
         "typescript": "^5.9.3",
@@ -855,6 +853,16 @@
     "@sylphx/lens-svelte": ["@sylphx/lens-svelte@workspace:packages/svelte"],
 
     "@sylphx/lens-vue": ["@sylphx/lens-vue@workspace:packages/vue"],
+
+    "@sylphx/reify": ["@sylphx/reify@0.1.2", "", { "dependencies": { "@sylphx/reify-adapter-cache": "^0.1.2", "@sylphx/reify-adapter-prisma": "^0.1.2", "@sylphx/reify-core": "^0.1.2", "@sylphx/reify-entity": "^0.1.2" } }, "sha512-gbv6v56QQUHS64w8Z+Njrk1MBiUNj4bwi4F42cny6/w9ZBAKw5jejMJpcy7R+bsTBUhYcIjdtANof/CURYd2uw=="],
+
+    "@sylphx/reify-adapter-cache": ["@sylphx/reify-adapter-cache@0.1.2", "", { "dependencies": { "@sylphx/reify-core": "^0.1.2" } }, "sha512-dbEewGtQWOCWnlAAsIXOopEqJb/TnQE039HBhk8hgIZUxSTr8oOj1eEGbGt5cdTRGXvDsU8Kl5oYR1XOVuuCdg=="],
+
+    "@sylphx/reify-adapter-prisma": ["@sylphx/reify-adapter-prisma@0.1.2", "", { "dependencies": { "@sylphx/reify-core": "^0.1.2" } }, "sha512-fXQRAgbnN0KHvvjn3hC6JK+M5BkO2svoo6uHg9RUhikxaqoaJXyAyld8p//ZSCbL10athpVB+v7dBpUbRoT/bA=="],
+
+    "@sylphx/reify-core": ["@sylphx/reify-core@0.1.2", "", {}, "sha512-2k44S/eQ8WMYLZGPh/gos8JiHbDjDXwFnOl9qgwjpZhy9pxscIDdO6r2aReGrIzOizxNwJsUMqldaMUyGTggyQ=="],
+
+    "@sylphx/reify-entity": ["@sylphx/reify-entity@0.1.2", "", { "dependencies": { "@sylphx/reify-core": "^0.1.2", "@sylphx/standard-entity": "^0.1.0" } }, "sha512-i6Jk9OLL5ShM5F+8PqibP/cBxiUY9ZqfzqJkhqU6FYxBp3ROzpmB9BDxODmjymP78prEk5oV/5JtIj+R0P0ZIQ=="],
 
     "@sylphx/standard-entity": ["@sylphx/standard-entity@0.1.0", "", {}, "sha512-Qew99goKhGHIgS68VBbnyMbwpR3ZRzLEYWpZm7FBwRtWEYlohFmYhKzZDPLmE2LAV3ZbIHE/rvrLtV5ZAjRf/Q=="],
 
@@ -2152,18 +2160,6 @@
 
     "@rollup/pluginutils/estree-walker": ["estree-walker@2.0.2", "", {}, "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w=="],
 
-    "@sylphx/lens-client/@sylphx/reify": ["@sylphx/reify@file:../udsl/packages/reify", { "dependencies": { "@sylphx/reify-adapter-cache": "file:../adapter-cache", "@sylphx/reify-adapter-prisma": "file:../adapter-prisma", "@sylphx/reify-core": "file:../core", "@sylphx/reify-entity": "file:../entity" } }],
-
-    "@sylphx/lens-core/@sylphx/reify": ["@sylphx/reify@file:../udsl/packages/reify", { "dependencies": { "@sylphx/reify-adapter-cache": "file:../adapter-cache", "@sylphx/reify-adapter-prisma": "file:../adapter-prisma", "@sylphx/reify-core": "file:../core", "@sylphx/reify-entity": "file:../entity" } }],
-
-    "@sylphx/lens-core/@sylphx/reify-adapter-cache": ["@sylphx/reify-adapter-cache@file:../udsl/packages/adapter-cache", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
-
-    "@sylphx/lens-core/@sylphx/reify-adapter-prisma": ["@sylphx/reify-adapter-prisma@file:../udsl/packages/adapter-prisma", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
-
-    "@sylphx/lens-core/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "@sylphx/lens-core/@sylphx/reify-entity": ["@sylphx/reify-entity@file:../udsl/packages/entity", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
-
     "@tanstack/directive-functions-plugin/@babel/code-frame": ["@babel/code-frame@7.26.2", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.25.9", "js-tokens": "^4.0.0", "picocolors": "^1.0.0" } }, "sha512-RJlIHRueQgwWitWgF8OdFYGZX328Ax5BCemNGlqHfplnRT9ESi8JkFlvaVYbS+UubVY6dpv87Fs2u5M29iNFVQ=="],
 
     "@tanstack/directive-functions-plugin/vite": ["vite@7.2.4", "", { "dependencies": { "esbuild": "^0.25.0", "fdir": "^6.5.0", "picomatch": "^4.0.3", "postcss": "^8.5.6", "rollup": "^4.43.0", "tinyglobby": "^0.2.15" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^20.19.0 || >=22.12.0", "jiti": ">=1.21.0", "less": "^4.0.0", "lightningcss": "^1.21.0", "sass": "^1.70.0", "sass-embedded": "^1.70.0", "stylus": ">=0.54.8", "sugarss": "^5.0.0", "terser": "^5.16.0", "tsx": "^4.8.1", "yaml": "^2.4.2" }, "optionalPeers": ["@types/node", "jiti", "less", "lightningcss", "sass", "sass-embedded", "stylus", "sugarss", "terser", "tsx", "yaml"], "bin": { "vite": "bin/vite.js" } }, "sha512-NL8jTlbo0Tn4dUEXEsUg8KeyG/Lkmc4Fnzb8JXN/Ykm9G4HNImjtABMJgkQoVjOBN/j2WAwDTRytdqJbZsah7w=="],
@@ -2239,8 +2235,6 @@
     "h3/cookie-es": ["cookie-es@1.2.2", "", {}, "sha512-+W7VmiVINB+ywl1HGXJXmrqkOhpKrIiVZV6tQuV54ZyQC7MMuBt81Vc336GMLoHBq5hV/F9eXgt5Mnx0Rha5Fg=="],
 
     "lazystream/readable-stream": ["readable-stream@2.3.8", "", { "dependencies": { "core-util-is": "~1.0.0", "inherits": "~2.0.3", "isarray": "~1.0.0", "process-nextick-args": "~2.0.0", "safe-buffer": "~5.1.1", "string_decoder": "~1.1.1", "util-deprecate": "~1.0.1" } }, "sha512-8p0AUk4XODgIewSi0l8Epjs+EVnWiK7NoDIEGU0HhE7+ZyY8D1IMY7odu5lRrFXGg71L15KG8QrPmum45RTtdA=="],
-
-    "lens-v2-example/@sylphx/reify": ["@sylphx/reify@file:../udsl/packages/reify", { "dependencies": { "@sylphx/reify-adapter-cache": "file:../adapter-cache", "@sylphx/reify-adapter-prisma": "file:../adapter-prisma", "@sylphx/reify-core": "file:../core", "@sylphx/reify-entity": "file:../entity" } }],
 
     "listhen/pathe": ["pathe@1.1.2", "", {}, "sha512-whLdWMYL2TwI08hn8/ZqAbrVemu0LNaNNJZX73O6qaIdCTfXutsLhMkjdENX0qhsQ9uIimo4/aQOmXkoon2nDQ=="],
 
@@ -2452,28 +2446,6 @@
 
     "@nuxt/devtools/vite/postcss": ["postcss@8.5.6", "", { "dependencies": { "nanoid": "^3.3.11", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg=="],
 
-    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-adapter-cache": ["@sylphx/reify-adapter-cache@file:../udsl/packages/adapter-cache", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
-
-    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-adapter-prisma": ["@sylphx/reify-adapter-prisma@file:../udsl/packages/adapter-prisma", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
-
-    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-entity": ["@sylphx/reify-entity@file:../udsl/packages/entity", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
-
-    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-adapter-cache": ["@sylphx/reify-adapter-cache@file:../udsl/packages/adapter-cache", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
-
-    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-adapter-prisma": ["@sylphx/reify-adapter-prisma@file:../udsl/packages/adapter-prisma", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
-
-    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-entity": ["@sylphx/reify-entity@file:../udsl/packages/entity", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
-
-    "@sylphx/lens-core/@sylphx/reify-adapter-cache/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "@sylphx/lens-core/@sylphx/reify-adapter-prisma/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "@sylphx/lens-core/@sylphx/reify-entity/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
     "@tanstack/directive-functions-plugin/@babel/code-frame/js-tokens": ["js-tokens@4.0.0", "", {}, "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ=="],
 
     "@tanstack/directive-functions-plugin/vite/postcss": ["postcss@8.5.6", "", { "dependencies": { "nanoid": "^3.3.11", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg=="],
@@ -2499,14 +2471,6 @@
     "lazystream/readable-stream/safe-buffer": ["safe-buffer@5.1.2", "", {}, "sha512-Gd2UZBJDkXlY7GbJxfsE8/nvKkUEU1G38c1siN6QP6a9PT9MmHB8GnpscSmMJSoF8LOIrt8ud/wPtojys4G6+g=="],
 
     "lazystream/readable-stream/string_decoder": ["string_decoder@1.1.1", "", { "dependencies": { "safe-buffer": "~5.1.0" } }, "sha512-n/ShnvDi6FHbbVfviro+WojiFzv+s8MPMHBczVePfUpDJLwoLT0ht1l4YwBCbi8pJAveEEdnkHyPyTP/mzRfwg=="],
-
-    "lens-v2-example/@sylphx/reify/@sylphx/reify-adapter-cache": ["@sylphx/reify-adapter-cache@file:../udsl/packages/adapter-cache", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
-
-    "lens-v2-example/@sylphx/reify/@sylphx/reify-adapter-prisma": ["@sylphx/reify-adapter-prisma@file:../udsl/packages/adapter-prisma", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
-
-    "lens-v2-example/@sylphx/reify/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "lens-v2-example/@sylphx/reify/@sylphx/reify-entity": ["@sylphx/reify-entity@file:../udsl/packages/entity", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
 
     "mlly/pkg-types/confbox": ["confbox@0.1.8", "", {}, "sha512-RMtmw0iFkeR4YV+fUOSucriAQNb9g8zFR52MWCtl+cCZOFRNL6zeB395vPzFhEjjn4fMxXudmELnl/KF/WrK6w=="],
 
@@ -2587,24 +2551,6 @@
     "yargs/string-width/emoji-regex": ["emoji-regex@8.0.0", "", {}, "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A=="],
 
     "yargs/string-width/strip-ansi": ["strip-ansi@6.0.1", "", { "dependencies": { "ansi-regex": "^5.0.1" } }, "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A=="],
-
-    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-adapter-cache/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-adapter-prisma/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-entity/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-adapter-cache/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-adapter-prisma/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-entity/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "lens-v2-example/@sylphx/reify/@sylphx/reify-adapter-cache/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "lens-v2-example/@sylphx/reify/@sylphx/reify-adapter-prisma/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
-
-    "lens-v2-example/@sylphx/reify/@sylphx/reify-entity/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
 
     "nitropack/serve-static/send/fresh": ["fresh@2.0.0", "", {}, "sha512-Rx/WycZ60HOaqLKAi6cHRKKI7zxWbJ31MhntmtwMoaTeF7XFH9hhBp8vITaMidfljRQ6eYWCKkaTK+ykVJHP2A=="],
 
