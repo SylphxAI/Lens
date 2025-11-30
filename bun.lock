@@ -2449,21 +2449,21 @@
 
     "@nuxt/devtools/vite/postcss": ["postcss@8.5.6", "", { "dependencies": { "nanoid": "^3.3.11", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg=="],
 
-    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-adapter-cache": ["@sylphx/reify-adapter-cache@file:../udsl/packages/adapter-cache", {}],
+    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-adapter-cache": ["@sylphx/reify-adapter-cache@file:../udsl/packages/adapter-cache", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
 
-    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-adapter-prisma": ["@sylphx/reify-adapter-prisma@file:../udsl/packages/adapter-prisma", {}],
+    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-adapter-prisma": ["@sylphx/reify-adapter-prisma@file:../udsl/packages/adapter-prisma", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
 
     "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
 
-    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-entity": ["@sylphx/reify-entity@file:../udsl/packages/entity", {}],
+    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-entity": ["@sylphx/reify-entity@file:../udsl/packages/entity", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
 
-    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-adapter-cache": ["@sylphx/reify-adapter-cache@file:../udsl/packages/adapter-cache", {}],
+    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-adapter-cache": ["@sylphx/reify-adapter-cache@file:../udsl/packages/adapter-cache", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
 
-    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-adapter-prisma": ["@sylphx/reify-adapter-prisma@file:../udsl/packages/adapter-prisma", {}],
+    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-adapter-prisma": ["@sylphx/reify-adapter-prisma@file:../udsl/packages/adapter-prisma", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
 
     "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
 
-    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-entity": ["@sylphx/reify-entity@file:../udsl/packages/entity", {}],
+    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-entity": ["@sylphx/reify-entity@file:../udsl/packages/entity", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
 
     "@sylphx/lens-core/@sylphx/reify-adapter-cache/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
 
@@ -2497,13 +2497,13 @@
 
     "lazystream/readable-stream/string_decoder": ["string_decoder@1.1.1", "", { "dependencies": { "safe-buffer": "~5.1.0" } }, "sha512-n/ShnvDi6FHbbVfviro+WojiFzv+s8MPMHBczVePfUpDJLwoLT0ht1l4YwBCbi8pJAveEEdnkHyPyTP/mzRfwg=="],
 
-    "lens-v2-example/@sylphx/reify/@sylphx/reify-adapter-cache": ["@sylphx/reify-adapter-cache@file:../udsl/packages/adapter-cache", {}],
+    "lens-v2-example/@sylphx/reify/@sylphx/reify-adapter-cache": ["@sylphx/reify-adapter-cache@file:../udsl/packages/adapter-cache", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
 
-    "lens-v2-example/@sylphx/reify/@sylphx/reify-adapter-prisma": ["@sylphx/reify-adapter-prisma@file:../udsl/packages/adapter-prisma", {}],
+    "lens-v2-example/@sylphx/reify/@sylphx/reify-adapter-prisma": ["@sylphx/reify-adapter-prisma@file:../udsl/packages/adapter-prisma", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
 
     "lens-v2-example/@sylphx/reify/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
 
-    "lens-v2-example/@sylphx/reify/@sylphx/reify-entity": ["@sylphx/reify-entity@file:../udsl/packages/entity", {}],
+    "lens-v2-example/@sylphx/reify/@sylphx/reify-entity": ["@sylphx/reify-entity@file:../udsl/packages/entity", { "dependencies": { "@sylphx/reify-core": "file:../core" } }],
 
     "mlly/pkg-types/confbox": ["confbox@0.1.8", "", {}, "sha512-RMtmw0iFkeR4YV+fUOSucriAQNb9g8zFR52MWCtl+cCZOFRNL6zeB395vPzFhEjjn4fMxXudmELnl/KF/WrK6w=="],
 
@@ -2584,6 +2584,24 @@
     "yargs/string-width/emoji-regex": ["emoji-regex@8.0.0", "", {}, "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A=="],
 
     "yargs/string-width/strip-ansi": ["strip-ansi@6.0.1", "", { "dependencies": { "ansi-regex": "^5.0.1" } }, "sha512-Y38VPSHcqkFrCpFnQ9vuSXmquuv5oXOKpGeT6aGrr3o3Gc9AlVa6JBfUSOCnbxGGZF+/0ooI7KrPuUSztUdU5A=="],
+
+    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-adapter-cache/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
+
+    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-adapter-prisma/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
+
+    "@sylphx/lens-client/@sylphx/reify/@sylphx/reify-entity/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
+
+    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-adapter-cache/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
+
+    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-adapter-prisma/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
+
+    "@sylphx/lens-core/@sylphx/reify/@sylphx/reify-entity/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
+
+    "lens-v2-example/@sylphx/reify/@sylphx/reify-adapter-cache/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
+
+    "lens-v2-example/@sylphx/reify/@sylphx/reify-adapter-prisma/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
+
+    "lens-v2-example/@sylphx/reify/@sylphx/reify-entity/@sylphx/reify-core": ["@sylphx/reify-core@file:../udsl/packages/core", {}],
 
     "nitropack/serve-static/send/fresh": ["fresh@2.0.0", "", {}, "sha512-Rx/WycZ60HOaqLKAi6cHRKKI7zxWbJ31MhntmtwMoaTeF7XFH9hhBp8vITaMidfljRQ6eYWCKkaTK+ykVJHP2A=="],
 
