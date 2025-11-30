@@ -4,14 +4,15 @@
  * Manages entity signals, caching, and optimistic updates.
  */
 
-import type { EntityKey, MultiEntityDSL, Update } from "@sylphx/lens-core";
+import type { EntityKey, Pipeline, Update } from "@sylphx/lens-core";
+import { applyUpdate, makeEntityKey } from "@sylphx/lens-core";
 import {
-	applyDeferredOperations,
-	applyUpdate,
-	type EvaluatedOperation,
-	evaluateMultiEntityDSL,
-	makeEntityKey,
-} from "@sylphx/lens-core";
+	createCachePlugin,
+	execute,
+	type PipelineResult,
+	registerPlugin,
+	unregisterPlugin,
+} from "@sylphx/reify";
 import { batch, type Signal, signal, type WritableSignal } from "../signals/signal";
 
 // Re-export for convenience
@@ -49,8 +50,8 @@ export interface OptimisticEntry {
 /** Multi-entity optimistic transaction */
 export interface OptimisticTransaction {
 	id: string;
-	/** All operations in this transaction */
-	operations: EvaluatedOperation[];
+	/** Pipeline results from Reify execution */
+	results: PipelineResult;
 	/** Original data for each entity (for rollback) */
 	originalData: Map<string, unknown>;
 	timestamp: number;
@@ -432,84 +433,82 @@ export class ReactiveStore {
 	// ===========================================================================
 
 	/**
-	 * Apply multi-entity optimistic update from DSL
+	 * Apply optimistic update from Reify Pipeline
 	 * Returns transaction ID for confirmation/rollback
 	 *
-	 * Supports v2 operators:
-	 * - $increment, $decrement for numeric fields
-	 * - $push, $pull, $addToSet for array fields
-	 * - $default for fallback values
-	 * - $if for conditional updates
-	 * - $ids, $where for bulk operations
+	 * Uses Reify's execute() with a cache adapter that wraps ReactiveStore.
 	 */
-	applyMultiEntityOptimistic(dsl: MultiEntityDSL, input: Record<string, unknown>): string {
+	async applyPipelineOptimistic(
+		pipeline: Pipeline,
+		input: Record<string, unknown>,
+	): Promise<string> {
 		if (!this.config.optimistic) {
 			return "";
 		}
 
 		const txId = `tx_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 
-		// Evaluate DSL to get operations in order
-		const operations = evaluateMultiEntityDSL(dsl, input);
-
 		// Store original data for rollback
 		const originalData = new Map<string, unknown>();
 
-		batch(() => {
-			for (const op of operations) {
-				// Handle bulk operations ($ids or $where)
-				const targetIds = this.resolveTargetIds(op);
+		// Create a cache adapter that wraps ReactiveStore
+		const cacheAdapter = {
+			get: (key: string) => {
+				const [entityName, entityId] = key.split(":") as [string, string];
+				const entitySignal = this.entities.get(this.makeKey(entityName, entityId));
+				return entitySignal?.value.data ?? undefined;
+			},
+			set: (key: string, value: unknown) => {
+				const [entityName, entityId] = key.split(":") as [string, string];
+				const storeKey = this.makeKey(entityName, entityId);
 
-				for (const entityId of targetIds) {
-					const key = this.makeKey(op.entity, entityId);
-					const entitySignal = this.entities.get(key);
-					const currentState = (entitySignal?.value.data ?? {}) as Record<string, unknown>;
-
-					// Save original data
-					if (!originalData.has(key)) {
-						originalData.set(key, entitySignal?.value.data ?? null);
-					}
-
-					switch (op.op) {
-						case "create": {
-							// Apply deferred operations with empty state for create
-							const resolvedData = applyDeferredOperations(op, {});
-							this.setEntity(op.entity, entityId, { id: entityId, ...resolvedData });
-							break;
-						}
-
-						case "update": {
-							// Apply deferred operations with current state
-							const resolvedData = applyDeferredOperations(op, currentState);
-							if (entitySignal?.value.data) {
-								this.setEntity(op.entity, entityId, {
-									...(entitySignal.value.data as object),
-									...resolvedData,
-								});
-							} else {
-								// Entity not in cache, create with optimistic data
-								this.setEntity(op.entity, entityId, { id: entityId, ...resolvedData });
-							}
-							break;
-						}
-
-						case "delete":
-							if (entitySignal) {
-								entitySignal.value = {
-									...entitySignal.value,
-									data: null,
-								};
-							}
-							break;
-					}
+				// Save original data before first modification
+				if (!originalData.has(storeKey)) {
+					const entitySignal = this.entities.get(storeKey);
+					originalData.set(storeKey, entitySignal?.value.data ?? null);
 				}
-			}
-		});
+
+				this.setEntity(entityName, entityId, value);
+			},
+			delete: (key: string) => {
+				const [entityName, entityId] = key.split(":") as [string, string];
+				const storeKey = this.makeKey(entityName, entityId);
+
+				// Save original data before deletion
+				if (!originalData.has(storeKey)) {
+					const entitySignal = this.entities.get(storeKey);
+					originalData.set(storeKey, entitySignal?.value.data ?? null);
+				}
+
+				const entitySignal = this.entities.get(storeKey);
+				if (entitySignal) {
+					entitySignal.value = { ...entitySignal.value, data: null };
+				}
+				return true;
+			},
+			has: (key: string) => {
+				const [entityName, entityId] = key.split(":") as [string, string];
+				return this.entities.has(this.makeKey(entityName, entityId));
+			},
+		};
+
+		// Execute pipeline with cache adapter
+		// Register plugin globally (Reify requires global plugin registration)
+		const cachePlugin = createCachePlugin(cacheAdapter);
+		registerPlugin(cachePlugin);
+
+		let results: PipelineResult;
+		try {
+			results = await execute(pipeline, input);
+		} finally {
+			// Unregister to avoid conflicts with other store instances
+			unregisterPlugin("entity");
+		}
 
 		// Store transaction for potential rollback
 		this.optimisticTransactions.set(txId, {
 			id: txId,
-			operations,
+			results,
 			originalData,
 			timestamp: Date.now(),
 		});
@@ -518,52 +517,10 @@ export class ReactiveStore {
 	}
 
 	/**
-	 * Resolve target entity IDs from an operation
-	 * Handles $id (single), $ids (array), and $where (query)
-	 */
-	private resolveTargetIds(op: EvaluatedOperation): string[] {
-		// Bulk by explicit IDs
-		if (op.ids && op.ids.length > 0) {
-			return op.ids;
-		}
-
-		// Bulk by query filter ($where)
-		if (op.where) {
-			// Find all cached entities matching the where clause
-			const matching: string[] = [];
-			for (const [key, entitySignal] of this.entities) {
-				const [entityName] = key.split(":") as [string, string];
-				if (entityName !== op.entity) continue;
-
-				const data = entitySignal.value.data as Record<string, unknown> | null;
-				if (data && this.matchesWhere(data, op.where)) {
-					matching.push(data.id as string);
-				}
-			}
-			return matching;
-		}
-
-		// Single entity
-		return [op.id];
-	}
-
-	/**
-	 * Check if entity data matches a where clause (simple equality check)
-	 */
-	private matchesWhere(data: Record<string, unknown>, where: Record<string, unknown>): boolean {
-		for (const [key, value] of Object.entries(where)) {
-			if (data[key] !== value) {
-				return false;
-			}
-		}
-		return true;
-	}
-
-	/**
-	 * Confirm multi-entity optimistic transaction
+	 * Confirm pipeline optimistic transaction
 	 * Updates entities with server data (replaces temp IDs with real IDs)
 	 */
-	confirmMultiEntityOptimistic(
+	confirmPipelineOptimistic(
 		txId: string,
 		serverResults?: Array<{ entity: string; tempId: string; data: unknown }>,
 	): void {
@@ -589,37 +546,24 @@ export class ReactiveStore {
 	}
 
 	/**
-	 * Rollback multi-entity optimistic transaction
+	 * Rollback pipeline optimistic transaction
 	 * Restores all entities to their original state
 	 */
-	rollbackMultiEntityOptimistic(txId: string): void {
+	rollbackPipelineOptimistic(txId: string): void {
 		const tx = this.optimisticTransactions.get(txId);
 		if (!tx) return;
 
 		batch(() => {
-			// Restore in reverse order
-			const operations = [...tx.operations].reverse();
+			// Restore all entities to their original state
+			for (const [key, originalData] of tx.originalData) {
+				const [entityName, entityId] = key.split(":") as [string, string];
 
-			for (const op of operations) {
-				const key = this.makeKey(op.entity, op.id);
-				const originalData = tx.originalData.get(key);
-
-				switch (op.op) {
-					case "create":
-						// Remove optimistically created entity
-						this.removeEntity(op.entity, op.id);
-						break;
-
-					case "update":
-					case "delete":
-						// Restore original data
-						if (originalData !== null) {
-							this.setEntity(op.entity, op.id, originalData);
-						} else {
-							// Was not in cache, remove
-							this.removeEntity(op.entity, op.id);
-						}
-						break;
+				if (originalData === null) {
+					// Entity didn't exist before, remove it
+					this.removeEntity(entityName, entityId);
+				} else {
+					// Restore original data
+					this.setEntity(entityName, entityId, originalData);
 				}
 			}
 		});

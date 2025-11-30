@@ -163,329 +163,63 @@ export type ResolverFn<TInput, TOutput, TContext = unknown> = (
 ) => TOutput | Promise<TOutput> | AsyncGenerator<TOutput>;
 
 // =============================================================================
-// Optimistic DSL (Declarative - for type-only client imports)
+// Optimistic DSL - Uses Reify Pipeline
 // =============================================================================
 
-// -----------------------------------------------------------------------------
-// Value References (for runtime values in DSL)
-// -----------------------------------------------------------------------------
-
-/** Reference value from mutation input */
-export interface RefInput {
-	$input: string;
-}
-
-/** Reference value from sibling operation result */
-export interface RefSibling {
-	$ref: string;
-}
-
-/** Generate temporary ID */
-export interface RefTemp {
-	$temp: true;
-}
-
-/** Current timestamp */
-export interface RefNow {
-	$now: true;
-}
-
-// -----------------------------------------------------------------------------
-// V2 Operators
-// -----------------------------------------------------------------------------
-
-/** Increment/decrement numeric field */
-export interface OpIncrement {
-	$increment: number;
-}
-
-/** Decrement numeric field (shorthand for negative $increment) */
-export interface OpDecrement {
-	$decrement: number;
-}
-
-/** Push item(s) to array */
-export interface OpPush {
-	$push: unknown | unknown[];
-}
-
-/** Pull item(s) from array */
-export interface OpPull {
-	$pull: unknown | unknown[];
-}
-
-/** Add to set (push if not exists) */
-export interface OpAddToSet {
-	$addToSet: unknown | unknown[];
-}
-
-/** Default value (use if field is undefined) */
-export interface OpDefault {
-	$default: unknown;
-}
-
-/** Conditional operator */
-export interface OpIf {
-	$if: {
-		/** Condition - can reference $input, $state, etc. */
-		condition: ValueRef | boolean;
-		/** Value if condition is true */
-		then: unknown | ValueRef;
-		/** Value if condition is false (optional) */
-		else?: unknown | ValueRef;
-	};
-}
-
-/** Read current entity state */
-export interface RefState {
-	$state: string;
-}
-
-/** All v2 operator types */
-export type V2Operator =
-	| OpIncrement
-	| OpDecrement
-	| OpPush
-	| OpPull
-	| OpAddToSet
-	| OpDefault
-	| OpIf;
-
-/** All value reference types (v1 + v2) */
-export type ValueRef = RefInput | RefSibling | RefTemp | RefNow | RefState;
-
-/** Check if value is a reference */
-export function isValueRef(value: unknown): value is ValueRef {
-	if (!value || typeof value !== "object") return false;
-	const obj = value as Record<string, unknown>;
-	return "$input" in obj || "$ref" in obj || "$temp" in obj || "$now" in obj || "$state" in obj;
-}
-
-/** Check if value is a v2 operator */
-export function isV2Operator(value: unknown): value is V2Operator {
-	if (!value || typeof value !== "object") return false;
-	const obj = value as Record<string, unknown>;
-	return (
-		"$increment" in obj ||
-		"$decrement" in obj ||
-		"$push" in obj ||
-		"$pull" in obj ||
-		"$addToSet" in obj ||
-		"$default" in obj ||
-		"$if" in obj
-	);
-}
-
-// -----------------------------------------------------------------------------
-// Multi-Entity Operation
-// -----------------------------------------------------------------------------
-
-/** Operation type literal or conditional */
-export type OpType = "create" | "update" | "delete";
-
-/** Conditional operation type (for upsert-like patterns) */
-export interface OpTypeConditional {
-	$if: {
-		condition: ValueRef | boolean;
-		then: OpType;
-		else?: OpType;
-	};
-}
-
-/** Single entity operation in multi-entity DSL */
-export interface EntityOperation {
-	/** Target entity type name */
-	$entity: string;
-	/** Operation type - can be literal or conditional */
-	$op: OpType | OpTypeConditional;
-	/** Target entity ID (required for update/delete on single entity) */
-	$id?: string | ValueRef;
-	/** Multiple entity IDs for bulk operations */
-	$ids?: string[] | ValueRef;
-	/** Query filter for bulk operations */
-	$where?: Record<string, unknown>;
-	/** Data fields (any key without $ prefix) */
-	[field: string]: unknown | ValueRef | V2Operator;
-}
-
-/** Check if value is an OpTypeConditional */
-export function isOpTypeConditional(value: unknown): value is OpTypeConditional {
-	if (!value || typeof value !== "object") return false;
-	const obj = value as Record<string, unknown>;
-	if (!("$if" in obj)) return false;
-	const ifObj = obj.$if as Record<string, unknown>;
-	return (
-		ifObj &&
-		typeof ifObj === "object" &&
-		"condition" in ifObj &&
-		"then" in ifObj &&
-		(ifObj.then === "create" || ifObj.then === "update" || ifObj.then === "delete")
-	);
-}
-
-/** Check if value is an EntityOperation */
-export function isEntityOperation(value: unknown): value is EntityOperation {
-	if (!value || typeof value !== "object") return false;
-	const obj = value as Record<string, unknown>;
-	return (
-		typeof obj.$entity === "string" &&
-		(obj.$op === "create" ||
-			obj.$op === "update" ||
-			obj.$op === "delete" ||
-			isOpTypeConditional(obj.$op))
-	);
-}
-
-/** Multi-entity optimistic DSL (object of named operations) */
-export type MultiEntityDSL = Record<string, EntityOperation>;
-
-/** Check if value is a MultiEntityDSL */
-export function isMultiEntityDSL(value: unknown): value is MultiEntityDSL {
-	if (!value || typeof value !== "object") return false;
-	const obj = value as Record<string, unknown>;
-
-	// Must have at least one key
-	const keys = Object.keys(obj);
-	if (keys.length === 0) return false;
-
-	// Check for simple DSL indicators (not multi-entity)
-	if ("merge" in obj || "create" in obj || "updateMany" in obj) return false;
-
-	// All values must be EntityOperations
-	return keys.every((key) => isEntityOperation(obj[key]));
-}
-
-// -----------------------------------------------------------------------------
-// Legacy Single-Entity DSL (backwards compatible)
-// -----------------------------------------------------------------------------
-
-/** Config for updateMany (legacy) */
-export interface OptimisticUpdateManyConfig {
-	/** Target entity type */
-	entity: string;
-	/** Input field containing IDs (use $ prefix for references) */
-	ids: string;
-	/** Fields to set (use $ prefix for input references) */
-	set: Record<string, unknown>;
-}
-
-// -----------------------------------------------------------------------------
-// Full OptimisticDSL Type
-// -----------------------------------------------------------------------------
-
 /**
- * Declarative optimistic update DSL
+ * Optimistic update specification
  *
- * **Tier 1: Simple (single entity)**
+ * Uses Reify Pipeline for describing optimistic updates.
+ * Import DSL tools directly from @sylphx/reify.
+ *
+ * @example
  * ```typescript
- * .optimistic('merge')   // UPDATE: merge input into entity
- * .optimistic('create')  // CREATE: auto tempId
- * .optimistic('delete')  // DELETE: mark deleted
- * .optimistic({ merge: { published: true } })  // With additional fields
- * ```
+ * import { entity, pipe, ref, temp, now } from '@sylphx/reify';
  *
- * **Tier 2: Multi-entity**
- * ```typescript
- * .optimistic({
- *   session: {
- *     $entity: 'Session',
- *     $op: 'create',
- *     title: { $input: 'title' },
- *     createdAt: { $now: true },
- *   },
- *   userMessage: {
- *     $entity: 'Message',
- *     $op: 'create',
- *     sessionId: { $ref: 'session.id' },
- *     role: 'user',
- *   },
- * })
+ * mutation()
+ *   .input(z.object({ title: z.string(), content: z.string() }))
+ *   .returns(Message)
+ *   .optimistic(
+ *     pipe(({ input }) => [
+ *       entity.create('Message', {
+ *         id: temp(),
+ *         title: input.title,
+ *         content: input.content,
+ *         createdAt: now(),
+ *       }).as('message'),
+ *     ])
+ *   )
+ *   .resolve(({ input, ctx }) => ctx.db.message.create({ data: input }));
  * ```
- *
- * **Value References:**
- * - `{ $input: 'field' }` - Value from mutation input
- * - `{ $ref: 'sibling.field' }` - Value from sibling operation result
- * - `{ $temp: true }` - Generate temporary ID
- * - `{ $now: true }` - Current timestamp
  */
-export type OptimisticDSL =
-	// Tier 1: Simple (single entity)
-	| "merge"
-	| "create"
-	| "delete"
-	| { merge: Record<string, unknown> }
-	| { create: Record<string, unknown> }
-	// Legacy: updateMany
-	| { updateMany: OptimisticUpdateManyConfig }
-	// Tier 2: Multi-entity
-	| MultiEntityDSL
-	// Tier 3: UDSL Pipeline (new unified DSL)
-	| Pipeline;
+/** Sugar syntax for common optimistic update patterns */
+export type OptimisticSugar = "merge" | "create" | "delete" | { merge: Record<string, unknown> };
 
 /**
- * Check if value is an OptimisticDSL
+ * OptimisticDSL - Defines optimistic update behavior
+ *
+ * Can be:
+ * - Sugar syntax ("merge", "create", "delete", { merge: {...} }) for common patterns
+ * - Reify Pipeline for complex multi-entity operations
+ *
+ * Note: Server converts sugar to Pipeline at metadata generation time,
+ * so client always receives Pipeline.
+ */
+export type OptimisticDSL = OptimisticSugar | Pipeline;
+
+/**
+ * Check if value is an OptimisticDSL (sugar or Pipeline)
  */
 export function isOptimisticDSL(value: unknown): value is OptimisticDSL {
-	// String shorthand
+	// Check for sugar syntax
 	if (value === "merge" || value === "create" || value === "delete") {
 		return true;
 	}
-	// Object form
-	if (value && typeof value === "object") {
-		const obj = value as Record<string, unknown>;
-		// UDSL Pipeline
-		if (isPipeline(obj)) {
-			return true;
-		}
-		// Simple DSL
-		if ("merge" in obj || "create" in obj || "updateMany" in obj) {
-			return true;
-		}
-		// Multi-entity DSL
-		if (isMultiEntityDSL(obj)) {
-			return true;
-		}
+	if (value && typeof value === "object" && "merge" in value) {
+		return true;
 	}
-	return false;
-}
-
-/**
- * Normalize DSL to internal format for interpreter
- */
-export function normalizeOptimisticDSL(dsl: OptimisticDSL): {
-	type: "merge" | "create" | "delete" | "updateMany" | "multi" | "pipeline";
-	set?: Record<string, unknown>;
-	config?: OptimisticUpdateManyConfig;
-	operations?: MultiEntityDSL;
-	pipeline?: Pipeline;
-} {
-	// String shorthand
-	if (dsl === "merge") return { type: "merge" };
-	if (dsl === "create") return { type: "create" };
-	if (dsl === "delete") return { type: "delete" };
-
-	// UDSL Pipeline
-	if (isPipeline(dsl)) {
-		return { type: "pipeline", pipeline: dsl };
-	}
-
-	// Object form - simple
-	if ("merge" in dsl)
-		return { type: "merge", set: (dsl as { merge: Record<string, unknown> }).merge };
-	if ("create" in dsl)
-		return { type: "create", set: (dsl as { create: Record<string, unknown> }).create };
-	if ("updateMany" in dsl)
-		return {
-			type: "updateMany",
-			config: (dsl as { updateMany: OptimisticUpdateManyConfig }).updateMany,
-		};
-
-	// Multi-entity
-	if (isMultiEntityDSL(dsl)) {
-		return { type: "multi", operations: dsl };
-	}
-
-	return { type: "merge" }; // fallback
+	// Check for Pipeline
+	return isPipeline(value);
 }
 
 // =============================================================================

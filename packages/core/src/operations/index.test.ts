@@ -17,7 +17,6 @@ import {
 	isRouterDef,
 	isTempId,
 	mutation,
-	normalizeOptimisticDSL,
 	operations,
 	query,
 	resetTempIdCounter,
@@ -640,46 +639,27 @@ describe("operations() factory", () => {
 
 describe("Optimistic DSL Helpers", () => {
 	describe("isOptimisticDSL", () => {
-		it("identifies string shorthand 'merge'", () => {
-			expect(isOptimisticDSL("merge")).toBe(true);
+		it("identifies Reify Pipeline", () => {
+			// Reify Pipeline has $pipe array
+			const pipeline = {
+				$pipe: [{ namespace: "entity", effect: "create", args: { type: "User" } }],
+			};
+			expect(isOptimisticDSL(pipeline)).toBe(true);
 		});
 
-		it("identifies string shorthand 'create'", () => {
-			expect(isOptimisticDSL("create")).toBe(true);
-		});
-
-		it("identifies string shorthand 'delete'", () => {
-			expect(isOptimisticDSL("delete")).toBe(true);
-		});
-
-		it("identifies object with merge", () => {
+		it("returns true for sugar syntax object", () => {
 			expect(isOptimisticDSL({ merge: { published: true } })).toBe(true);
 		});
 
-		it("identifies object with create", () => {
-			expect(isOptimisticDSL({ create: { status: "draft" } })).toBe(true);
+		it("returns true for sugar syntax strings", () => {
+			expect(isOptimisticDSL("merge")).toBe(true);
+			expect(isOptimisticDSL("create")).toBe(true);
+			expect(isOptimisticDSL("delete")).toBe(true);
 		});
 
-		it("identifies object with updateMany", () => {
-			expect(
-				isOptimisticDSL({
-					updateMany: { entity: "User", ids: "$userIds", set: { role: "admin" } },
-				}),
-			).toBe(true);
-		});
-
-		it("identifies multi-entity DSL", () => {
-			expect(
-				isOptimisticDSL({
-					session: { $entity: "Session", $op: "create", title: "Test" },
-					message: { $entity: "Message", $op: "create", sessionId: { $ref: "session.id" } },
-				}),
-			).toBe(true);
-		});
-
-		it("returns false for non-DSL strings", () => {
+		it("returns false for invalid strings", () => {
+			expect(isOptimisticDSL("invalid")).toBe(false);
 			expect(isOptimisticDSL("update")).toBe(false);
-			expect(isOptimisticDSL("remove")).toBe(false);
 		});
 
 		it("returns false for empty object", () => {
@@ -696,42 +676,6 @@ describe("Optimistic DSL Helpers", () => {
 
 		it("returns false for number", () => {
 			expect(isOptimisticDSL(123)).toBe(false);
-		});
-	});
-
-	describe("normalizeOptimisticDSL", () => {
-		it("normalizes 'merge' string shorthand", () => {
-			expect(normalizeOptimisticDSL("merge")).toEqual({ type: "merge" });
-		});
-
-		it("normalizes 'create' string shorthand", () => {
-			expect(normalizeOptimisticDSL("create")).toEqual({ type: "create" });
-		});
-
-		it("normalizes 'delete' string shorthand", () => {
-			expect(normalizeOptimisticDSL("delete")).toEqual({ type: "delete" });
-		});
-
-		it("normalizes merge object with set fields", () => {
-			expect(normalizeOptimisticDSL({ merge: { published: true } })).toEqual({
-				type: "merge",
-				set: { published: true },
-			});
-		});
-
-		it("normalizes create object with set fields", () => {
-			expect(normalizeOptimisticDSL({ create: { status: "draft" } })).toEqual({
-				type: "create",
-				set: { status: "draft" },
-			});
-		});
-
-		it("normalizes updateMany object", () => {
-			const config = { entity: "User", ids: "$userIds", set: { role: "admin" } };
-			expect(normalizeOptimisticDSL({ updateMany: config })).toEqual({
-				type: "updateMany",
-				config,
-			});
 		});
 	});
 });

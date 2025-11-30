@@ -18,12 +18,16 @@ import {
 	type FieldType,
 	flattenRouter,
 	type InferRouterContext,
+	isEntityDef,
 	isMutationDef,
+	isPipeline,
 	isQueryDef,
 	type MutationDef,
+	type Pipeline,
 	type QueryDef,
 	type ResolverDef,
 	type Resolvers,
+	type ReturnSpec,
 	type RouterDef,
 	runWithContext,
 	toResolverMap,
@@ -147,6 +151,121 @@ export interface WebSocketLike {
 	onmessage?: ((event: { data: string }) => void) | null;
 	onclose?: (() => void) | null;
 	onerror?: ((error: unknown) => void) | null;
+}
+
+// =============================================================================
+// Sugar to Reify Pipeline Conversion
+// =============================================================================
+
+/**
+ * Extract entity type name from return spec.
+ * Returns undefined if not an entity.
+ */
+function getEntityTypeName(returnSpec: ReturnSpec | undefined): string | undefined {
+	if (!returnSpec) return undefined;
+
+	// Single entity: EntityDef
+	if (isEntityDef(returnSpec)) {
+		return returnSpec._name;
+	}
+
+	// Array of entities: [EntityDef]
+	if (Array.isArray(returnSpec) && returnSpec.length === 1 && isEntityDef(returnSpec[0])) {
+		return returnSpec[0]._name;
+	}
+
+	return undefined;
+}
+
+/**
+ * Get input field keys from a Zod-like schema.
+ * Falls back to empty array if schema doesn't have shape.
+ */
+function getInputFields(inputSchema: { shape?: Record<string, unknown> } | undefined): string[] {
+	if (!inputSchema?.shape) return [];
+	return Object.keys(inputSchema.shape);
+}
+
+/**
+ * Convert sugar syntax to Reify Pipeline.
+ *
+ * Sugar syntax:
+ * - "merge" → entity.update with input fields merged
+ * - "create" → entity.create with temp ID
+ * - "delete" → entity.delete by input.id
+ * - { merge: {...} } → entity.update with input + extra fields
+ *
+ * Returns the original value if already a Pipeline or not sugar.
+ */
+function sugarToPipeline(
+	optimistic: unknown,
+	entityType: string | undefined,
+	inputFields: string[],
+): Pipeline | unknown {
+	// Already a Pipeline - pass through
+	if (isPipeline(optimistic)) {
+		return optimistic;
+	}
+
+	// No entity type - can't convert sugar
+	if (!entityType) {
+		return optimistic;
+	}
+
+	// "merge" sugar - update entity with input fields
+	if (optimistic === "merge") {
+		const args: Record<string, unknown> = { type: entityType };
+		for (const field of inputFields) {
+			args[field] = { $input: field };
+		}
+		return {
+			$pipe: [{ $do: "entity.update", $with: args }],
+		};
+	}
+
+	// "create" sugar - create entity with temp ID
+	if (optimistic === "create") {
+		const args: Record<string, unknown> = { type: entityType, id: { $temp: true } };
+		for (const field of inputFields) {
+			if (field !== "id") {
+				args[field] = { $input: field };
+			}
+		}
+		return {
+			$pipe: [{ $do: "entity.create", $with: args }],
+		};
+	}
+
+	// "delete" sugar - delete entity by input.id
+	if (optimistic === "delete") {
+		return {
+			$pipe: [{ $do: "entity.delete", $with: { type: entityType, id: { $input: "id" } } }],
+		};
+	}
+
+	// { merge: {...} } sugar - update with input + extra fields
+	if (
+		typeof optimistic === "object" &&
+		optimistic !== null &&
+		"merge" in optimistic &&
+		typeof (optimistic as Record<string, unknown>).merge === "object"
+	) {
+		const extra = (optimistic as { merge: Record<string, unknown> }).merge;
+		const args: Record<string, unknown> = { type: entityType };
+		for (const field of inputFields) {
+			args[field] = { $input: field };
+		}
+		// Extra fields override input refs
+		for (const [key, value] of Object.entries(extra)) {
+			args[key] = value;
+		}
+		return {
+			$pipe: [{ $do: "entity.update", $with: args }],
+		};
+	}
+
+	// Unknown format - pass through
+	return optimistic;
 }
 
 // =============================================================================
@@ -479,11 +598,14 @@ class LensServerImpl<
 			setNested(name, { type: "query" });
 		}
 
-		// Add mutations with optimistic config
+		// Add mutations with optimistic config (convert sugar to Reify Pipeline)
 		for (const [name, def] of Object.entries(this.mutations)) {
 			const meta: OperationMeta = { type: "mutation" };
 			if (def._optimistic) {
-				meta.optimistic = def._optimistic;
+				// Convert sugar syntax to Reify Pipeline
+				const entityType = getEntityTypeName(def._output);
+				const inputFields = getInputFields(def._input as { shape?: Record<string, unknown> });
+				meta.optimistic = sugarToPipeline(def._optimistic, entityType, inputFields);
 			}
 			setNested(name, meta);
 		}

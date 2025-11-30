@@ -9,10 +9,7 @@
 // =============================================================================
 
 export type {
-	// Multi-entity DSL types (re-exported from core)
-	EntityOperation,
 	Metadata,
-	MultiEntityDSL,
 	// Observable types
 	Observable,
 	Observer,
@@ -20,26 +17,14 @@ export type {
 	OperationMeta,
 	OperationsMap,
 	OptimisticDSL,
-	OptimisticUpdateManyConfig,
-	RefInput,
-	RefNow,
-	RefSibling,
-	RefTemp,
 	Result,
 	// Core types
 	Transport,
 	Unsubscribable,
-	ValueRef,
 } from "./types";
 
 // Type guard functions (re-exported from core)
-export {
-	isEntityOperation,
-	isMultiEntityDSL,
-	isOptimisticDSL,
-	isValueRef,
-	normalizeOptimisticDSL,
-} from "./types";
+export { isOptimisticDSL } from "./types";
 
 // =============================================================================
 // Plugins

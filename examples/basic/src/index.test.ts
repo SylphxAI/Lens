@@ -176,11 +176,13 @@ describe("Server Metadata", () => {
 	it("includes optimistic config in metadata", () => {
 		const metadata = server.getMetadata();
 
-		// Check optimistic configs are present
-		const userCreate = metadata.operations.user as unknown as { create: { optimistic?: string } };
-		expect(userCreate.create.optimistic).toBe("create");
+		// Check optimistic configs are present (sugar is converted to Reify Pipeline)
+		const userCreate = metadata.operations.user as unknown as { create: { optimistic?: { $pipe: unknown[] } } };
+		expect(userCreate.create.optimistic?.$pipe).toBeDefined();
+		expect((userCreate.create.optimistic?.$pipe[0] as { $do: string }).$do).toBe("entity.create");
 
-		const postPublish = metadata.operations.post as unknown as { publish: { optimistic?: unknown } };
-		expect(postPublish.publish.optimistic).toEqual({ merge: { published: true } });
+		const postPublish = metadata.operations.post as unknown as { publish: { optimistic?: { $pipe: unknown[] } } };
+		expect(postPublish.publish.optimistic?.$pipe).toBeDefined();
+		expect((postPublish.publish.optimistic?.$pipe[0] as { $do: string }).$do).toBe("entity.update");
 	});
 });

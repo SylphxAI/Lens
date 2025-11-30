@@ -223,55 +223,28 @@ export {
 
 export {
 	type AnyProcedure,
-	// Multi-entity DSL
-	type EntityOperation,
 	flattenRouter,
 	type InferRouterClient,
 	type InferRouterContext,
 	// Type guards
-	isEntityOperation,
-	isMultiEntityDSL,
 	isMutationDef,
 	isOperationDef,
-	isOpTypeConditional,
 	isOptimisticDSL,
 	isQueryDef,
 	isRouterDef,
 	isTempId,
-	isV2Operator,
-	isValueRef,
 	// Types
-	type MultiEntityDSL,
 	type MutationDef,
 	type MutationResultType,
 	// Builders
 	mutation,
-	// Helpers
-	normalizeOptimisticDSL,
-	// V2 Operators
-	type OpAddToSet,
-	type OpDecrement,
-	type OpDefault,
 	type Operations,
-	type OpIf,
-	type OpIncrement,
-	type OpPull,
-	type OpPush,
-	// Operation type
-	type OpType,
-	type OpTypeConditional,
 	type OptimisticDSL,
-	type OptimisticUpdateManyConfig,
+	type OptimisticSugar,
 	operations,
 	type QueryDef,
 	type QueryResultType,
 	query,
-	// Value references
-	type RefInput,
-	type RefNow,
-	type RefSibling,
-	type RefState,
-	type RefTemp,
 	type ResolverContext,
 	type ResolverFn,
 	type ReturnSpec,
@@ -280,8 +253,6 @@ export {
 	resetTempIdCounter,
 	router,
 	tempId,
-	type V2Operator,
-	type ValueRef,
 	type ZodLikeSchema,
 } from "./operations/index";
 
@@ -351,17 +322,8 @@ export {
 
 // Note: For Reify DSL (pipe, entity, ref, temp, etc.), import directly from @sylphx/reify
 export {
-	// Evaluator
-	applyDeferredOperation,
-	applyDeferredOperations,
-	type DeferredOperation,
-	type EvaluatedOperation,
-	type EvaluationContext,
-	evaluateMultiEntityDSL,
-	evaluateMultiEntityDSLMap,
 	// Internal (for type checking)
 	isPipeline,
-	OptimisticEvaluationError,
 	type Pipeline,
 } from "./optimistic/index";
 

@@ -950,8 +950,10 @@ describe("getMetadata", () => {
 		expect(metadata.version).toBe("1.2.3");
 		expect(metadata.operations).toBeDefined();
 		expect(metadata.operations.getUser).toEqual({ type: "query" });
-		// createUser auto-derives optimistic "create" from naming convention
-		expect(metadata.operations.createUser).toEqual({ type: "mutation", optimistic: "create" });
+		// createUser auto-derives optimistic "create" from naming convention (converted to Pipeline)
+		expect((metadata.operations.createUser as any).type).toBe("mutation");
+		expect((metadata.operations.createUser as any).optimistic.$pipe).toBeDefined();
+		expect((metadata.operations.createUser as any).optimistic.$pipe[0].$do).toBe("entity.create");
 	});
 
 	it("builds nested operations map from namespaced routes", () => {
@@ -973,8 +975,10 @@ describe("getMetadata", () => {
 		const metadata = server.getMetadata();
 		expect(metadata.operations.user).toBeDefined();
 		expect((metadata.operations.user as any).get).toEqual({ type: "query" });
-		// Auto-derives optimistic "create" from naming convention
-		expect((metadata.operations.user as any).create).toEqual({ type: "mutation", optimistic: "create" });
+		// Auto-derives optimistic "create" from naming convention (converted to Pipeline)
+		expect((metadata.operations.user as any).create.type).toBe("mutation");
+		expect((metadata.operations.user as any).create.optimistic.$pipe).toBeDefined();
+		expect((metadata.operations.user as any).create.optimistic.$pipe[0].$do).toBe("entity.create");
 	});
 
 	it("includes optimistic config in mutation metadata", () => {
@@ -990,9 +994,21 @@ describe("getMetadata", () => {
 		});
 
 		const metadata = server.getMetadata();
+		// Sugar "merge" is converted to Reify Pipeline
 		expect(metadata.operations.updateUser).toEqual({
 			type: "mutation",
-			optimistic: "merge",
+			optimistic: {
+				$pipe: [
+					{
+						$do: "entity.update",
+						$with: {
+							type: "User",
+							id: { $input: "id" },
+							name: { $input: "name" },
+						},
+					},
+				],
+			},
 		});
 	});
 

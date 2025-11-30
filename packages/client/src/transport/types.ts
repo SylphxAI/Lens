@@ -62,25 +62,9 @@ export interface Result<T = unknown> {
 // Re-export from core for consistency
 import type { OptimisticDSL as OptimisticDSLType } from "@sylphx/lens-core";
 
-export type {
-	EntityOperation,
-	MultiEntityDSL,
-	OptimisticDSL,
-	OptimisticUpdateManyConfig,
-	RefInput,
-	RefNow,
-	RefSibling,
-	RefTemp,
-	ValueRef,
-} from "@sylphx/lens-core";
+export type { OptimisticDSL } from "@sylphx/lens-core";
 
-export {
-	isEntityOperation,
-	isMultiEntityDSL,
-	isOptimisticDSL,
-	isValueRef,
-	normalizeOptimisticDSL,
-} from "@sylphx/lens-core";
+export { isOptimisticDSL } from "@sylphx/lens-core";
 
 // =============================================================================
 // Metadata Types

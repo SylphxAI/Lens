@@ -8,13 +8,13 @@
  */
 
 import type {
-	OptimisticDSL as CoreOptimisticDSL,
 	MutationDef,
+	OptimisticDSL,
 	QueryDef,
 	RouterDef,
 	RouterRoutes,
 } from "@sylphx/lens-core";
-import { isMultiEntityDSL, normalizeOptimisticDSL } from "@sylphx/lens-core";
+import { isPipeline } from "@sylphx/lens-core";
 import { createStore, type ReactiveStore } from "../store/reactive-store";
 import type { TypedTransport } from "../transport/in-process";
 import type { Plugin } from "../transport/plugin";
@@ -159,11 +159,10 @@ class ClientImpl {
 		}
 	>();
 
-	/** Optimistic update tracking */
-	private optimisticCounter = 0;
-	private optimisticUpdates = new Map<
+	/** Tracks mutation path and input for each optimistic transaction (for rollback notification) */
+	private optimisticMutationInfo = new Map<
 		string,
-		{ previousData: Map<string, unknown>; operation: string }
+		{ path: string; input: Record<string, unknown> }
 	>();
 
 	constructor(config: LensClientConfig) {
@@ -377,6 +376,9 @@ class ClientImpl {
 					// Update subscription state
 					sub.data = response.data;
 
+					// Store in entity store for optimistic update support
+					this.storeEntityFromData(path, response.data);
+
 					// Notify callbacks
 					for (const cb of sub.callbacks) {
 						cb(response.data);
@@ -423,6 +425,10 @@ class ClientImpl {
 					next: (result) => {
 						if (result.data !== undefined) {
 							sub.data = result.data;
+
+							// Also store in entity store for optimistic update support
+							this.storeEntityFromData(path, result.data);
+
 							for (const cb of sub.callbacks) {
 								cb(result.data);
 							}
@@ -460,7 +466,7 @@ class ClientImpl {
 
 		// Apply optimistic update
 		if (this.optimistic && meta?.optimistic) {
-			optId = this.applyOptimistic(path, input, meta.optimistic as CoreOptimisticDSL);
+			optId = await this.applyOptimistic(path, input, meta.optimistic as OptimisticDSL);
 		}
 
 		try {
@@ -499,122 +505,132 @@ class ClientImpl {
 	// Optimistic Updates
 	// ===========================================================================
 
-	private applyOptimistic(path: string, input: unknown, dsl: CoreOptimisticDSL): string {
+	private async applyOptimistic(path: string, input: unknown, dsl: OptimisticDSL): Promise<string> {
 		const inputObj = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
 
-		// Check for multi-entity DSL
-		if (isMultiEntityDSL(dsl)) {
-			// Use store's multi-entity optimistic with transaction rollback
-			return this.store.applyMultiEntityOptimistic(dsl, inputObj);
+		// OptimisticDSL is now always a Reify Pipeline
+		if (isPipeline(dsl)) {
+			const txId = await this.store.applyPipelineOptimistic(dsl, inputObj);
+
+			// Store mutation info for rollback notification
+			this.optimisticMutationInfo.set(txId, { path, input: inputObj });
+
+			// Notify affected subscriptions
+			this.notifyAffectedSubscriptions(path, inputObj);
+
+			return txId;
 		}
 
-		// Single-entity DSL (legacy path)
-		const optId = `opt_${++this.optimisticCounter}`;
-		const affectedSubs = new Map<string, unknown>();
+		// Should not reach here - OptimisticDSL is Pipeline
+		return "";
+	}
 
-		// Interpret DSL to get optimistic data
-		const optimisticData = this.interpretDSL(dsl, input);
-		if (!optimisticData) return optId;
+	/**
+	 * Notify subscriptions that might be affected by an optimistic update.
+	 * Uses heuristics based on mutation path and input to find related query subscriptions.
+	 */
+	private notifyAffectedSubscriptions(mutationPath: string, input: Record<string, unknown>): void {
+		// Extract namespace (e.g., "user" from "user.update")
+		const parts = mutationPath.split(".");
+		if (parts.length < 2) return;
 
-		// Find and update affected subscriptions
-		const entityId = this.extractId(optimisticData);
-		if (entityId) {
-			for (const [key, sub] of this.subscriptions) {
-				const currentId = this.extractId(sub.data);
-				if (currentId === entityId) {
-					affectedSubs.set(key, sub.data);
-					sub.data =
-						typeof sub.data === "object"
-							? { ...sub.data, ...(optimisticData as object) }
-							: optimisticData;
+		const namespace = parts.slice(0, -1).join(".");
+		const entityId = input.id as string | undefined;
 
-					for (const cb of sub.callbacks) {
-						cb(sub.data);
+		if (!entityId) return;
+
+		// Find related query subscriptions (e.g., "user.get" for "user.update")
+		for (const [key, sub] of this.subscriptions.entries()) {
+			// Check if subscription matches the namespace
+			if (key.startsWith(`${namespace}.get:`) || key.startsWith(`${namespace}.`)) {
+				// Try to parse the input from the key
+				const keyInput = this.parseQueryKeyInput(key);
+				if (keyInput?.id === entityId && sub.callbacks.size > 0) {
+					// Get updated data from store
+					const entitySignal = this.store.getEntity(
+						this.getEntityTypeFromPath(namespace),
+						entityId,
+					);
+					const updatedData = entitySignal.value.data;
+
+					if (updatedData) {
+						sub.data = updatedData;
+						for (const cb of sub.callbacks) {
+							cb(updatedData);
+						}
 					}
 				}
 			}
 		}
-
-		this.optimisticUpdates.set(optId, { previousData: affectedSubs, operation: path });
-		return optId;
 	}
 
-	private interpretDSL(dsl: CoreOptimisticDSL, input: unknown): unknown {
-		const inputObj = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
-		const normalized = normalizeOptimisticDSL(dsl);
+	/**
+	 * Parse input from query key (e.g., "user.get:{\"id\":\"1\"}" -> { id: "1" })
+	 */
+	private parseQueryKeyInput(key: string): Record<string, unknown> | null {
+		const colonIndex = key.indexOf(":");
+		if (colonIndex === -1) return null;
 
-		switch (normalized.type) {
-			case "merge":
-				return inputObj.id ? inputObj : null;
-			case "create":
-				return { id: `temp_${++this.optimisticCounter}`, ...inputObj };
-			case "delete":
-				return inputObj.id ? { id: inputObj.id, _deleted: true } : null;
-			case "multi":
-				// Handled in applyOptimistic directly
-				return null;
-			default:
-				return null;
+		try {
+			return JSON.parse(key.slice(colonIndex + 1));
+		} catch {
+			return null;
 		}
 	}
 
-	private confirmOptimistic(optId: string, serverData: unknown): void {
-		// Check if this is a multi-entity transaction (tx_ prefix)
+	/**
+	 * Get entity type name from namespace path.
+	 * Capitalizes first letter (e.g., "user" -> "User")
+	 */
+	private getEntityTypeFromPath(namespace: string): string {
+		const lastPart = namespace.split(".").pop() || namespace;
+		return lastPart.charAt(0).toUpperCase() + lastPart.slice(1);
+	}
+
+	/**
+	 * Store entity data from subscription/query result.
+	 * Extracts entity type from path and stores data in entity store for optimistic update support.
+	 */
+	private storeEntityFromData(path: string, data: unknown): void {
+		if (!data || typeof data !== "object") return;
+
+		const entityData = data as Record<string, unknown>;
+		const entityId = entityData.id as string | undefined;
+		if (!entityId) return;
+
+		// Extract namespace from path (e.g., "user.get" -> "user")
+		const parts = path.split(".");
+		if (parts.length < 2) return;
+
+		const namespace = parts.slice(0, -1).join(".");
+		const entityType = this.getEntityTypeFromPath(namespace);
+
+		// Store in entity store
+		this.store.setEntity(entityType, entityId, data);
+	}
+
+	private confirmOptimistic(optId: string, _serverData: unknown): void {
+		// All optimistic updates use pipeline transactions (tx_ prefix)
 		if (optId.startsWith("tx_")) {
-			this.store.confirmMultiEntityOptimistic(optId);
-			return;
+			this.store.confirmPipelineOptimistic(optId);
 		}
-
-		// Single-entity (legacy path)
-		const entry = this.optimisticUpdates.get(optId);
-		if (!entry) return;
-
-		// Update with server data
-		const entityId = this.extractId(serverData);
-		if (entityId) {
-			for (const [, sub] of this.subscriptions) {
-				const currentId = this.extractId(sub.data);
-				if (currentId === entityId) {
-					sub.data = serverData;
-					for (const cb of sub.callbacks) {
-						cb(serverData);
-					}
-				}
-			}
-		}
-
-		this.optimisticUpdates.delete(optId);
 	}
 
 	private rollbackOptimistic(optId: string): void {
-		// Check if this is a multi-entity transaction (tx_ prefix)
+		// All optimistic updates use pipeline transactions (tx_ prefix)
 		if (optId.startsWith("tx_")) {
-			this.store.rollbackMultiEntityOptimistic(optId);
-			return;
-		}
+			// Get mutation info before rollback
+			const mutationInfo = this.optimisticMutationInfo.get(optId);
 
-		// Single-entity (legacy path)
-		const entry = this.optimisticUpdates.get(optId);
-		if (!entry) return;
+			// Perform rollback
+			this.store.rollbackPipelineOptimistic(optId);
 
-		// Restore previous data
-		for (const [key, previousData] of entry.previousData) {
-			const sub = this.subscriptions.get(key);
-			if (sub) {
-				sub.data = previousData;
-				for (const cb of sub.callbacks) {
-					cb(previousData);
-				}
+			// Notify affected subscriptions with rolled-back data
+			if (mutationInfo) {
+				this.notifyAffectedSubscriptions(mutationInfo.path, mutationInfo.input);
+				this.optimisticMutationInfo.delete(optId);
 			}
 		}
-
-		this.optimisticUpdates.delete(optId);
-	}
-
-	private extractId(data: unknown): string | undefined {
-		if (!data || typeof data !== "object") return undefined;
-		const obj = data as Record<string, unknown>;
-		return typeof obj.id === "string" ? obj.id : undefined;
 	}
 
 	// ===========================================================================
