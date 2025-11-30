@@ -30,7 +30,7 @@
  */
 
 import type { Emit } from "../emit/index";
-import type { Pipeline, PipelineStep } from "../optimistic/reify";
+import type { Pipeline, StepBuilder } from "../optimistic/reify";
 import { isPipeline } from "../optimistic/reify";
 import type { EntityDef } from "../schema/define";
 import type { InferScalar, ScalarFields } from "../schema/infer";
@@ -375,8 +375,8 @@ export interface OptimisticContext<TInput> {
 	input: TInput;
 }
 
-/** Optimistic callback that receives typed input and returns steps */
-export type OptimisticCallback<TInput> = (ctx: OptimisticContext<TInput>) => PipelineStep[];
+/** Optimistic callback that receives typed input and returns step builders */
+export type OptimisticCallback<TInput> = (ctx: OptimisticContext<TInput>) => StepBuilder[];
 
 /** Mutation builder after returns is defined */
 export interface MutationBuilderWithReturns<TInput, TOutput, TContext = unknown> {
@@ -467,7 +467,9 @@ class MutationBuilderImpl<TInput = unknown, TOutput = unknown, TContext = unknow
 					},
 				},
 			) as TInput;
-			const steps = specOrCallback({ input: inputProxy });
+			const stepBuilders = specOrCallback({ input: inputProxy });
+			// Convert StepBuilder[] to PipelineStep[]
+			const steps = stepBuilders.map((s) => s.build());
 			builder._optimisticSpec = { $pipe: steps } as Pipeline;
 		} else {
 			builder._optimisticSpec = specOrCallback;
