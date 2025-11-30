@@ -4,8 +4,13 @@
  * Manages entity signals, caching, and optimistic updates.
  */
 
-import type { EntityKey, Update } from "@sylphx/lens-core";
-import { applyUpdate, makeEntityKey } from "@sylphx/lens-core";
+import type { EntityKey, MultiEntityDSL, Update } from "@sylphx/lens-core";
+import {
+	applyUpdate,
+	type EvaluatedOperation,
+	evaluateMultiEntityDSL,
+	makeEntityKey,
+} from "@sylphx/lens-core";
 import { batch, type Signal, signal, type WritableSignal } from "../signals/signal";
 
 // Re-export for convenience
@@ -37,6 +42,16 @@ export interface OptimisticEntry {
 	type: "create" | "update" | "delete";
 	originalData: unknown;
 	optimisticData: unknown;
+	timestamp: number;
+}
+
+/** Multi-entity optimistic transaction */
+export interface OptimisticTransaction {
+	id: string;
+	/** All operations in this transaction */
+	operations: EvaluatedOperation[];
+	/** Original data for each entity (for rollback) */
+	originalData: Map<string, unknown>;
 	timestamp: number;
 }
 
@@ -88,6 +103,9 @@ export class ReactiveStore {
 
 	/** Optimistic updates pending confirmation */
 	private optimisticUpdates = new Map<string, OptimisticEntry>();
+
+	/** Multi-entity optimistic transactions */
+	private optimisticTransactions = new Map<string, OptimisticTransaction>();
 
 	/** Configuration */
 	private config: Required<Omit<StoreConfig, "cascadeRules">> & { cascadeRules: CascadeRule[] };
@@ -406,6 +424,150 @@ export class ReactiveStore {
 	 */
 	getPendingOptimistic(): OptimisticEntry[] {
 		return Array.from(this.optimisticUpdates.values());
+	}
+
+	// ===========================================================================
+	// Multi-Entity Optimistic Updates (Transaction-based)
+	// ===========================================================================
+
+	/**
+	 * Apply multi-entity optimistic update from DSL
+	 * Returns transaction ID for confirmation/rollback
+	 */
+	applyMultiEntityOptimistic(dsl: MultiEntityDSL, input: Record<string, unknown>): string {
+		if (!this.config.optimistic) {
+			return "";
+		}
+
+		const txId = `tx_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+		// Evaluate DSL to get operations in order
+		const operations = evaluateMultiEntityDSL(dsl, input);
+
+		// Store original data for rollback
+		const originalData = new Map<string, unknown>();
+
+		batch(() => {
+			for (const op of operations) {
+				const key = this.makeKey(op.entity, op.id);
+				const entitySignal = this.entities.get(key);
+
+				// Save original data
+				originalData.set(key, entitySignal?.value.data ?? null);
+
+				switch (op.op) {
+					case "create":
+						this.setEntity(op.entity, op.id, { id: op.id, ...op.data });
+						break;
+
+					case "update":
+						if (entitySignal?.value.data) {
+							this.setEntity(op.entity, op.id, {
+								...(entitySignal.value.data as object),
+								...op.data,
+							});
+						} else {
+							// Entity not in cache, create with optimistic data
+							this.setEntity(op.entity, op.id, { id: op.id, ...op.data });
+						}
+						break;
+
+					case "delete":
+						if (entitySignal) {
+							entitySignal.value = {
+								...entitySignal.value,
+								data: null,
+							};
+						}
+						break;
+				}
+			}
+		});
+
+		// Store transaction for potential rollback
+		this.optimisticTransactions.set(txId, {
+			id: txId,
+			operations,
+			originalData,
+			timestamp: Date.now(),
+		});
+
+		return txId;
+	}
+
+	/**
+	 * Confirm multi-entity optimistic transaction
+	 * Updates entities with server data (replaces temp IDs with real IDs)
+	 */
+	confirmMultiEntityOptimistic(
+		txId: string,
+		serverResults?: Array<{ entity: string; tempId: string; data: unknown }>,
+	): void {
+		const tx = this.optimisticTransactions.get(txId);
+		if (!tx) return;
+
+		if (serverResults) {
+			batch(() => {
+				for (const result of serverResults) {
+					// Remove temp entity
+					this.removeEntity(result.entity, result.tempId);
+
+					// Add with real ID
+					const realData = result.data as { id?: string } | null;
+					if (realData?.id) {
+						this.setEntity(result.entity, realData.id, realData);
+					}
+				}
+			});
+		}
+
+		this.optimisticTransactions.delete(txId);
+	}
+
+	/**
+	 * Rollback multi-entity optimistic transaction
+	 * Restores all entities to their original state
+	 */
+	rollbackMultiEntityOptimistic(txId: string): void {
+		const tx = this.optimisticTransactions.get(txId);
+		if (!tx) return;
+
+		batch(() => {
+			// Restore in reverse order
+			const operations = [...tx.operations].reverse();
+
+			for (const op of operations) {
+				const key = this.makeKey(op.entity, op.id);
+				const originalData = tx.originalData.get(key);
+
+				switch (op.op) {
+					case "create":
+						// Remove optimistically created entity
+						this.removeEntity(op.entity, op.id);
+						break;
+
+					case "update":
+					case "delete":
+						// Restore original data
+						if (originalData !== null) {
+							this.setEntity(op.entity, op.id, originalData);
+						} else {
+							// Was not in cache, remove
+							this.removeEntity(op.entity, op.id);
+						}
+						break;
+				}
+			}
+		});
+
+		this.optimisticTransactions.delete(txId);
+	}
+
+	/**
+	 * Get pending multi-entity transactions
+	 */
+	getPendingTransactions(): OptimisticTransaction[] {
+		return Array.from(this.optimisticTransactions.values());
 	}
 
 	// ===========================================================================

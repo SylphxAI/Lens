@@ -435,4 +435,153 @@ describe("ReactiveStore", () => {
 			expect(result.revalidating).toBeNull();
 		});
 	});
+
+	describe("Multi-Entity Optimistic Updates", () => {
+		test("applyMultiEntityOptimistic creates multiple entities", () => {
+			const store = createStore();
+
+			const dsl = {
+				session: {
+					$entity: "Session",
+					$op: "create" as const,
+					title: { $input: "title" },
+				},
+				message: {
+					$entity: "Message",
+					$op: "create" as const,
+					sessionId: { $ref: "session.id" },
+					content: { $input: "content" },
+				},
+			};
+
+			const txId = store.applyMultiEntityOptimistic(dsl, {
+				title: "New Chat",
+				content: "Hello!",
+			});
+
+			expect(txId).toBeTruthy();
+			expect(txId.startsWith("tx_")).toBe(true);
+
+			// Check pending transactions
+			const pending = store.getPendingTransactions();
+			expect(pending).toHaveLength(1);
+			expect(pending[0].operations).toHaveLength(2);
+		});
+
+		test("applyMultiEntityOptimistic creates entity with resolved values", () => {
+			const store = createStore();
+
+			const dsl = {
+				session: {
+					$entity: "Session",
+					$op: "create" as const,
+					title: { $input: "title" },
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, { title: "Test Session" });
+
+			// Find the created entity (has temp_X id)
+			const stats = store.getStats();
+			expect(stats.entities).toBe(1);
+		});
+
+		test("applyMultiEntityOptimistic handles $ref dependencies", () => {
+			const store = createStore();
+
+			const dsl = {
+				session: {
+					$entity: "Session",
+					$op: "create" as const,
+					title: "Chat",
+				},
+				message: {
+					$entity: "Message",
+					$op: "create" as const,
+					sessionId: { $ref: "session.id" },
+				},
+			};
+
+			store.applyMultiEntityOptimistic(dsl, {});
+
+			// Both entities should be created
+			expect(store.getStats().entities).toBe(2);
+
+			// Get pending transaction to check the IDs
+			const pending = store.getPendingTransactions();
+			const sessionOp = pending[0].operations.find((op) => op.entity === "Session");
+			const messageOp = pending[0].operations.find((op) => op.entity === "Message");
+
+			// Message should have session's temp ID
+			expect(messageOp?.data.sessionId).toBe(sessionOp?.id);
+		});
+
+		test("rollbackMultiEntityOptimistic reverts all entities", () => {
+			const store = createStore();
+
+			// Set up existing entity
+			store.setEntity("User", "user-1", { id: "user-1", name: "John" });
+
+			const dsl = {
+				session: {
+					$entity: "Session",
+					$op: "create" as const,
+					title: "Chat",
+				},
+				user: {
+					$entity: "User",
+					$op: "update" as const,
+					$id: "user-1",
+					lastActive: "now",
+				},
+			};
+
+			const txId = store.applyMultiEntityOptimistic(dsl, {});
+
+			// Verify changes were applied
+			expect(store.getStats().entities).toBe(2);
+			expect(store.getEntity("User", "user-1").value.data).toHaveProperty("lastActive");
+
+			// Rollback
+			store.rollbackMultiEntityOptimistic(txId);
+
+			// Session should be removed (was created)
+			// User should be reverted
+			expect(store.getEntity("User", "user-1").value.data).toEqual({ id: "user-1", name: "John" });
+			expect(store.getPendingTransactions()).toHaveLength(0);
+		});
+
+		test("confirmMultiEntityOptimistic clears transaction", () => {
+			const store = createStore();
+
+			const dsl = {
+				session: {
+					$entity: "Session",
+					$op: "create" as const,
+					title: "Chat",
+				},
+			};
+
+			const txId = store.applyMultiEntityOptimistic(dsl, {});
+			expect(store.getPendingTransactions()).toHaveLength(1);
+
+			store.confirmMultiEntityOptimistic(txId);
+			expect(store.getPendingTransactions()).toHaveLength(0);
+		});
+
+		test("disables multi-entity optimistic when configured", () => {
+			const store = createStore({ optimistic: false });
+
+			const dsl = {
+				session: {
+					$entity: "Session",
+					$op: "create" as const,
+					title: "Chat",
+				},
+			};
+
+			const txId = store.applyMultiEntityOptimistic(dsl, {});
+			expect(txId).toBe("");
+		});
+	});
 });

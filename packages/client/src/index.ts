@@ -110,6 +110,7 @@ export {
 	type EntityKey,
 	type EntityState,
 	type OptimisticEntry as StoreOptimisticEntry,
+	type OptimisticTransaction,
 	ReactiveStore,
 	type StoreConfig,
 } from "./store/reactive-store";

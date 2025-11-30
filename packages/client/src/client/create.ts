@@ -14,7 +14,8 @@ import type {
 	RouterDef,
 	RouterRoutes,
 } from "@sylphx/lens-core";
-import { normalizeOptimisticDSL } from "@sylphx/lens-core";
+import { isMultiEntityDSL, normalizeOptimisticDSL } from "@sylphx/lens-core";
+import { createStore, type ReactiveStore } from "../store/reactive-store";
 import type { TypedTransport } from "../transport/in-process";
 import type { Plugin } from "../transport/plugin";
 import type { Metadata, Observable, Operation, Result, Transport } from "../transport/types";
@@ -141,6 +142,9 @@ class ClientImpl {
 	private plugins: Plugin[];
 	private optimistic: boolean;
 
+	/** Reactive store for entity caching and optimistic updates */
+	private store: ReactiveStore;
+
 	/** Metadata from transport handshake (lazy loaded) */
 	private metadata: Metadata | null = null;
 	private connectPromise: Promise<Metadata> | null = null;
@@ -166,6 +170,7 @@ class ClientImpl {
 		this.transport = config.transport;
 		this.plugins = config.plugins ?? [];
 		this.optimistic = config.optimistic ?? true;
+		this.store = createStore({ optimistic: this.optimistic });
 
 		// Start handshake immediately (eager, but don't block)
 		// Errors are caught - will retry on first operation if needed
@@ -495,6 +500,15 @@ class ClientImpl {
 	// ===========================================================================
 
 	private applyOptimistic(path: string, input: unknown, dsl: CoreOptimisticDSL): string {
+		const inputObj = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
+
+		// Check for multi-entity DSL
+		if (isMultiEntityDSL(dsl)) {
+			// Use store's multi-entity optimistic with transaction rollback
+			return this.store.applyMultiEntityOptimistic(dsl, inputObj);
+		}
+
+		// Single-entity DSL (legacy path)
 		const optId = `opt_${++this.optimisticCounter}`;
 		const affectedSubs = new Map<string, unknown>();
 
@@ -536,12 +550,22 @@ class ClientImpl {
 				return { id: `temp_${++this.optimisticCounter}`, ...inputObj };
 			case "delete":
 				return inputObj.id ? { id: inputObj.id, _deleted: true } : null;
+			case "multi":
+				// Handled in applyOptimistic directly
+				return null;
 			default:
 				return null;
 		}
 	}
 
 	private confirmOptimistic(optId: string, serverData: unknown): void {
+		// Check if this is a multi-entity transaction (tx_ prefix)
+		if (optId.startsWith("tx_")) {
+			this.store.confirmMultiEntityOptimistic(optId);
+			return;
+		}
+
+		// Single-entity (legacy path)
 		const entry = this.optimisticUpdates.get(optId);
 		if (!entry) return;
 
@@ -563,6 +587,13 @@ class ClientImpl {
 	}
 
 	private rollbackOptimistic(optId: string): void {
+		// Check if this is a multi-entity transaction (tx_ prefix)
+		if (optId.startsWith("tx_")) {
+			this.store.rollbackMultiEntityOptimistic(optId);
+			return;
+		}
+
+		// Single-entity (legacy path)
 		const entry = this.optimisticUpdates.get(optId);
 		if (!entry) return;
 
