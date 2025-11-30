@@ -38,6 +38,8 @@ export {
 	entity,
 	// Operators
 	inc,
+	// Type guards
+	isPipeline,
 	now,
 	// Operation builder
 	op,

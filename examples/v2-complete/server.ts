@@ -9,7 +9,7 @@
  * - Relations with f.one() and f.many()
  */
 
-import { entity, t, router, lens } from "@sylphx/lens-core";
+import { entity, t, router, lens, pipe, udsl, temp, ref, now, branch } from "@sylphx/lens-core";
 import { createServer } from "@sylphx/lens-server";
 import { z } from "zod";
 
@@ -44,6 +44,22 @@ export const Comment = entity("Comment", {
 	createdAt: t.date(),
 });
 
+// For UDSL demo
+export const Session = entity("Session", {
+	id: t.id(),
+	title: t.string(),
+	userId: t.string(),
+	createdAt: t.date(),
+});
+
+export const Message = entity("Message", {
+	id: t.id(),
+	sessionId: t.string(),
+	role: t.enum(["user", "assistant"]),
+	content: t.string(),
+	createdAt: t.date(),
+});
+
 // =============================================================================
 // Context
 // =============================================================================
@@ -69,6 +85,8 @@ const db = {
 		["2", { id: "2", title: "Lens Guide", content: "How to use Lens...", published: true, authorId: "1", createdAt: new Date() }],
 	]),
 	comments: new Map<string, { id: string; content: string; postId: string; authorId: string; createdAt: Date }>(),
+	sessions: new Map<string, { id: string; title: string; userId: string; createdAt: Date }>(),
+	messages: new Map<string, { id: string; sessionId: string; role: "user" | "assistant"; content: string; createdAt: Date }>(),
 };
 
 // =============================================================================
@@ -320,6 +338,86 @@ const commentRouter = router({
 });
 
 // =============================================================================
+// UDSL Demo: Chat Router
+// =============================================================================
+
+/**
+ * UDSL Pipeline for chat.send mutation
+ *
+ * Demonstrates "Mutations as Data" pattern:
+ * - Conditional session create/update (upsert-like)
+ * - Multi-entity operations (session + message)
+ * - Value references between operations (ref('session').id)
+ * - Temp IDs for optimistic updates
+ *
+ * This pipeline can be:
+ * - Executed on server with createPrismaPlugin (real DB)
+ * - Executed on client with createCachePlugin (optimistic updates)
+ */
+const sendMessagePipeline = pipe(({ input }) => [
+	// Step 1: Create or update session
+	branch(input.sessionId)
+		.then(udsl.update("Session", { id: input.sessionId, title: input.title ?? "Chat" }))
+		.else(udsl.create("Session", { id: temp(), title: input.title ?? "New Chat", userId: input.userId, createdAt: now() }))
+		.as("session"),
+
+	// Step 2: Create message (references session from step 1)
+	udsl.create("Message", {
+		id: temp(),
+		sessionId: ref("session").id,
+		role: "user",
+		content: input.content,
+		createdAt: now(),
+	}).as("message"),
+]);
+
+const chatRouter = router({
+	/**
+	 * Send message to chat session
+	 *
+	 * Uses UDSL Pipeline for optimistic updates:
+	 * - Client executes pipeline against cache for instant feedback
+	 * - Server executes same pipeline against Prisma for persistence
+	 */
+	send: mutation()
+		.input(z.object({
+			sessionId: z.string().optional(),  // Optional: create new if not provided
+			title: z.string().optional(),
+			content: z.string(),
+			userId: z.string(),
+		}))
+		.returns(Message)
+		.optimistic(sendMessagePipeline)  // 🔥 UDSL Pipeline as optimistic DSL
+		.resolve(({ input, ctx }) => {
+			// Server-side execution (in real app, this would use Prisma)
+			let sessionId = input.sessionId;
+
+			// Create session if needed
+			if (!sessionId) {
+				sessionId = String(ctx.db.sessions.size + 1);
+				ctx.db.sessions.set(sessionId, {
+					id: sessionId,
+					title: input.title ?? "New Chat",
+					userId: input.userId,
+					createdAt: new Date(),
+				});
+			}
+
+			// Create message
+			const messageId = String(ctx.db.messages.size + 1);
+			const message = {
+				id: messageId,
+				sessionId,
+				role: "user" as const,
+				content: input.content,
+				createdAt: new Date(),
+			};
+			ctx.db.messages.set(messageId, message);
+			return message;
+		}),
+});
+
+// =============================================================================
 // Main Router
 // =============================================================================
 
@@ -327,6 +425,7 @@ const appRouter = router({
 	user: userRouter,
 	post: postRouter,
 	comment: commentRouter,
+	chat: chatRouter,  // UDSL demo
 });
 
 export type AppRouter = typeof appRouter;
@@ -337,7 +436,7 @@ export type AppRouter = typeof appRouter;
 
 export const server = createServer({
 	router: appRouter,
-	entities: { User, Post, Comment },
+	entities: { User, Post, Comment, Session, Message },
 	resolvers: [userResolver, postResolver, commentResolver],  // Array of pure values
 	context: () => ({
 		db,
@@ -362,5 +461,6 @@ Routes:
   user.whoami, user.get, user.search, user.update, user.bulkPromote
   post.get, post.trending, post.create, post.update, post.publish
   comment.add
+  chat.send (🔥 UDSL Pipeline demo)
 `);
 });

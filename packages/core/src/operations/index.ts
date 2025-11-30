@@ -30,6 +30,8 @@
  */
 
 import type { Emit } from "../emit/index";
+import type { Pipeline } from "../optimistic/udsl";
+import { isPipeline } from "../optimistic/udsl";
 import type { EntityDef } from "../schema/define";
 import type { InferScalar, ScalarFields } from "../schema/infer";
 import type { EntityDefinition } from "../schema/types";
@@ -416,7 +418,9 @@ export type OptimisticDSL =
 	// Legacy: updateMany
 	| { updateMany: OptimisticUpdateManyConfig }
 	// Tier 2: Multi-entity
-	| MultiEntityDSL;
+	| MultiEntityDSL
+	// Tier 3: UDSL Pipeline (new unified DSL)
+	| Pipeline;
 
 /**
  * Check if value is an OptimisticDSL
@@ -429,6 +433,10 @@ export function isOptimisticDSL(value: unknown): value is OptimisticDSL {
 	// Object form
 	if (value && typeof value === "object") {
 		const obj = value as Record<string, unknown>;
+		// UDSL Pipeline
+		if (isPipeline(obj)) {
+			return true;
+		}
 		// Simple DSL
 		if ("merge" in obj || "create" in obj || "updateMany" in obj) {
 			return true;
@@ -445,15 +453,21 @@ export function isOptimisticDSL(value: unknown): value is OptimisticDSL {
  * Normalize DSL to internal format for interpreter
  */
 export function normalizeOptimisticDSL(dsl: OptimisticDSL): {
-	type: "merge" | "create" | "delete" | "updateMany" | "multi";
+	type: "merge" | "create" | "delete" | "updateMany" | "multi" | "pipeline";
 	set?: Record<string, unknown>;
 	config?: OptimisticUpdateManyConfig;
 	operations?: MultiEntityDSL;
+	pipeline?: Pipeline;
 } {
 	// String shorthand
 	if (dsl === "merge") return { type: "merge" };
 	if (dsl === "create") return { type: "create" };
 	if (dsl === "delete") return { type: "delete" };
+
+	// UDSL Pipeline
+	if (isPipeline(dsl)) {
+		return { type: "pipeline", pipeline: dsl };
+	}
 
 	// Object form - simple
 	if ("merge" in dsl)
