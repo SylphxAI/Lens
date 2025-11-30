@@ -1,5 +1,12 @@
 # @sylphx/lens-core
 
+## 1.11.0 (2025-11-30)
+
+### ✨ Features
+
+- **core:** add type-safe DSL builder for optimistic updates ([a1ba6d9](https://github.com/SylphxAI/Lens/commit/a1ba6d9c4b6eda5bdac705b51e3f8ea343b1bf64))
+- **core:** add conditional $op support for upsert patterns ([78d1f59](https://github.com/SylphxAI/Lens/commit/78d1f594460af4aef2c750e94701dc4e0bee8436))
+
 ## 1.10.0 (2025-11-30)
 
 ### ✨ Features

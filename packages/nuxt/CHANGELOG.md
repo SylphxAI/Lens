@@ -1,5 +1,9 @@
 # @sylphx/lens-nuxt
 
+## 1.2.18 (2025-11-30)
+
+No notable changes.
+
 ## 1.2.17 (2025-11-30)
 
 ### 📦 Dependencies
