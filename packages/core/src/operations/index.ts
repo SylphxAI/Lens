@@ -30,8 +30,8 @@
  */
 
 import type { Emit } from "../emit/index";
-import type { Pipeline } from "../optimistic/udsl";
-import { isPipeline } from "../optimistic/udsl";
+import type { Pipeline } from "../optimistic/reify";
+import { isPipeline } from "../optimistic/reify";
 import type { EntityDef } from "../schema/define";
 import type { InferScalar, ScalarFields } from "../schema/infer";
 import type { EntityDefinition } from "../schema/types";

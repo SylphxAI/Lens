@@ -890,16 +890,16 @@ Simple strategies:
 For mutations that affect multiple entities, use Reify pipelines - **"Describe once, execute anywhere"**:
 
 ```typescript
-import { pipe, udsl, temp, ref, now, branch, inc, push } from '@sylphx/lens-core';
+import { pipe, reify, temp, ref, now, branch, inc, push } from '@sylphx/lens-core';
 
 const sendMessagePipeline = pipe(({ input }) => [
   // Step 1: Conditional upsert - create or update session
   branch(input.sessionId)
-    .then(udsl.update('Session', {
+    .then(reify.update('Session', {
       id: input.sessionId,
       updatedAt: now()
     }))
-    .else(udsl.create('Session', {
+    .else(reify.create('Session', {
       id: temp(),
       title: input.title,
       createdAt: now()
@@ -907,7 +907,7 @@ const sendMessagePipeline = pipe(({ input }) => [
     .as('session'),
 
   // Step 2: Create message (references session from step 1)
-  udsl.create('Message', {
+  reify.create('Message', {
     id: temp(),
     sessionId: ref('session').id,  // Reference sibling operation result
     role: 'user',
@@ -916,7 +916,7 @@ const sendMessagePipeline = pipe(({ input }) => [
   }).as('message'),
 
   // Step 3: Update user stats with operators
-  udsl.update('User', {
+  reify.update('User', {
     id: input.userId,
     messageCount: inc(1),          // Increment by 1
     tags: push('active'),          // Append to array
@@ -948,9 +948,9 @@ const createChatSession = mutation()
 | Function | Description |
 |----------|-------------|
 | `pipe(({ input }) => [...])` | Create pipeline from steps |
-| `udsl.create(entity, data).as('name')` | Create entity |
-| `udsl.update(entity, data).as('name')` | Update entity (data includes `id`) |
-| `udsl.delete(entity, id).as('name')` | Delete entity |
+| `reify.create(entity, data).as('name')` | Create entity |
+| `reify.update(entity, data).as('name')` | Update entity (data includes `id`) |
+| `reify.delete(entity, id).as('name')` | Delete entity |
 
 **Value References:**
 | Function | Description |

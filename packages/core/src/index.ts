@@ -366,7 +366,7 @@ export {
 	type EvaluatedOperation,
 	type EvaluationContext,
 	EvaluationError,
-	entity as udsl,
+	entity as reify,
 	entityPlugin,
 	evaluateMultiEntityDSL,
 	evaluateMultiEntityDSLMap,

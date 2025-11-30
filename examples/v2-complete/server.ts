@@ -9,7 +9,7 @@
  * - Relations with f.one() and f.many()
  */
 
-import { entity, t, router, lens, pipe, udsl, temp, ref, now, branch } from "@sylphx/lens-core";
+import { entity, t, router, lens, pipe, reify, temp, ref, now, branch } from "@sylphx/lens-core";
 import { createServer } from "@sylphx/lens-server";
 import { z } from "zod";
 
@@ -357,12 +357,12 @@ const commentRouter = router({
 const sendMessagePipeline = pipe(({ input }) => [
 	// Step 1: Create or update session
 	branch(input.sessionId)
-		.then(udsl.update("Session", { id: input.sessionId, title: input.title ?? "Chat" }))
-		.else(udsl.create("Session", { id: temp(), title: input.title ?? "New Chat", userId: input.userId, createdAt: now() }))
+		.then(reify.update("Session", { id: input.sessionId, title: input.title ?? "Chat" }))
+		.else(reify.create("Session", { id: temp(), title: input.title ?? "New Chat", userId: input.userId, createdAt: now() }))
 		.as("session"),
 
 	// Step 2: Create message (references session from step 1)
-	udsl.create("Message", {
+	reify.create("Message", {
 		id: temp(),
 		sessionId: ref("session").id,
 		role: "user",

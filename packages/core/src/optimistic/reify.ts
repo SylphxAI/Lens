@@ -1,21 +1,20 @@
 /**
  * @sylphx/lens-core - Reify Integration
  *
- * Re-exports Reify for optimistic updates with Lens-specific adapters.
- * Reify provides reified mutations - describe operations once,
- * execute anywhere with plugins.
+ * Re-exports Reify for optimistic updates.
+ * "Describe once, execute anywhere" - same pipeline works on cache (client) and DB (server).
  *
  * @example
  * ```typescript
- * import { pipe, entity, branch, ref, now, temp, inc } from '@sylphx/lens-core/optimistic';
+ * import { pipe, reify, branch, ref, now, temp, inc } from '@sylphx/lens-core';
  *
  * const createSession = pipe(({ input }) => [
  *   branch(input.sessionId)
- *     .then(entity.update('Session', { id: input.sessionId, title: input.title }))
- *     .else(entity.create('Session', { id: temp(), title: input.title }))
+ *     .then(reify.update('Session', { id: input.sessionId, title: input.title }))
+ *     .else(reify.create('Session', { id: temp(), title: input.title }))
  *     .as('session'),
  *
- *   entity.create('Message', {
+ *   reify.create('Message', {
  *     id: temp(),
  *     sessionId: ref('session').id,
  *     content: input.content,
