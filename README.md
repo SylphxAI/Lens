@@ -922,137 +922,136 @@ const createChatSession = mutation()
   .resolve(...)
 ```
 
-### DSL Reference
+### DSL Builder (Recommended)
 
-**Meta Fields:**
-| Field | Description |
-|-------|-------------|
-| `$entity` | Target entity type name |
-| `$op` | Operation: `'create'` \| `'update'` \| `'delete'` or conditional `{ $if: ... }` |
-| `$id` | Target entity ID (required for update/delete) |
-| `$ids` | Array of entity IDs for bulk operations |
-| `$where` | Query filter for bulk operations |
-
-**Value References:**
-| Syntax | Description |
-|--------|-------------|
-| `{ $input: 'field' }` | Value from mutation input |
-| `{ $ref: 'sibling.field' }` | Value from sibling operation result |
-| `{ $temp: true }` | Generate temporary ID |
-| `{ $now: true }` | Current timestamp |
-
-**Field Operators:**
-| Syntax | Description |
-|--------|-------------|
-| `{ $increment: n }` | Increment numeric field by n |
-| `{ $decrement: n }` | Decrement numeric field by n |
-| `{ $push: item }` | Append item(s) to array |
-| `{ $pull: item }` | Remove item(s) from array |
-| `{ $addToSet: item }` | Add item(s) if not already in array |
-| `{ $default: value }` | Use value if field is undefined |
-| `{ $if: { condition, then, else } }` | Conditional value |
-
-**More Examples:**
+Use the type-safe `pipeline()` builder for optimistic updates with full autocomplete:
 
 ```typescript
-// Update existing entity
-.optimistic({
-  post: {
-    $entity: 'Post',
-    $op: 'update',
-    $id: { $input: 'postId' },
-    title: { $input: 'newTitle' },
-    updatedAt: { $now: true },
-  },
-})
+import { pipeline, op, ref, when } from '@sylphx/lens-core';
 
-// Delete entity
-.optimistic({
-  deleted: {
-    $entity: 'Post',
-    $op: 'delete',
-    $id: { $input: 'postId' },
-  },
-})
+const createChatSession = mutation()
+  .input(z.object({
+    sessionId: z.string().optional(),
+    title: z.string(),
+    content: z.string(),
+    userId: z.string(),
+  }))
+  .returns({ Session, Message })
+  .optimistic(
+    pipeline(({ input }) => [
+      // Upsert session - conditional operation flow
+      when(input.sessionId)
+        .then([
+          op.update('Session', {
+            id: input.sessionId,
+            updatedAt: ref.now(),
+          }).as('session'),
+        ])
+        .else([
+          op.create('Session', {
+            id: ref.temp(),
+            title: input.title,
+            createdAt: ref.now(),
+          }).as('session'),
+        ]),
 
-// Mixed operations
-.optimistic({
-  newPost: {
-    $entity: 'Post',
-    $op: 'create',
-    title: { $input: 'title' },
-    authorId: { $input: 'authorId' },
-  },
-  notification: {
-    $entity: 'Notification',
-    $op: 'create',
-    type: 'new_post',
-    postId: { $ref: 'newPost.id' },
-  },
-})
+      // Create user message
+      op.create('Message', {
+        sessionId: ref.from('session').id,  // Reference sibling operation
+        role: 'user',
+        content: input.content,
+      }).as('userMessage'),
 
-// Field operators
-.optimistic({
-  user: {
-    $entity: 'User',
-    $op: 'update',
-    $id: { $input: 'userId' },
-    postCount: { $increment: 1 },           // Increment counter
-    tags: { $push: 'author' },              // Add to array
-    roles: { $addToSet: 'contributor' },    // Add if not exists
-    bio: { $default: 'No bio provided' },   // Default value
-  },
-})
+      // Update user stats with field operators
+      op.update('User', {
+        id: input.userId,
+        messageCount: ref.increment(1),
+        tags: ref.push('active'),
+        lastActiveAt: ref.now(),
+      }).as('userStats'),
+    ])
+  )
+  .resolve(...)
+```
 
-// Bulk operations
-.optimistic({
-  posts: {
-    $entity: 'Post',
-    $op: 'update',
-    $ids: { $input: 'postIds' },   // Update multiple by IDs
-    published: true,
-  },
-  drafts: {
-    $entity: 'Post',
-    $op: 'update',
-    $where: { authorId: { $input: 'userId' }, status: 'draft' },
-    archived: true,
-  },
-})
+**Builder Features:**
+- `input.field` → Type-safe input references (via Proxy)
+- `ref.from('name').field` → Reference sibling operation results
+- `when(condition).then([...]).else([...])` → Conditional operation flows (supports multiple ops)
+- `op.create/update/delete().as('name')` → Operation builders with optional naming
+- `ref.increment/push/pull/now/temp` → Field operators and special values
 
-// Conditional field value
-.optimistic({
-  user: {
-    $entity: 'User',
-    $op: 'update',
-    $id: { $input: 'userId' },
-    role: {
-      $if: {
-        condition: { $input: 'isAdmin' },
-        then: 'admin',
-        else: 'user',
-      },
-    },
-  },
-})
+### DSL Reference
 
-// Upsert pattern - conditional $op
+**Operations:**
+| Builder | Description |
+|---------|-------------|
+| `op.create(entity, data).as('name')` | Create new entity |
+| `op.update(entity, data).as('name')` | Update existing entity (data includes `id`) |
+| `op.delete(entity, id).as('name')` | Delete entity |
+| `op.updateMany(entity, { where, data }).as('name')` | Bulk update by query |
+
+**Input References:**
+| Builder | Description |
+|---------|-------------|
+| `input.field` | Value from mutation input |
+| `input.nested.field` | Nested input value |
+
+**Special Values (ref.*):**
+| Builder | Description |
+|---------|-------------|
+| `ref.from('sibling').field` | Value from sibling operation result |
+| `ref.temp()` | Generate temporary ID |
+| `ref.now()` | Current timestamp |
+
+**Field Operators (ref.*):**
+| Builder | Description |
+|---------|-------------|
+| `ref.increment(n)` | Increment numeric field by n |
+| `ref.decrement(n)` | Decrement numeric field by n |
+| `ref.push(...items)` | Append item(s) to array |
+| `ref.pull(...items)` | Remove item(s) from array |
+| `ref.addToSet(...items)` | Add item(s) if not already in array |
+| `ref.default(value)` | Use value if field is undefined |
+| `ref.if(condition, then, else?)` | Conditional value |
+
+**Conditional Flows:**
+| Builder | Description |
+|---------|-------------|
+| `when(condition).then([ops])` | Execute ops if condition truthy |
+| `when(condition).then([ops]).else([ops])` | If-else operation flow |
+
+### Raw DSL (Alternative)
+
+You can also use raw JSON DSL directly:
+
+```typescript
 .optimistic({
   session: {
     $entity: 'Session',
-    $op: {
-      $if: {
-        condition: { $input: 'sessionId' },  // truthy = update, falsy = create
-        then: 'update',
-        else: 'create',
-      },
-    },
-    $id: { $input: 'sessionId' },  // null/undefined triggers tempId for create
+    $op: { $if: { condition: { $input: 'sessionId' }, then: 'update', else: 'create' } },
+    $id: { $input: 'sessionId' },
     title: { $input: 'title' },
     updatedAt: { $now: true },
   },
+  message: {
+    $entity: 'Message',
+    $op: 'create',
+    sessionId: { $ref: 'session.id' },
+    content: { $input: 'content' },
+  },
 })
 ```
+
+**Raw DSL Syntax:**
+| Syntax | Description |
+|--------|-------------|
+| `{ $input: 'field' }` | Value from mutation input |
+| `{ $ref: 'sibling.field' }` | Value from sibling operation |
+| `{ $temp: true }` | Generate temporary ID |
+| `{ $now: true }` | Current timestamp |
+| `{ $increment: n }` | Increment field |
+| `{ $if: { condition, then, else } }` | Conditional value |
 
 ---
 

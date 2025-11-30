@@ -358,6 +358,11 @@ export {
 	evaluateMultiEntityDSL,
 	evaluateMultiEntityDSLMap,
 	OptimisticEvaluationError,
+	// DSL Builder
+	op,
+	pipeline,
+	ref,
+	when,
 } from "./optimistic/index";
 
 // =============================================================================
