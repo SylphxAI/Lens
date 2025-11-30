@@ -4,8 +4,21 @@
  * DSL evaluation and utilities for optimistic updates.
  */
 
-// DSL Builder
+// =============================================================================
+// UDSL - New API (recommended)
+// =============================================================================
+
+// Re-export everything from UDSL
+export * from "./udsl";
+
+// =============================================================================
+// Legacy API (deprecated, will be removed in v2)
+// =============================================================================
+
+// DSL Builder (legacy)
 export { op, pipeline, ref, when } from "./builder";
+
+// Evaluator (legacy)
 export {
 	applyDeferredOperation,
 	applyDeferredOperations,

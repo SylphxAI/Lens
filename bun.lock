@@ -55,7 +55,7 @@
     },
     "packages/client": {
       "name": "@sylphx/lens-client",
-      "version": "1.3.0",
+      "version": "1.7.0",
       "dependencies": {
         "@msgpack/msgpack": "^3.1.2",
         "@sylphx/lens-core": "workspace:*",
@@ -75,7 +75,10 @@
     },
     "packages/core": {
       "name": "@sylphx/lens-core",
-      "version": "1.6.0",
+      "version": "1.10.0",
+      "dependencies": {
+        "@sylphx/udsl": "file:../../../udsl/packages/udsl",
+      },
       "devDependencies": {
         "typescript": "^5.9.3",
         "zod": "^4.1.13",
@@ -83,7 +86,7 @@
     },
     "packages/fresh": {
       "name": "@sylphx/lens-fresh",
-      "version": "1.2.12",
+      "version": "1.2.17",
       "dependencies": {
         "@sylphx/lens-client": "workspace:*",
         "@sylphx/lens-preact": "workspace:*",
@@ -104,7 +107,7 @@
     },
     "packages/lens": {
       "name": "@sylphx/lens",
-      "version": "1.1.0",
+      "version": "1.2.1",
       "dependencies": {
         "@sylphx/lens-client": "workspace:*",
         "@sylphx/lens-core": "workspace:*",
@@ -116,7 +119,7 @@
     },
     "packages/next": {
       "name": "@sylphx/lens-next",
-      "version": "1.2.6",
+      "version": "1.2.8",
       "dependencies": {
         "@sylphx/lens-client": "workspace:*",
         "@sylphx/lens-react": "workspace:*",
@@ -135,7 +138,7 @@
     },
     "packages/nuxt": {
       "name": "@sylphx/lens-nuxt",
-      "version": "1.2.12",
+      "version": "1.2.17",
       "dependencies": {
         "@sylphx/lens-client": "workspace:*",
         "@sylphx/lens-server": "workspace:*",
@@ -153,7 +156,7 @@
     },
     "packages/preact": {
       "name": "@sylphx/lens-preact",
-      "version": "1.2.12",
+      "version": "1.2.17",
       "dependencies": {
         "@sylphx/lens-client": "workspace:*",
       },
@@ -172,7 +175,7 @@
     },
     "packages/react": {
       "name": "@sylphx/lens-react",
-      "version": "1.2.6",
+      "version": "1.2.8",
       "dependencies": {
         "@sylphx/lens-client": "workspace:*",
       },
@@ -191,7 +194,7 @@
     },
     "packages/server": {
       "name": "@sylphx/lens-server",
-      "version": "1.4.0",
+      "version": "1.5.1",
       "dependencies": {
         "@sylphx/lens-core": "workspace:*",
       },
@@ -202,7 +205,7 @@
     },
     "packages/solid": {
       "name": "@sylphx/lens-solid",
-      "version": "1.2.12",
+      "version": "1.2.17",
       "dependencies": {
         "@sylphx/lens-client": "workspace:*",
       },
@@ -217,7 +220,7 @@
     },
     "packages/solidstart": {
       "name": "@sylphx/lens-solidstart",
-      "version": "1.2.12",
+      "version": "1.2.17",
       "dependencies": {
         "@sylphx/lens-client": "workspace:*",
         "@sylphx/lens-server": "workspace:*",
@@ -237,7 +240,7 @@
     },
     "packages/svelte": {
       "name": "@sylphx/lens-svelte",
-      "version": "1.2.6",
+      "version": "1.2.8",
       "dependencies": {
         "@sylphx/lens-client": "workspace:*",
       },
@@ -254,7 +257,7 @@
     },
     "packages/vue": {
       "name": "@sylphx/lens-vue",
-      "version": "1.2.6",
+      "version": "1.2.8",
       "dependencies": {
         "@sylphx/lens-client": "workspace:*",
       },
@@ -2140,6 +2143,8 @@
 
     "@rollup/pluginutils/estree-walker": ["estree-walker@2.0.2", "", {}, "sha512-Rfkk/Mp/DL7JVje3u18FxFujQlTNR2q6QfMSMB7AvCBx91NGj/ba3kCfza0f6dVDbw7YlRf/nDrn7pQrCCyQ/w=="],
 
+    "@sylphx/lens-core/@sylphx/udsl": ["@sylphx/udsl@file:../udsl/packages/udsl", { "dependencies": { "@sylphx/udsl-adapter-cache": "file:../adapter-cache", "@sylphx/udsl-adapter-prisma": "file:../adapter-prisma", "@sylphx/udsl-core": "file:../core", "@sylphx/udsl-entity": "file:../entity" } }],
+
     "@tanstack/directive-functions-plugin/@babel/code-frame": ["@babel/code-frame@7.26.2", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.25.9", "js-tokens": "^4.0.0", "picocolors": "^1.0.0" } }, "sha512-RJlIHRueQgwWitWgF8OdFYGZX328Ax5BCemNGlqHfplnRT9ESi8JkFlvaVYbS+UubVY6dpv87Fs2u5M29iNFVQ=="],
 
     "@tanstack/directive-functions-plugin/vite": ["vite@7.2.4", "", { "dependencies": { "esbuild": "^0.25.0", "fdir": "^6.5.0", "picomatch": "^4.0.3", "postcss": "^8.5.6", "rollup": "^4.43.0", "tinyglobby": "^0.2.15" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^20.19.0 || >=22.12.0", "jiti": ">=1.21.0", "less": "^4.0.0", "lightningcss": "^1.21.0", "sass": "^1.70.0", "sass-embedded": "^1.70.0", "stylus": ">=0.54.8", "sugarss": "^5.0.0", "terser": "^5.16.0", "tsx": "^4.8.1", "yaml": "^2.4.2" }, "optionalPeers": ["@types/node", "jiti", "less", "lightningcss", "sass", "sass-embedded", "stylus", "sugarss", "terser", "tsx", "yaml"], "bin": { "vite": "bin/vite.js" } }, "sha512-NL8jTlbo0Tn4dUEXEsUg8KeyG/Lkmc4Fnzb8JXN/Ykm9G4HNImjtABMJgkQoVjOBN/j2WAwDTRytdqJbZsah7w=="],
@@ -2425,6 +2430,14 @@
     "@nuxt/devtools-kit/vite/postcss": ["postcss@8.5.6", "", { "dependencies": { "nanoid": "^3.3.11", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg=="],
 
     "@nuxt/devtools/vite/postcss": ["postcss@8.5.6", "", { "dependencies": { "nanoid": "^3.3.11", "picocolors": "^1.1.1", "source-map-js": "^1.2.1" } }, "sha512-3Ybi1tAuwAP9s0r1UQ2J4n5Y0G05bJkpUIO0/bI9MhwmD70S5aTWbXGBwxHrelT+XM1k6dM0pk+SwNkpTRN7Pg=="],
+
+    "@sylphx/lens-core/@sylphx/udsl/@sylphx/udsl-adapter-cache": ["@sylphx/udsl-adapter-cache@file:../udsl/packages/adapter-cache", {}],
+
+    "@sylphx/lens-core/@sylphx/udsl/@sylphx/udsl-adapter-prisma": ["@sylphx/udsl-adapter-prisma@file:../udsl/packages/adapter-prisma", {}],
+
+    "@sylphx/lens-core/@sylphx/udsl/@sylphx/udsl-core": ["@sylphx/udsl-core@file:../udsl/packages/core", {}],
+
+    "@sylphx/lens-core/@sylphx/udsl/@sylphx/udsl-entity": ["@sylphx/udsl-entity@file:../udsl/packages/entity", {}],
 
     "@tanstack/directive-functions-plugin/@babel/code-frame/js-tokens": ["js-tokens@4.0.0", "", {}, "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ=="],
 

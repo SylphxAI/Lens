@@ -29,6 +29,9 @@
 	],
 	"author": "SylphxAI",
 	"license": "MIT",
+	"dependencies": {
+		"@sylphx/udsl": "file:../../../udsl/packages/udsl"
+	},
 	"devDependencies": {
 		"typescript": "^5.9.3",
 		"zod": "^4.1.13"
