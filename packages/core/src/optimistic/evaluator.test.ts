@@ -1021,3 +1021,221 @@ describe("applyDeferredOperations", () => {
 		expect(result).toEqual({ name: "John" });
 	});
 });
+
+// =============================================================================
+// Conditional $op Tests
+// =============================================================================
+
+describe("Conditional $op", () => {
+	beforeEach(() => {
+		resetTempIdCounter();
+	});
+
+	describe("$if condition with truthy value", () => {
+		it("uses 'then' operation when condition is truthy", () => {
+			const dsl = {
+				session: {
+					$entity: "Session",
+					$op: {
+						$if: {
+							condition: { $input: "sessionId" },
+							then: "update" as const,
+							else: "create" as const,
+						},
+					},
+					$id: { $input: "sessionId" },
+					title: { $input: "title" },
+				},
+			};
+
+			const result = evaluateMultiEntityDSL(dsl, {
+				sessionId: "session-123",
+				title: "Updated Title",
+			});
+
+			expect(result).toHaveLength(1);
+			expect(result[0].op).toBe("update");
+			expect(result[0].id).toBe("session-123");
+			expect(result[0].data.title).toBe("Updated Title");
+		});
+
+		it("uses 'else' operation when condition is falsy", () => {
+			const dsl = {
+				session: {
+					$entity: "Session",
+					$op: {
+						$if: {
+							condition: { $input: "sessionId" },
+							then: "update" as const,
+							else: "create" as const,
+						},
+					},
+					title: { $input: "title" },
+				},
+			};
+
+			const result = evaluateMultiEntityDSL(dsl, {
+				sessionId: null,
+				title: "New Session",
+			});
+
+			expect(result).toHaveLength(1);
+			expect(result[0].op).toBe("create");
+			expect(result[0].id).toMatch(/^temp_/);
+			expect(result[0].data.title).toBe("New Session");
+		});
+	});
+
+	describe("$if condition with boolean literal", () => {
+		it("uses 'then' when condition is true", () => {
+			const dsl = {
+				post: {
+					$entity: "Post",
+					$op: {
+						$if: {
+							condition: true,
+							then: "delete" as const,
+							else: "update" as const,
+						},
+					},
+					$id: "post-123",
+				},
+			};
+
+			const result = evaluateMultiEntityDSL(dsl, {});
+
+			expect(result[0].op).toBe("delete");
+		});
+
+		it("uses 'else' when condition is false", () => {
+			const dsl = {
+				post: {
+					$entity: "Post",
+					$op: {
+						$if: {
+							condition: false,
+							then: "delete" as const,
+							else: "update" as const,
+						},
+					},
+					$id: "post-123",
+					published: true,
+				},
+			};
+
+			const result = evaluateMultiEntityDSL(dsl, {});
+
+			expect(result[0].op).toBe("update");
+		});
+	});
+
+	describe("$if without else clause", () => {
+		it("defaults to 'update' when condition is falsy and no else", () => {
+			const dsl = {
+				user: {
+					$entity: "User",
+					$op: {
+						$if: {
+							condition: { $input: "isNew" },
+							then: "create" as const,
+						},
+					},
+					$id: "user-123",
+					name: "John",
+				},
+			};
+
+			const result = evaluateMultiEntityDSL(dsl, {
+				isNew: false,
+			});
+
+			expect(result[0].op).toBe("update");
+			expect(result[0].id).toBe("user-123");
+		});
+	});
+
+	describe("upsert pattern", () => {
+		it("creates when id is undefined", () => {
+			const dsl = {
+				session: {
+					$entity: "Session",
+					$op: {
+						$if: {
+							condition: { $input: "existingId" },
+							then: "update" as const,
+							else: "create" as const,
+						},
+					},
+					$id: { $input: "existingId" },
+					title: { $input: "title" },
+					updatedAt: { $now: true },
+				},
+			};
+
+			const result = evaluateMultiEntityDSL(dsl, {
+				existingId: undefined,
+				title: "New Session",
+			});
+
+			expect(result[0].op).toBe("create");
+			expect(result[0].id).toMatch(/^temp_/);
+		});
+
+		it("updates when id exists", () => {
+			const dsl = {
+				session: {
+					$entity: "Session",
+					$op: {
+						$if: {
+							condition: { $input: "existingId" },
+							then: "update" as const,
+							else: "create" as const,
+						},
+					},
+					$id: { $input: "existingId" },
+					title: { $input: "title" },
+					updatedAt: { $now: true },
+				},
+			};
+
+			const result = evaluateMultiEntityDSL(dsl, {
+				existingId: "session-456",
+				title: "Updated Session",
+			});
+
+			expect(result[0].op).toBe("update");
+			expect(result[0].id).toBe("session-456");
+		});
+	});
+
+	describe("mixed with v2 operators", () => {
+		it("works with $increment in conditional create", () => {
+			const dsl = {
+				counter: {
+					$entity: "Counter",
+					$op: {
+						$if: {
+							condition: { $input: "counterId" },
+							then: "update" as const,
+							else: "create" as const,
+						},
+					},
+					$id: { $input: "counterId" },
+					value: { $increment: 1 },
+				},
+			};
+
+			// Update existing
+			const updateResult = evaluateMultiEntityDSL(dsl, { counterId: "counter-1" });
+			expect(updateResult[0].op).toBe("update");
+			expect(updateResult[0].deferred?.value).toEqual({ type: "increment", value: 1 });
+
+			resetTempIdCounter();
+
+			// Create new
+			const createResult = evaluateMultiEntityDSL(dsl, { counterId: null });
+			expect(createResult[0].op).toBe("create");
+			expect(createResult[0].deferred?.value).toEqual({ type: "increment", value: 1 });
+		});
+	});
+});

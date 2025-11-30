@@ -278,12 +278,24 @@ export function isV2Operator(value: unknown): value is V2Operator {
 // Multi-Entity Operation
 // -----------------------------------------------------------------------------
 
+/** Operation type literal or conditional */
+export type OpType = "create" | "update" | "delete";
+
+/** Conditional operation type (for upsert-like patterns) */
+export interface OpTypeConditional {
+	$if: {
+		condition: ValueRef | boolean;
+		then: OpType;
+		else?: OpType;
+	};
+}
+
 /** Single entity operation in multi-entity DSL */
 export interface EntityOperation {
 	/** Target entity type name */
 	$entity: string;
-	/** Operation type */
-	$op: "create" | "update" | "delete";
+	/** Operation type - can be literal or conditional */
+	$op: OpType | OpTypeConditional;
 	/** Target entity ID (required for update/delete on single entity) */
 	$id?: string | ValueRef;
 	/** Multiple entity IDs for bulk operations */
@@ -294,13 +306,31 @@ export interface EntityOperation {
 	[field: string]: unknown | ValueRef | V2Operator;
 }
 
+/** Check if value is an OpTypeConditional */
+export function isOpTypeConditional(value: unknown): value is OpTypeConditional {
+	if (!value || typeof value !== "object") return false;
+	const obj = value as Record<string, unknown>;
+	if (!("$if" in obj)) return false;
+	const ifObj = obj.$if as Record<string, unknown>;
+	return (
+		ifObj &&
+		typeof ifObj === "object" &&
+		"condition" in ifObj &&
+		"then" in ifObj &&
+		(ifObj.then === "create" || ifObj.then === "update" || ifObj.then === "delete")
+	);
+}
+
 /** Check if value is an EntityOperation */
 export function isEntityOperation(value: unknown): value is EntityOperation {
 	if (!value || typeof value !== "object") return false;
 	const obj = value as Record<string, unknown>;
 	return (
 		typeof obj.$entity === "string" &&
-		(obj.$op === "create" || obj.$op === "update" || obj.$op === "delete")
+		(obj.$op === "create" ||
+			obj.$op === "update" ||
+			obj.$op === "delete" ||
+			isOpTypeConditional(obj.$op))
 	);
 }
 

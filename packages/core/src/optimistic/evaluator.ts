@@ -6,6 +6,7 @@
 
 import {
 	type EntityOperation,
+	isOpTypeConditional,
 	isV2Operator,
 	isValueRef,
 	type MultiEntityDSL,
@@ -16,6 +17,8 @@ import {
 	type OpIncrement,
 	type OpPull,
 	type OpPush,
+	type OpType,
+	type OpTypeConditional,
 	type RefInput,
 	type RefNow,
 	type RefSibling,
@@ -339,6 +342,32 @@ function topologicalSort(
 // =============================================================================
 
 /**
+ * Resolve operation type - handles conditional $op
+ */
+function resolveOpType(
+	opSpec: OpType | OpTypeConditional,
+	ctx: EvaluationContext,
+	opName: string,
+): OpType {
+	// Literal operation type
+	if (typeof opSpec === "string") {
+		return opSpec;
+	}
+
+	// Conditional operation type ($if)
+	if (isOpTypeConditional(opSpec)) {
+		const condition = resolveValue(opSpec.$if.condition, ctx, opName);
+		if (condition) {
+			return opSpec.$if.then;
+		}
+		// Return else if provided, otherwise default to 'update' (upsert pattern)
+		return opSpec.$if.else ?? "update";
+	}
+
+	throw new OptimisticEvaluationError(`Invalid $op type`, opName, "$op");
+}
+
+/**
  * Evaluate a single entity operation
  */
 function evaluateOperation(
@@ -347,7 +376,7 @@ function evaluateOperation(
 	ctx: EvaluationContext,
 ): EvaluatedOperation {
 	const entity = op.$entity;
-	const opType = op.$op;
+	const opType = resolveOpType(op.$op, ctx, name);
 
 	// Handle bulk operations ($ids or $where)
 	let id = "";
@@ -370,9 +399,11 @@ function evaluateOperation(
 		}
 		id = `where:${JSON.stringify(where)}`; // Synthetic ID for tracking
 	} else if (opType === "create") {
-		// For create, generate temp ID unless explicitly provided
+		// For create, generate temp ID unless explicitly provided with truthy value
 		if (op.$id !== undefined) {
-			id = String(resolveValue(op.$id, ctx, name));
+			const resolvedId = resolveValue(op.$id, ctx, name);
+			// If $id resolves to null/undefined, generate temp ID instead
+			id = resolvedId != null ? String(resolvedId) : tempId();
 		} else {
 			id = tempId();
 		}

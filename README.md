@@ -928,7 +928,7 @@ const createChatSession = mutation()
 | Field | Description |
 |-------|-------------|
 | `$entity` | Target entity type name |
-| `$op` | Operation: `'create'` \| `'update'` \| `'delete'` |
+| `$op` | Operation: `'create'` \| `'update'` \| `'delete'` or conditional `{ $if: ... }` |
 | `$id` | Target entity ID (required for update/delete) |
 | `$ids` | Array of entity IDs for bulk operations |
 | `$where` | Query filter for bulk operations |
@@ -1020,7 +1020,7 @@ const createChatSession = mutation()
   },
 })
 
-// Conditional update
+// Conditional field value
 .optimistic({
   user: {
     $entity: 'User',
@@ -1033,6 +1033,23 @@ const createChatSession = mutation()
         else: 'user',
       },
     },
+  },
+})
+
+// Upsert pattern - conditional $op
+.optimistic({
+  session: {
+    $entity: 'Session',
+    $op: {
+      $if: {
+        condition: { $input: 'sessionId' },  // truthy = update, falsy = create
+        then: 'update',
+        else: 'create',
+      },
+    },
+    $id: { $input: 'sessionId' },  // null/undefined triggers tempId for create
+    title: { $input: 'title' },
+    updatedAt: { $now: true },
   },
 })
 ```

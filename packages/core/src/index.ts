@@ -233,6 +233,7 @@ export {
 	isMultiEntityDSL,
 	isMutationDef,
 	isOperationDef,
+	isOpTypeConditional,
 	isOptimisticDSL,
 	isQueryDef,
 	isRouterDef,
@@ -256,6 +257,9 @@ export {
 	type OpIncrement,
 	type OpPull,
 	type OpPush,
+	// Operation type
+	type OpType,
+	type OpTypeConditional,
 	type OptimisticDSL,
 	type OptimisticUpdateManyConfig,
 	operations,
