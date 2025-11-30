@@ -4,3 +4,4 @@ package: "@sylphx/lens"
 ---
 
 Recovery release - bypass blocked version 1.1.0 on npm.
+
