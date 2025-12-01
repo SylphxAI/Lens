@@ -1553,6 +1553,6 @@ MIT © Sylphx AI
 
 ## Credits
 
-Built with [@sylphx/biome-config](https://github.com/SylphxAI/configs), [@sylphx/tsconfig](https://github.com/SylphxAI/configs), [@sylphx/doctor](https://github.com/SylphxAI/doctor), and [@sylphx/bump](https://github.com/SylphxAI/bump).
+Built with [@sylphx/biome-config](https://github.com/SylphxAI/configs), [@sylphx/tsconfig](https://github.com/SylphxAI/configs), [@sylphx/doctor](https://github.com/SylphxAI/doctor), [@sylphx/bump](https://github.com/SylphxAI/bump), [@sylphx/reify](https://github.com/SylphxAI/reify), and [@sylphx/standard-entity](https://github.com/SylphxAI/standard-entity).
 
 ✨ Powered by Sylphx

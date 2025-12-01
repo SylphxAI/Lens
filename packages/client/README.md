@@ -36,6 +36,6 @@ MIT
 
 ---
 
-Built with [@sylphx/lens-core](https://github.com/SylphxAI/Lens) and [@sylphx/lens-server](https://github.com/SylphxAI/Lens).
+Built with [@sylphx/lens-core](https://github.com/SylphxAI/Lens), [@sylphx/lens-server](https://github.com/SylphxAI/Lens), and [@sylphx/reify](https://github.com/SylphxAI/reify).
 
 ✨ Powered by Sylphx

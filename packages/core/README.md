@@ -40,4 +40,6 @@ MIT
 
 ---
 
+Built with [@sylphx/reify](https://github.com/SylphxAI/reify) and [@sylphx/standard-entity](https://github.com/SylphxAI/standard-entity).
+
 ✨ Powered by Sylphx
