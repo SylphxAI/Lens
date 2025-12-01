@@ -146,14 +146,14 @@ For fine-grained control over when updates are sent:
 ```typescript
 const watchUser = query()
   .input(z.object({ id: z.string() }))
-  .resolve(({ input, ctx, emit, onCleanup }) => {
+  .resolve(({ input, ctx }) => {
     // Subscribe to external data source
     const unsubscribe = db.user.onChange(input.id, (user) => {
-      emit(user)  // Push update to subscribed clients
+      ctx.emit(user)  // Push update to subscribed clients
     })
 
     // Cleanup when client disconnects
-    onCleanup(unsubscribe)
+    ctx.onCleanup(unsubscribe)
 
     // Return initial data
     return db.user.find(input.id)
@@ -177,34 +177,34 @@ const streamMessages = query()
 
 ## Emit API
 
-The `emit` parameter provides type-safe methods for pushing state updates to subscribed clients. The available methods depend on your output type.
+The `ctx.emit` method provides type-safe methods for pushing state updates to subscribed clients. The available methods depend on your output type.
 
 ### Object Outputs
 
 For single entity or multi-entity object outputs (`.returns(User)` or `.returns({ user: User, posts: [Post] })`):
 
 ```typescript
-resolve(({ input, ctx, emit, onCleanup }) => {
+resolve(({ input, ctx }) => {
   // Full data update (merge mode)
-  emit({ title: "Hello", content: "World" })
+  ctx.emit({ title: "Hello", content: "World" })
 
   // Merge partial update
-  emit.merge({ title: "Updated" })
+  ctx.emit.merge({ title: "Updated" })
 
   // Replace entire state
-  emit.replace({ title: "New", content: "Fresh" })
+  ctx.emit.replace({ title: "New", content: "Fresh" })
 
   // Set single field (type-safe)
-  emit.set("title", "New Title")
+  ctx.emit.set("title", "New Title")
 
   // Delta for string fields (e.g., LLM streaming)
-  emit.delta("content", [{ position: 0, insert: "Hello " }])
+  ctx.emit.delta("content", [{ position: 0, insert: "Hello " }])
 
   // JSON Patch for object fields
-  emit.patch("metadata", [{ op: "add", path: "/views", value: 100 }])
+  ctx.emit.patch("metadata", [{ op: "add", path: "/views", value: 100 }])
 
   // Batch multiple updates
-  emit.batch([
+  ctx.emit.batch([
     { field: "title", strategy: "value", data: "New" },
     { field: "content", strategy: "delta", data: [{ position: 0, insert: "!" }] },
   ])
@@ -218,27 +218,27 @@ resolve(({ input, ctx, emit, onCleanup }) => {
 For array outputs (`.returns([User])`):
 
 ```typescript
-resolve(({ input, ctx, emit, onCleanup }) => {
+resolve(({ input, ctx }) => {
   // Replace entire array
-  emit([user1, user2])
-  emit.replace([user1, user2])
+  ctx.emit([user1, user2])
+  ctx.emit.replace([user1, user2])
 
   // Add items
-  emit.push(newUser)           // Append to end
-  emit.unshift(newUser)        // Prepend to start
-  emit.insert(1, newUser)      // Insert at index
+  ctx.emit.push(newUser)           // Append to end
+  ctx.emit.unshift(newUser)        // Prepend to start
+  ctx.emit.insert(1, newUser)      // Insert at index
 
   // Remove items
-  emit.remove(0)               // Remove by index
-  emit.removeById("user-123")  // Remove by id field
+  ctx.emit.remove(0)               // Remove by index
+  ctx.emit.removeById("user-123")  // Remove by id field
 
   // Update items
-  emit.update(1, updatedUser)              // Update at index
-  emit.updateById("user-123", updatedUser) // Update by id
+  ctx.emit.update(1, updatedUser)              // Update at index
+  ctx.emit.updateById("user-123", updatedUser) // Update by id
 
   // Merge partial data into items
-  emit.merge(0, { name: "Updated" })            // Merge at index
-  emit.mergeById("user-123", { name: "Updated" }) // Merge by id
+  ctx.emit.merge(0, { name: "Updated" })            // Merge at index
+  ctx.emit.mergeById("user-123", { name: "Updated" }) // Merge by id
 
   return initialUsers
 })
@@ -249,15 +249,15 @@ resolve(({ input, ctx, emit, onCleanup }) => {
 ```typescript
 const chat = query()
   .input(z.object({ prompt: z.string() }))
-  .resolve(async ({ input, ctx, emit, onCleanup }) => {
+  .resolve(async ({ input, ctx }) => {
     const stream = ctx.ai.stream(input.prompt)
 
     stream.on("token", (token) => {
       // Efficiently append to content field
-      emit.delta("content", [{ position: Infinity, insert: token }])
+      ctx.emit.delta("content", [{ position: Infinity, insert: token }])
     })
 
-    onCleanup(() => stream.close())
+    ctx.onCleanup(() => stream.close())
 
     return { content: "" }  // Initial empty state
   })
@@ -1241,16 +1241,16 @@ export const getUser = typedQuery()
 ```typescript
 // Server: Single query serves both initial load AND live updates
 const getDashboard = query()
-  .resolve(({ ctx, emit, onCleanup }) => {
+  .resolve(({ ctx }) => {
     // Subscribe to multiple data sources
     const unsubMetrics = ctx.metrics.onChange((metrics) => {
-      emit.set("metrics", metrics)
+      ctx.emit.set("metrics", metrics)
     })
     const unsubAlerts = ctx.alerts.onChange((alerts) => {
-      emit.set("alerts", alerts)
+      ctx.emit.set("alerts", alerts)
     })
 
-    onCleanup(() => {
+    ctx.onCleanup(() => {
       unsubMetrics()
       unsubAlerts()
     })
@@ -1305,15 +1305,15 @@ client.chat({ messages }).subscribe((response) => {
 // Server: Multiple users editing same document
 const getDocument = query()
   .input(z.object({ docId: z.string() }))
-  .resolve(({ input, ctx, emit, onCleanup }) => {
+  .resolve(({ input, ctx }) => {
     const docRef = ctx.docs.get(input.docId)
 
     // Listen for changes from ANY user
     const unsub = docRef.onSnapshot((doc) => {
-      emit(doc.data())
+      ctx.emit(doc.data())
     })
 
-    onCleanup(unsub)
+    ctx.onCleanup(unsub)
     return docRef.get()
   })
 
@@ -1342,13 +1342,13 @@ await client.document.update({ docId: "123", content: newContent })
 // Server: Return page, but also push new items
 const getPosts = query()
   .input(z.object({ cursor: z.string().optional(), limit: z.number() }))
-  .resolve(({ input, ctx, emit, onCleanup }) => {
+  .resolve(({ input, ctx }) => {
     // Listen for new posts
     const unsub = ctx.posts.onNew((newPost) => {
-      emit.unshift(newPost)  // Add to front of array
+      ctx.emit.unshift(newPost)  // Add to front of array
     })
 
-    onCleanup(unsub)
+    ctx.onCleanup(unsub)
 
     // Return paginated results
     return ctx.posts.findMany({
@@ -1371,14 +1371,14 @@ client.posts.get({ limit: 20 }).subscribe((posts) => {
 // Server: Track active users
 const getPresence = query()
   .input(z.object({ roomId: z.string() }))
-  .resolve(({ input, ctx, emit, onCleanup }) => {
+  .resolve(({ input, ctx }) => {
     const room = ctx.presence.join(input.roomId, ctx.user)
 
     room.onUpdate((users) => {
-      emit(users)
+      ctx.emit(users)
     })
 
-    onCleanup(() => room.leave())
+    ctx.onCleanup(() => room.leave())
 
     return room.getUsers()
   })
@@ -1431,20 +1431,20 @@ client.data.stream().subscribe((item) => {
 
 ### "What if my data comes from an external source (WebSocket, webhook, etc.)?"
 
-Use `emit` to push updates whenever you want:
+Use `ctx.emit` to push updates whenever you want:
 
 ```typescript
 const watchPrices = query()
   .input(z.object({ symbol: z.string() }))
-  .resolve(({ input, ctx, emit, onCleanup }) => {
+  .resolve(({ input, ctx }) => {
     // Connect to external WebSocket
     const ws = new WebSocket(`wss://prices.api/${input.symbol}`)
 
     ws.onmessage = (event) => {
-      emit(JSON.parse(event.data))  // Push to Lens clients
+      ctx.emit(JSON.parse(event.data))  // Push to Lens clients
     }
 
-    onCleanup(() => ws.close())
+    ctx.onCleanup(() => ws.close())
 
     return { price: 0, symbol: input.symbol }
   })
@@ -1457,9 +1457,9 @@ Two ways:
 **1. Automatic (via shared data source):**
 ```typescript
 // Query subscribes to database changes
-const getUser = query().resolve(({ input, ctx, emit, onCleanup }) => {
-  const unsub = ctx.db.user.onChange(input.id, emit)
-  onCleanup(unsub)
+const getUser = query().resolve(({ input, ctx }) => {
+  const unsub = ctx.db.user.onChange(input.id, ctx.emit)
+  ctx.onCleanup(unsub)
   return ctx.db.user.find(input.id)
 })
 
@@ -1530,11 +1530,11 @@ const unsubscribe = client.data.get().subscribe(callback)
 // Later...
 unsubscribe()  // Stops receiving updates
 
-// Server: onCleanup is called when client disconnects
-resolve(({ emit, onCleanup }) => {
-  const interval = setInterval(() => emit(getData()), 1000)
+// Server: ctx.onCleanup is called when client disconnects
+resolve(({ ctx }) => {
+  const interval = setInterval(() => ctx.emit(getData()), 1000)
 
-  onCleanup(() => {
+  ctx.onCleanup(() => {
     clearInterval(interval)  // Called when client unsubscribes
   })
 

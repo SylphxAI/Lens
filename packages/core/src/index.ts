@@ -191,6 +191,9 @@ export {
 	isQueryDef,
 	isRouterDef,
 	isTempId,
+	// Context types
+	type LensContext,
+	type LensContextExtensions,
 	// Types
 	type MutationDef,
 	type MutationResultType,

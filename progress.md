@@ -87,13 +87,13 @@ client.user.get({ id: "1" }, {
 
 ### 5. emit (Operation Level Only)
 
-`emit` is for operation resolvers, not field resolvers:
+`ctx.emit` is for operation resolvers, not field resolvers:
 
 ```typescript
 const getUser = query()
   .returns(User)
-  .resolve(({ input, ctx, emit, onCleanup }) => {
-    ctx.db.onChange(() => emit(ctx.db.users.find(input.id)))
+  .resolve(({ input, ctx }) => {
+    ctx.db.onChange(() => ctx.emit(ctx.db.users.find(input.id)))
     return ctx.db.users.find(input.id)
   })
 ```
