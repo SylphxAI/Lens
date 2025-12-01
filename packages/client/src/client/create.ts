@@ -540,7 +540,7 @@ class ClientImpl {
 		if (parts.length < 2) return;
 
 		const namespace = parts.slice(0, -1).join(".");
-		const entityId = input["id"] as string | undefined;
+		const entityId = (input as { id?: string }).id;
 
 		if (!entityId) return;
 
@@ -550,7 +550,7 @@ class ClientImpl {
 			if (key.startsWith(`${namespace}.get:`) || key.startsWith(`${namespace}.`)) {
 				// Try to parse the input from the key
 				const keyInput = this.parseQueryKeyInput(key);
-				if (keyInput?.["id"] === entityId && sub.callbacks.size > 0) {
+				if ((keyInput as { id?: string })?.id === entityId && sub.callbacks.size > 0) {
 					// Get updated data from store
 					const entitySignal = this.store.getEntity(
 						this.getEntityTypeFromPath(namespace),
@@ -599,8 +599,8 @@ class ClientImpl {
 	private storeEntityFromData(path: string, data: unknown): void {
 		if (!data || typeof data !== "object") return;
 
-		const entityData = data as Record<string, unknown>;
-		const entityId = entityData["id"] as string | undefined;
+		const entityData = data as { id?: string };
+		const entityId = entityData.id;
 		if (!entityId) return;
 
 		// Extract namespace from path (e.g., "user.get" -> "user")
@@ -661,6 +661,11 @@ class ClientImpl {
 				// Current cached value (null until loaded)
 				get value() {
 					return sub.data;
+				},
+
+				// Select specific fields - returns new QueryResult with selection
+				select: <S extends SelectionObject>(selection: S) => {
+					return this.executeQuery(path, input, selection);
 				},
 
 				// Subscribe to updates - defers until metadata is ready
