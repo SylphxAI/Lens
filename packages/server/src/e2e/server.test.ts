@@ -317,8 +317,8 @@ describe("E2E - Subscriptions", () => {
 		const watchUser = query()
 			.input(z.object({ id: z.string() }))
 			.returns(User)
-			.resolve(({ input, emit }) => {
-				emitFn = emit;
+			.resolve(({ input, ctx }) => {
+				emitFn = ctx.emit;
 				const user = mockUsers.find((u) => u.id === input.id);
 				if (!user) throw new Error("Not found");
 				return user;
@@ -362,8 +362,8 @@ describe("E2E - Subscriptions", () => {
 		const watchUser = query()
 			.input(z.object({ id: z.string() }))
 			.returns(User)
-			.resolve(({ input, emit }) => {
-				emitFn = emit;
+			.resolve(({ input, ctx }) => {
+				emitFn = ctx.emit;
 				const user = mockUsers.find((u) => u.id === input.id);
 				if (!user) throw new Error("Not found");
 				return user;
@@ -464,8 +464,8 @@ describe("E2E - Cleanup", () => {
 		const watchUser = query()
 			.input(z.object({ id: z.string() }))
 			.returns(User)
-			.resolve(({ input, onCleanup }) => {
-				onCleanup(() => {
+			.resolve(({ input, ctx }) => {
+				ctx.onCleanup(() => {
 					cleanedUp = true;
 				});
 				const user = mockUsers.find((u) => u.id === input.id);
@@ -506,8 +506,8 @@ describe("E2E - GraphStateManager", () => {
 		const getUser = query()
 			.input(z.object({ id: z.string() }))
 			.returns(User)
-			.resolve(({ input, emit }) => {
-				emitFn = emit;
+			.resolve(({ input, ctx }) => {
+				emitFn = ctx.emit;
 				const user = mockUsers.find((u) => u.id === input.id);
 				if (!user) throw new Error("Not found");
 				return user;

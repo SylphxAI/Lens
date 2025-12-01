@@ -823,11 +823,16 @@ class LensServerImpl<
 				};
 			};
 
-			const result = resolver({
-				input: sub.input,
-				ctx: context,
+			// Merge Lens extensions (emit, onCleanup) into user context
+			const lensContext = {
+				...context,
 				emit,
 				onCleanup,
+			};
+
+			const result = resolver({
+				input: sub.input,
+				ctx: lensContext,
 			});
 
 			if (isAsyncIterable(result)) {
@@ -1042,11 +1047,16 @@ class LensServerImpl<
 				const emit = createEmit(() => {});
 				const onCleanup = () => () => {};
 
-				const result = resolver({
-					input: cleanInput as TInput,
-					ctx: context,
+				// Merge Lens extensions (emit, onCleanup) into user context
+				const lensContext = {
+					...context,
 					emit,
 					onCleanup,
+				};
+
+				const result = resolver({
+					input: cleanInput as TInput,
+					ctx: lensContext,
 				});
 
 				let data: TOutput;
@@ -1096,11 +1106,16 @@ class LensServerImpl<
 				const emit = createEmit(() => {});
 				const onCleanup = () => () => {};
 
-				const result = await resolver({
-					input: input as TInput,
-					ctx: context,
+				// Merge Lens extensions (emit, onCleanup) into user context
+				const lensContext = {
+					...context,
 					emit,
 					onCleanup,
+				};
+
+				const result = await resolver({
+					input: input as TInput,
+					ctx: lensContext,
 				});
 
 				// Emit to GraphStateManager

@@ -98,34 +98,12 @@ export type InferReturnType<R extends ReturnSpec> =
 					: never;
 
 /**
- * Resolver context - passed directly to resolver function (tRPC style)
+ * Lens-provided context extensions.
+ * These are automatically injected by the server into the user's context.
  *
- * @typeParam TInput - Validated input type from .input() schema
- * @typeParam TOutput - Output type (inferred from .returns() or resolver return)
- * @typeParam TContext - User-defined context type from createServer({ context })
- *
- * @example
- * ```typescript
- * // Basic query
- * resolve(({ input, ctx }) => ctx.db.user.find(input.id))
- *
- * // Subscription with emit
- * resolve(({ input, ctx, emit, onCleanup }) => {
- *   const unsub = ctx.db.user.onChange(input.id, (data) => {
- *     emit.merge({ name: data.name })  // Update specific field
- *   })
- *   onCleanup(unsub)
- *   return ctx.db.user.find(input.id)
- * })
- * ```
+ * @typeParam TOutput - Output type for emit typing
  */
-export interface ResolverContext<TInput = unknown, TOutput = unknown, TContext = unknown> {
-	/** Parsed and validated input */
-	input: TInput;
-
-	/** User-defined context (db, user, etc.) - set via createServer({ context }) */
-	ctx: TContext;
-
+export interface LensContextExtensions<TOutput = unknown> {
 	/**
 	 * Emit state updates to subscribed clients.
 	 *
@@ -149,12 +127,51 @@ export interface ResolverContext<TInput = unknown, TOutput = unknown, TContext =
 	 * @example
 	 * ```typescript
 	 * const unsub = ctx.db.onChange(id, handler)
-	 * onCleanup(unsub)  // Called when client disconnects
+	 * ctx.onCleanup(unsub)  // Called when client disconnects
 	 * ```
 	 *
 	 * Only available in subscription context.
 	 */
 	onCleanup: (fn: () => void) => () => void;
+}
+
+/**
+ * Full context type combining user context with Lens extensions.
+ * This is what resolvers receive as `ctx`.
+ */
+export type LensContext<TContext, TOutput = unknown> = TContext & LensContextExtensions<TOutput>;
+
+/**
+ * Resolver context - passed directly to resolver function (tRPC style)
+ *
+ * @typeParam TInput - Validated input type from .input() schema
+ * @typeParam TOutput - Output type (inferred from .returns() or resolver return)
+ * @typeParam TContext - User-defined context type from createServer({ context })
+ *
+ * @example
+ * ```typescript
+ * // Basic query
+ * resolve(({ input, ctx }) => ctx.db.user.find(input.id))
+ *
+ * // Subscription with emit
+ * resolve(({ input, ctx }) => {
+ *   const unsub = ctx.db.user.onChange(input.id, (data) => {
+ *     ctx.emit.merge({ name: data.name })  // Update specific field
+ *   })
+ *   ctx.onCleanup(unsub)
+ *   return ctx.db.user.find(input.id)
+ * })
+ * ```
+ */
+export interface ResolverContext<TInput = unknown, TOutput = unknown, TContext = unknown> {
+	/** Parsed and validated input */
+	input: TInput;
+
+	/**
+	 * Context containing user-defined values (db, user, etc.) plus Lens extensions (emit, onCleanup).
+	 * Set via createServer({ context }).
+	 */
+	ctx: LensContext<TContext, TOutput>;
 }
 
 /** Resolver function type - can return sync, async, or generator */

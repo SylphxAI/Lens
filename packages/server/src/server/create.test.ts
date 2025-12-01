@@ -724,8 +724,8 @@ describe("onCleanup", () => {
 
 		const liveQuery = query()
 			.returns(User)
-			.resolve(({ onCleanup }) => {
-				onCleanup(() => {
+			.resolve(({ ctx }) => {
+				ctx.onCleanup(() => {
 					cleanedUp = true;
 				});
 				return mockUsers[0];
@@ -764,8 +764,8 @@ describe("onCleanup", () => {
 
 		const liveQuery = query()
 			.returns(User)
-			.resolve(({ onCleanup }) => {
-				onCleanup(() => {
+			.resolve(({ ctx }) => {
+				ctx.onCleanup(() => {
 					cleanedUp = true;
 				});
 				return mockUsers[0];
@@ -802,8 +802,8 @@ describe("onCleanup", () => {
 
 		const liveQuery = query()
 			.returns(User)
-			.resolve(({ onCleanup }) => {
-				const remove = onCleanup(() => {
+			.resolve(({ ctx }) => {
+				const remove = ctx.onCleanup(() => {
 					cleanedUp = true;
 				});
 				// Remove the cleanup before unsubscribe
@@ -1515,8 +1515,8 @@ describe("Logger integration", () => {
 		const errorLogs: string[] = [];
 		const liveQuery = query()
 			.returns(User)
-			.resolve(({ onCleanup }) => {
-				onCleanup(() => {
+			.resolve(({ ctx }) => {
+				ctx.onCleanup(() => {
 					throw new Error("Cleanup failed");
 				});
 				return mockUsers[0];
@@ -1560,8 +1560,8 @@ describe("Logger integration", () => {
 		const errorLogs: string[] = [];
 		const liveQuery = query()
 			.returns(User)
-			.resolve(({ onCleanup }) => {
-				onCleanup(() => {
+			.resolve(({ ctx }) => {
+				ctx.onCleanup(() => {
 					throw new Error("Disconnect cleanup failed");
 				});
 				return mockUsers[0];

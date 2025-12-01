@@ -122,9 +122,10 @@ describe("query() builder", () => {
 
 		const result = await getUser._resolve!({
 			input: { id: "123" },
-			ctx: {},
-			emit: (() => {}) as never,
-			onCleanup: () => () => {},
+			ctx: {
+				emit: (() => {}) as never,
+				onCleanup: () => () => {},
+			},
 		});
 		expect(result).toEqual({ id: "123", name: "John", email: "john@example.com" });
 	});
@@ -202,9 +203,10 @@ describe("mutation() builder", () => {
 
 		const result = await createPost._resolve({
 			input: { title: "Hello", content: "World" },
-			ctx: {},
-			emit: (() => {}) as never,
-			onCleanup: () => () => {},
+			ctx: {
+				emit: (() => {}) as never,
+				onCleanup: () => () => {},
+			},
 		});
 		expect(result).toEqual({
 			id: "created-1",
@@ -336,9 +338,10 @@ describe("Streaming support", () => {
 		// Execute and collect results
 		const generator = streamingQuery._resolve!({
 			input: undefined,
-			ctx: {},
-			emit: (() => {}) as never,
-			onCleanup: () => () => {},
+			ctx: {
+				emit: (() => {}) as never,
+				onCleanup: () => () => {},
+			},
 		}) as AsyncGenerator<unknown[]>;
 		const results: unknown[][] = [];
 
@@ -624,9 +627,12 @@ describe("operations() factory", () => {
 
 		const result = await whoami._resolve!({
 			input: undefined,
-			ctx: { userId: "user-1", permissions: ["read", "write"] },
-			emit: (() => {}) as never,
-			onCleanup: () => () => {},
+			ctx: {
+				userId: "user-1",
+				permissions: ["read", "write"],
+				emit: (() => {}) as never,
+				onCleanup: () => () => {},
+			},
 		});
 
 		expect(result).toEqual({ userId: "user-1", perms: "read,write" });
@@ -923,13 +929,14 @@ describe("Query minimal configuration", () => {
 
 		const result = await getTime._resolve!({
 			input: undefined,
-			ctx: {},
-			emit: (() => {}) as never,
-			onCleanup: () => () => {},
+			ctx: {
+				emit: (() => {}) as never,
+				onCleanup: () => () => {},
+			},
 		});
 
 		expect(result).toHaveProperty("timestamp");
-		expect(typeof result.timestamp).toBe("number");
+		expect(typeof (result as { timestamp: number }).timestamp).toBe("number");
 	});
 });
 
@@ -959,13 +966,14 @@ describe("Mutation without returns()", () => {
 
 		const result = await performAction._resolve({
 			input: { action: "test" },
-			ctx: {},
-			emit: (() => {}) as never,
-			onCleanup: () => () => {},
+			ctx: {
+				emit: (() => {}) as never,
+				onCleanup: () => () => {},
+			},
 		});
 
-		expect(result.success).toBe(true);
-		expect(result.action).toBe("test");
+		expect((result as { success: boolean }).success).toBe(true);
+		expect((result as { action: string }).action).toBe("test");
 	});
 });
 
