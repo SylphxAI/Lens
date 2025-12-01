@@ -137,7 +137,14 @@ export function isSignal(value: unknown): value is Signal<unknown> {
  */
 export function toPromise<T>(sig: Signal<T>): Promise<T> {
 	return new Promise((resolve) => {
-		const unsub = sig.subscribe((value) => {
+		let isFirst = true;
+		let unsub: Unsubscribe;
+		unsub = sig.subscribe((value) => {
+			// Skip the initial value (subscribe fires immediately)
+			if (isFirst) {
+				isFirst = false;
+				return;
+			}
 			unsub();
 			resolve(value);
 		});

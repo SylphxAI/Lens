@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, mock, test } from "bun:test";
-import { batch, computed, derive, effect, isSignal, signal } from "./signal.js";
+import { batch, computed, derive, effect, isSignal, signal, toPromise } from "./signal.js";
 
 describe("signal()", () => {
 	test("creates signal with initial value", () => {
@@ -174,6 +174,88 @@ describe("Utilities", () => {
 		expect(isSignal(1)).toBe(false);
 	});
 
+	test("isSignal() handles edge cases", () => {
+		// Test objects with partial signal interface
+		expect(isSignal({ value: 1 })).toBe(false);
+		expect(isSignal({ value: 1, peek: () => {} })).toBe(false);
+		expect(isSignal({ value: 1, subscribe: () => {} })).toBe(false);
+		expect(isSignal({ peek: () => {}, subscribe: () => {} })).toBe(false);
+
+		// Test primitive values
+		expect(isSignal(undefined)).toBe(false);
+		expect(isSignal("")).toBe(false);
+		expect(isSignal(0)).toBe(false);
+		expect(isSignal(false)).toBe(false);
+
+		// Test arrays and functions
+		expect(isSignal([])).toBe(false);
+		expect(isSignal(() => {})).toBe(false);
+	});
+
+	test("toPromise() resolves when signal changes", async () => {
+		const count = signal(0);
+
+		// Start the promise
+		const promise = toPromise(count);
+
+		// Change the signal value
+		count.value = 42;
+
+		// Promise should resolve with the new value
+		const result = await promise;
+		expect(result).toBe(42);
+	});
+
+	test("toPromise() resolves immediately if signal changes synchronously", async () => {
+		const count = signal(0);
+
+		// Start the promise and change value immediately
+		const promise = toPromise(count);
+		count.value = 100;
+
+		const result = await promise;
+		expect(result).toBe(100);
+	});
+
+	test("toPromise() unsubscribes after resolving", async () => {
+		const count = signal(0);
+		const _values: number[] = [];
+
+		// Track all subscriptions
+		const originalSubscribe = count.subscribe.bind(count);
+		let unsubscribeCalled = false;
+
+		count.subscribe = (fn) => {
+			const unsub = originalSubscribe(fn);
+			return () => {
+				unsubscribeCalled = true;
+				unsub();
+			};
+		};
+
+		const promise = toPromise(count);
+		count.value = 1;
+
+		await promise;
+
+		// Verify unsubscribe was called
+		expect(unsubscribeCalled).toBe(true);
+	});
+
+	test("toPromise() with multiple rapid changes", async () => {
+		const count = signal(0);
+
+		const promise = toPromise(count);
+
+		// Make multiple changes - promise should resolve with first change
+		count.value = 1;
+		count.value = 2;
+		count.value = 3;
+
+		const result = await promise;
+		expect(result).toBe(1);
+	});
+
 	test("derive() combines multiple signals", () => {
 		const a = signal(1);
 		const b = signal(2);
@@ -185,6 +267,35 @@ describe("Utilities", () => {
 
 		a.value = 10;
 		expect(sum.value).toBe(15);
+	});
+
+	test("derive() with empty signals array", () => {
+		const result = derive([], (values) => values.length);
+		expect(result.value).toBe(0);
+	});
+
+	test("derive() with complex transformation", () => {
+		const firstName = signal("John");
+		const lastName = signal("Doe");
+		const ageSignal = signal(30);
+
+		const profile = derive([firstName, lastName, ageSignal] as const, ([first, last, age]) => ({
+			fullName: `${first} ${last}`,
+			age,
+			isAdult: age >= 18,
+		}));
+
+		expect(profile.value).toEqual({
+			fullName: "John Doe",
+			age: 30,
+			isAdult: true,
+		});
+
+		firstName.value = "Jane";
+		expect((profile.value as { fullName: string }).fullName).toBe("Jane Doe");
+
+		ageSignal.value = 16;
+		expect((profile.value as { isAdult: boolean }).isAdult).toBe(false);
 	});
 });
 

@@ -2,3 +2,4 @@
 # Configure JSX for Preact
 jsx = "react-jsx"
 jsxImportSource = "preact"
+preload = ["./test-setup.ts"]

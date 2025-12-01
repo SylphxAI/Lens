@@ -10,6 +10,7 @@ import {
 	createComposables,
 	createContext,
 	extendContext,
+	getContextStore,
 	hasContext,
 	runWithContext,
 	runWithContextAsync,
@@ -53,6 +54,12 @@ describe("createContext & useContext", () => {
 		expect(() => useContext()).toThrow("useContext() called outside of context");
 	});
 
+	it("useContext throws with correct error message", () => {
+		expect(() => useContext()).toThrow(
+			"useContext() called outside of context. Make sure to wrap your code with runWithContext() or use explicit ctx parameter.",
+		);
+	});
+
 	it("tryUseContext returns undefined outside of context", () => {
 		const ctx = tryUseContext<TestContext>();
 		expect(ctx).toBeUndefined();
@@ -66,6 +73,41 @@ describe("createContext & useContext", () => {
 			expect(context).toBeDefined();
 			expect(context?.currentUser).toBe(mockUser);
 		});
+	});
+
+	it("useContext without type parameter uses default ContextValue type", () => {
+		const ctx = createContext<{ value: string }>();
+
+		runWithContext(ctx, { value: "test" }, () => {
+			const context = useContext();
+			expect(context).toHaveProperty("value");
+			expect((context as { value: string }).value).toBe("test");
+		});
+	});
+
+	it("tryUseContext without type parameter uses default ContextValue type", () => {
+		const ctx = createContext<{ value: string }>();
+
+		runWithContext(ctx, { value: "test" }, () => {
+			const context = tryUseContext();
+			expect(context).toBeDefined();
+			expect((context as { value: string }).value).toBe("test");
+		});
+	});
+
+	it("createContext returns a ContextStore", () => {
+		const ctx = createContext<TestContext>();
+		expect(ctx).toBeDefined();
+		expect(typeof ctx.run).toBe("function");
+		expect(typeof ctx.getStore).toBe("function");
+	});
+
+	it("multiple contexts share the same underlying store", () => {
+		const ctx1 = createContext<TestContext>();
+		const ctx2 = createContext<TestContext>();
+
+		// Both should be the same store instance (type-casted)
+		expect(ctx1).toBe(ctx2);
 	});
 });
 
@@ -131,6 +173,87 @@ describe("runWithContext", () => {
 			expect(useContext<TestContext>().requestId).toBe("outer");
 		});
 	});
+
+	it("returns the function result", () => {
+		const ctx = createContext<TestContext>();
+
+		const result = runWithContext(ctx, { db: mockDb, currentUser: mockUser, requestId: "req-1" }, () => {
+			return 42;
+		});
+
+		expect(result).toBe(42);
+	});
+
+	it("propagates errors thrown in function", () => {
+		const ctx = createContext<TestContext>();
+
+		expect(() => {
+			runWithContext(ctx, { db: mockDb, currentUser: mockUser, requestId: "req-1" }, () => {
+				throw new Error("Test error");
+			});
+		}).toThrow("Test error");
+	});
+
+	it("propagates errors in async function", async () => {
+		const ctx = createContext<TestContext>();
+
+		await expect(
+			runWithContextAsync(ctx, { db: mockDb, currentUser: mockUser, requestId: "req-1" }, async () => {
+				throw new Error("Async test error");
+			}),
+		).rejects.toThrow("Async test error");
+	});
+
+	it("cleans up context after error", () => {
+		const ctx = createContext<TestContext>();
+
+		try {
+			runWithContext(ctx, { db: mockDb, currentUser: mockUser, requestId: "req-1" }, () => {
+				throw new Error("Error");
+			});
+		} catch {
+			// Error expected
+		}
+
+		// Context should be cleaned up after error
+		expect(() => useContext()).toThrow("useContext() called outside of context");
+	});
+
+	it("works with different context types", () => {
+		interface OtherContext {
+			config: { apiUrl: string };
+			logger: { log: (msg: string) => void };
+		}
+
+		const ctx = createContext<OtherContext>();
+		const config = { apiUrl: "https://api.example.com" };
+		const logger = { log: (msg: string) => msg };
+
+		const result = runWithContext(ctx, { config, logger }, () => {
+			const context = useContext<OtherContext>();
+			return context.config.apiUrl;
+		});
+
+		expect(result).toBe("https://api.example.com");
+	});
+
+	it("runWithContextAsync is an alias for runWithContext with async", async () => {
+		const ctx = createContext<TestContext>();
+
+		const result1 = await runWithContextAsync(
+			ctx,
+			{ db: mockDb, currentUser: mockUser, requestId: "req-1" },
+			async () => {
+				return "async result";
+			},
+		);
+
+		const result2 = await runWithContext(ctx, { db: mockDb, currentUser: mockUser, requestId: "req-2" }, async () => {
+			return "async result";
+		});
+
+		expect(result1).toBe(result2);
+	});
 });
 
 // =============================================================================
@@ -153,6 +276,32 @@ describe("createComposable", () => {
 		const useDB = createComposable<TestContext, "db">("db");
 		expect(() => useDB()).toThrow("useContext() called outside of context");
 	});
+
+	it("composable can be reused across different context instances", () => {
+		const ctx1 = createContext<TestContext>();
+		const ctx2 = createContext<TestContext>();
+		const useRequestId = createComposable<TestContext, "requestId">("requestId");
+
+		const result1 = runWithContext(ctx1, { db: mockDb, currentUser: mockUser, requestId: "req-1" }, () => {
+			return useRequestId();
+		});
+
+		const result2 = runWithContext(ctx2, { db: mockDb, currentUser: null, requestId: "req-2" }, () => {
+			return useRequestId();
+		});
+
+		expect(result1).toBe("req-1");
+		expect(result2).toBe("req-2");
+	});
+
+	it("composable works with null values", () => {
+		const ctx = createContext<TestContext>();
+		const useCurrentUser = createComposable<TestContext, "currentUser">("currentUser");
+
+		runWithContext(ctx, { db: mockDb, currentUser: null, requestId: "req-1" }, () => {
+			expect(useCurrentUser()).toBeNull();
+		});
+	});
 });
 
 describe("createComposables", () => {
@@ -167,6 +316,45 @@ describe("createComposables", () => {
 		runWithContext(ctx, { db: mockDb, currentUser: mockUser, requestId: "req-1" }, () => {
 			expect(useDb()).toBe(mockDb);
 			expect(useCurrentUser()).toBe(mockUser);
+			expect(useRequestId()).toBe("req-1");
+		});
+	});
+
+	it("throws when composables are called outside context", () => {
+		const { useDb, useCurrentUser } = createComposables<TestContext, "db" | "currentUser">(["db", "currentUser"]);
+
+		expect(() => useDb()).toThrow("useContext() called outside of context");
+		expect(() => useCurrentUser()).toThrow("useContext() called outside of context");
+	});
+
+	it("creates composables with proper capitalization", () => {
+		interface MyContext {
+			apiKey: string;
+			userId: string;
+			dbConnection: object;
+		}
+
+		const { useApiKey, useUserId, useDbConnection } = createComposables<
+			MyContext,
+			"apiKey" | "userId" | "dbConnection"
+		>(["apiKey", "userId", "dbConnection"]);
+
+		expect(typeof useApiKey).toBe("function");
+		expect(typeof useUserId).toBe("function");
+		expect(typeof useDbConnection).toBe("function");
+	});
+
+	it("creates empty object when passed empty array", () => {
+		const result = createComposables<TestContext, never>([]);
+		expect(Object.keys(result)).toHaveLength(0);
+	});
+
+	it("composables from createComposables work independently", () => {
+		const ctx = createContext<TestContext>();
+		const { useDb, useRequestId } = createComposables<TestContext, "db" | "requestId">(["db", "requestId"]);
+
+		runWithContext(ctx, { db: mockDb, currentUser: null, requestId: "req-1" }, () => {
+			expect(useDb()).toBe(mockDb);
 			expect(useRequestId()).toBe("req-1");
 		});
 	});
@@ -187,6 +375,43 @@ describe("hasContext", () => {
 		runWithContext(ctx, { db: mockDb, currentUser: mockUser, requestId: "req-1" }, () => {
 			expect(hasContext()).toBe(true);
 		});
+	});
+
+	it("returns false after context exits", () => {
+		const ctx = createContext<TestContext>();
+
+		runWithContext(ctx, { db: mockDb, currentUser: mockUser, requestId: "req-1" }, () => {
+			expect(hasContext()).toBe(true);
+		});
+
+		// After context exits, should return false
+		expect(hasContext()).toBe(false);
+	});
+});
+
+describe("getContextStore", () => {
+	it("returns the global context store", () => {
+		const store = getContextStore();
+		expect(store).toBeDefined();
+		expect(typeof store.run).toBe("function");
+		expect(typeof store.getStore).toBe("function");
+	});
+
+	it("returns the same store instance on multiple calls", () => {
+		const store1 = getContextStore();
+		const store2 = getContextStore();
+		expect(store1).toBe(store2);
+	});
+
+	it("can be used directly for advanced use cases", () => {
+		const store = getContextStore();
+		const testValue = { test: "value" };
+
+		const result = store.run(testValue, () => {
+			return store.getStore();
+		});
+
+		expect(result).toBe(testValue);
 	});
 });
 
@@ -216,6 +441,44 @@ describe("extendContext", () => {
 				expect(inner.db).toBe(mockDb);
 				expect(inner.requestId).toBe("req-extended");
 			});
+		});
+	});
+
+	it("overrides properties with same keys", () => {
+		const ctx = createContext<TestContext>();
+
+		runWithContext(ctx, { db: mockDb, currentUser: mockUser, requestId: "original" }, () => {
+			const current = useContext<TestContext>();
+			const extended = extendContext(current, { requestId: "overridden", currentUser: null });
+
+			expect(extended.requestId).toBe("overridden");
+			expect(extended.currentUser).toBeNull();
+			expect(extended.db).toBe(mockDb); // unchanged
+		});
+	});
+
+	it("does not mutate original context", () => {
+		const original = { db: mockDb, currentUser: mockUser, requestId: "req-1" };
+		const extension = { extra: "value" };
+
+		const extended = extendContext(original, extension);
+
+		expect(original).not.toHaveProperty("extra");
+		expect(extended).toHaveProperty("extra");
+		expect(original.db).toBe(mockDb);
+		expect(extended.db).toBe(mockDb);
+	});
+
+	it("works with empty extension object", () => {
+		const ctx = createContext<TestContext>();
+
+		runWithContext(ctx, { db: mockDb, currentUser: mockUser, requestId: "req-1" }, () => {
+			const current = useContext<TestContext>();
+			const extended = extendContext(current, {});
+
+			expect(extended.db).toBe(mockDb);
+			expect(extended.currentUser).toBe(mockUser);
+			expect(extended.requestId).toBe("req-1");
 		});
 	});
 });

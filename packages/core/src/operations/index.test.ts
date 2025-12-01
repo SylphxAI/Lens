@@ -691,4 +691,502 @@ describe("Mutation input requirement", () => {
 			mutation().resolve(() => ({}));
 		}).toThrow("Mutation requires input schema");
 	});
+
+	it("throws if returns().resolve() is called without input", () => {
+		expect(() => {
+			// @ts-expect-error - Testing runtime behavior
+			mutation()
+				.returns(User)
+				.resolve(() => ({}));
+		}).toThrow("Mutation requires input schema");
+	});
+});
+
+// =============================================================================
+// Test: Optimistic Callback with Input Proxy
+// =============================================================================
+
+describe("Optimistic callback with input proxy", () => {
+	it("converts callback to Pipeline with input references", () => {
+		const createPost = mutation()
+			.input(z.object({ title: z.string(), content: z.string(), authorId: z.string() }))
+			.returns(Post)
+			.optimistic(({ input }) => {
+				// Simulate building steps with input references
+				// The proxy should intercept property access and return { $input: 'propName' }
+				const titleRef = input.title;
+				const contentRef = input.content;
+				const authorIdRef = input.authorId;
+
+				// Create mock StepBuilder that returns these references
+				return [
+					{
+						build: () => ({
+							namespace: "entity",
+							effect: "create",
+							args: {
+								type: "Post",
+								data: {
+									title: titleRef,
+									content: contentRef,
+									authorId: authorIdRef,
+								},
+							},
+						}),
+					},
+				] as unknown as never[];
+			})
+			.resolve(({ input }) => ({
+				id: "real-id",
+				title: input.title,
+				content: input.content,
+				authorId: input.authorId,
+				published: false,
+				viewCount: 0,
+			}));
+
+		expect(createPost._optimistic).toBeDefined();
+		expect(createPost._optimistic).toHaveProperty("$pipe");
+
+		// Verify the pipeline was created
+		const pipeline = createPost._optimistic as { $pipe: unknown[] };
+		expect(pipeline.$pipe).toBeArrayOfSize(1);
+		expect(pipeline.$pipe[0]).toHaveProperty("namespace", "entity");
+		expect(pipeline.$pipe[0]).toHaveProperty("effect", "create");
+	});
+
+	it("handles multiple step builders in callback", () => {
+		const complexMutation = mutation()
+			.input(z.object({ userId: z.string(), postId: z.string() }))
+			.returns(Post)
+			.optimistic(({ input }) => {
+				const userIdRef = input.userId;
+				const postIdRef = input.postId;
+
+				return [
+					{
+						build: () => ({
+							namespace: "entity",
+							effect: "update",
+							args: { type: "User", id: userIdRef },
+						}),
+					},
+					{
+						build: () => ({
+							namespace: "entity",
+							effect: "update",
+							args: { type: "Post", id: postIdRef },
+						}),
+					},
+				] as unknown as never[];
+			})
+			.resolve(({ input }) => ({
+				id: input.postId,
+				title: "Title",
+				content: "Content",
+				published: true,
+				authorId: input.userId,
+				viewCount: 0,
+			}));
+
+		const pipeline = complexMutation._optimistic as { $pipe: unknown[] };
+		expect(pipeline.$pipe).toBeArrayOfSize(2);
+	});
+
+	it("input proxy intercepts nested property access", () => {
+		const mutation1 = mutation()
+			.input(z.object({ data: z.object({ name: z.string(), email: z.string() }) }))
+			.returns(User)
+			.optimistic(({ input }) => {
+				// Access nested properties
+				const dataRef = input.data;
+
+				return [
+					{
+						build: () => ({
+							namespace: "entity",
+							effect: "create",
+							args: { type: "User", data: dataRef },
+						}),
+					},
+				] as unknown as never[];
+			})
+			.resolve(() => ({
+				id: "1",
+				name: "John",
+				email: "john@example.com",
+				role: "user" as const,
+				createdAt: new Date(),
+			}));
+
+		expect(mutation1._optimistic).toBeDefined();
+		const pipeline = mutation1._optimistic as { $pipe: unknown[] };
+		expect(pipeline.$pipe).toBeArrayOfSize(1);
+	});
+});
+
+// =============================================================================
+// Test: Named Operations
+// =============================================================================
+
+describe("Named operations", () => {
+	it("query() accepts a name parameter", () => {
+		const namedQuery = query("getUserById")
+			.input(z.object({ id: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => ({
+				id: input.id,
+				name: "John",
+				email: "john@example.com",
+				role: "user" as const,
+				createdAt: new Date(),
+			}));
+
+		expect(namedQuery._name).toBe("getUserById");
+		expect(namedQuery._type).toBe("query");
+	});
+
+	it("mutation() accepts a name parameter", () => {
+		const namedMutation = mutation("createUser")
+			.input(z.object({ name: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => ({
+				id: "1",
+				name: input.name,
+				email: "john@example.com",
+				role: "user" as const,
+				createdAt: new Date(),
+			}));
+
+		expect(namedMutation._name).toBe("createUser");
+		expect(namedMutation._type).toBe("mutation");
+	});
+
+	it("query() name persists through builder chain", () => {
+		const q = query("test")
+			.input(z.object({ id: z.string() }))
+			.returns(User)
+			.resolve(() => ({
+				id: "1",
+				name: "John",
+				email: "john@example.com",
+				role: "user" as const,
+				createdAt: new Date(),
+			}));
+
+		expect(q._name).toBe("test");
+	});
+
+	it("mutation() name persists through optimistic chain", () => {
+		const m = mutation("updatePost")
+			.input(z.object({ id: z.string() }))
+			.returns(Post)
+			.optimistic("merge")
+			.resolve(({ input }) => ({
+				id: input.id,
+				title: "Title",
+				content: "Content",
+				published: true,
+				authorId: "1",
+				viewCount: 0,
+			}));
+
+		expect(m._name).toBe("updatePost");
+	});
+});
+
+// =============================================================================
+// Test: Query without returns() or input()
+// =============================================================================
+
+describe("Query minimal configuration", () => {
+	it("query can be created with only resolve()", () => {
+		const simpleQuery = query().resolve(() => ({ status: "ok" }));
+
+		expect(simpleQuery._type).toBe("query");
+		expect(simpleQuery._input).toBeUndefined();
+		expect(simpleQuery._output).toBeUndefined();
+		expect(simpleQuery._resolve).toBeDefined();
+	});
+
+	it("query with name but no input/returns", () => {
+		const healthCheck = query("health").resolve(() => ({ healthy: true }));
+
+		expect(healthCheck._name).toBe("health");
+		expect(healthCheck._type).toBe("query");
+		expect(healthCheck._input).toBeUndefined();
+		expect(healthCheck._output).toBeUndefined();
+	});
+
+	it("executes simple query resolver", async () => {
+		const getTime = query().resolve(() => ({ timestamp: Date.now() }));
+
+		const result = await getTime._resolve!({
+			input: undefined,
+			ctx: {},
+			emit: (() => {}) as never,
+			onCleanup: () => () => {},
+		});
+
+		expect(result).toHaveProperty("timestamp");
+		expect(typeof result.timestamp).toBe("number");
+	});
+});
+
+// =============================================================================
+// Test: Mutation resolve without .returns()
+// =============================================================================
+
+describe("Mutation without returns()", () => {
+	it("mutation can resolve directly after input()", () => {
+		const deleteSomething = mutation()
+			.input(z.object({ id: z.string() }))
+			.resolve(({ input }) => ({ deleted: true, id: input.id }));
+
+		expect(deleteSomething._type).toBe("mutation");
+		expect(deleteSomething._input).toBeDefined();
+		expect(deleteSomething._output).toBeUndefined();
+	});
+
+	it("executes mutation without returns()", async () => {
+		const performAction = mutation()
+			.input(z.object({ action: z.string() }))
+			.resolve(async ({ input }) => ({
+				success: true,
+				action: input.action,
+				timestamp: Date.now(),
+			}));
+
+		const result = await performAction._resolve({
+			input: { action: "test" },
+			ctx: {},
+			emit: (() => {}) as never,
+			onCleanup: () => () => {},
+		});
+
+		expect(result.success).toBe(true);
+		expect(result.action).toBe("test");
+	});
+});
+
+// =============================================================================
+// Test: Edge Cases for Type Guards
+// =============================================================================
+
+describe("Type guard edge cases", () => {
+	it("isQueryDef handles undefined", () => {
+		expect(isQueryDef(undefined)).toBe(false);
+	});
+
+	it("isMutationDef handles undefined", () => {
+		expect(isMutationDef(undefined)).toBe(false);
+	});
+
+	it("isOperationDef handles undefined", () => {
+		expect(isOperationDef(undefined)).toBe(false);
+	});
+
+	it("isRouterDef handles undefined", () => {
+		expect(isRouterDef(undefined)).toBe(false);
+	});
+
+	it("isOptimisticDSL handles array", () => {
+		expect(isOptimisticDSL([])).toBe(false);
+		expect(isOptimisticDSL([1, 2, 3])).toBe(false);
+	});
+
+	it("isOptimisticDSL handles boolean", () => {
+		expect(isOptimisticDSL(true)).toBe(false);
+		expect(isOptimisticDSL(false)).toBe(false);
+	});
+
+	it("isTempId handles empty string", () => {
+		expect(isTempId("")).toBe(false);
+	});
+
+	it("isTempId handles non-temp_ prefix", () => {
+		expect(isTempId("temp-123")).toBe(false);
+		expect(isTempId("TEMP_123")).toBe(false);
+		expect(isTempId("temporary_123")).toBe(false);
+	});
+});
+
+// =============================================================================
+// Test: flattenRouter with empty router
+// =============================================================================
+
+describe("flattenRouter edge cases", () => {
+	it("handles empty router", () => {
+		const emptyRouter = router({});
+		const flattened = flattenRouter(emptyRouter);
+
+		expect(flattened.size).toBe(0);
+	});
+
+	it("handles router with only one procedure", () => {
+		const singleRouter = router({
+			test: query()
+				.returns(User)
+				.resolve(() => ({ id: "1", name: "John", email: "john@example.com" })),
+		});
+
+		const flattened = flattenRouter(singleRouter);
+
+		expect(flattened.size).toBe(1);
+		expect(flattened.has("test")).toBe(true);
+	});
+
+	it("preserves procedure reference through flattening", () => {
+		const testQuery = query()
+			.returns(User)
+			.resolve(() => ({ id: "1", name: "John", email: "john@example.com" }));
+
+		const testRouter = router({ test: testQuery });
+		const flattened = flattenRouter(testRouter);
+
+		// The flattened procedure should be the same object reference
+		expect(flattened.get("test")).toBe(testQuery);
+	});
+});
+
+// =============================================================================
+// Test: Mutation optimistic with different DSL patterns
+// =============================================================================
+
+describe("Optimistic DSL patterns", () => {
+	it("supports 'merge' sugar syntax", () => {
+		const m = mutation()
+			.input(z.object({ id: z.string() }))
+			.returns(Post)
+			.optimistic("merge")
+			.resolve(({ input }) => ({
+				id: input.id,
+				title: "Title",
+				content: "Content",
+				published: true,
+				authorId: "1",
+				viewCount: 0,
+			}));
+
+		expect(m._optimistic).toBe("merge");
+		expect(isOptimisticDSL(m._optimistic)).toBe(true);
+	});
+
+	it("supports 'delete' sugar syntax", () => {
+		const m = mutation()
+			.input(z.object({ id: z.string() }))
+			.returns(Post)
+			.optimistic("delete")
+			.resolve(({ input }) => ({
+				id: input.id,
+				title: "",
+				content: "",
+				published: false,
+				authorId: "",
+				viewCount: 0,
+			}));
+
+		expect(m._optimistic).toBe("delete");
+		expect(isOptimisticDSL(m._optimistic)).toBe(true);
+	});
+
+	it("supports object merge with additional fields", () => {
+		const m = mutation()
+			.input(z.object({ id: z.string() }))
+			.returns(Post)
+			.optimistic({ merge: { published: true, updatedAt: Date.now() } })
+			.resolve(({ input }) => ({
+				id: input.id,
+				title: "Title",
+				content: "Content",
+				published: true,
+				authorId: "1",
+				viewCount: 0,
+			}));
+
+		expect(m._optimistic).toEqual({ merge: { published: true, updatedAt: expect.any(Number) } });
+		expect(isOptimisticDSL(m._optimistic)).toBe(true);
+	});
+
+	it("supports Pipeline DSL directly", () => {
+		const pipeline = {
+			$pipe: [
+				{
+					namespace: "entity",
+					effect: "update",
+					args: { type: "Post", id: "123" },
+				},
+			],
+		};
+
+		const m = mutation()
+			.input(z.object({ id: z.string() }))
+			.returns(Post)
+			.optimistic(pipeline as never)
+			.resolve(({ input }) => ({
+				id: input.id,
+				title: "Title",
+				content: "Content",
+				published: true,
+				authorId: "1",
+				viewCount: 0,
+			}));
+
+		expect(m._optimistic).toEqual(pipeline);
+		expect(isOptimisticDSL(m._optimistic)).toBe(true);
+	});
+});
+
+// =============================================================================
+// Test: Context types with operations factory
+// =============================================================================
+
+describe("operations() factory context handling", () => {
+	it("maintains context type through complex chains", () => {
+		interface ComplexContext {
+			db: { query: (sql: string) => unknown };
+			cache: Map<string, unknown>;
+			logger: { log: (msg: string) => void };
+		}
+
+		const { query, mutation } = operations<ComplexContext>();
+
+		const complexQuery = query("complexOp")
+			.input(z.object({ key: z.string() }))
+			.returns(User)
+			.resolve(({ input, ctx }) => {
+				ctx.logger.log(`Querying ${input.key}`);
+				const cached = ctx.cache.get(input.key);
+				if (!cached) {
+					ctx.db.query(`SELECT * FROM users WHERE key = '${input.key}'`);
+				}
+				return {
+					id: "1",
+					name: "John",
+					email: "john@example.com",
+					role: "user" as const,
+					createdAt: new Date(),
+				};
+			});
+
+		const complexMutation = mutation("complexMut")
+			.input(z.object({ id: z.string(), data: z.string() }))
+			.returns(User)
+			.optimistic("merge")
+			.resolve(({ input, ctx }) => {
+				ctx.logger.log(`Mutating ${input.id}`);
+				ctx.cache.set(input.id, input.data);
+				return {
+					id: input.id,
+					name: input.data,
+					email: "john@example.com",
+					role: "user" as const,
+					createdAt: new Date(),
+				};
+			});
+
+		expect(complexQuery._name).toBe("complexOp");
+		expect(complexMutation._name).toBe("complexMut");
+		expect(complexMutation._optimistic).toBe("merge");
+	});
 });

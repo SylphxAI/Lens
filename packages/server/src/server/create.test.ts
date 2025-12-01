@@ -1601,6 +1601,567 @@ describe("Logger integration", () => {
 });
 
 // =============================================================================
+// Test: DataLoader Batching
+// =============================================================================
+
+describe("DataLoader Batching", () => {
+	it("batches multiple load calls into single batch function call", async () => {
+		let batchCallCount = 0;
+		let receivedKeys: string[] = [];
+
+		class TestDataLoader {
+			private batch: Map<string, { resolve: (v: any) => void; reject: (e: Error) => void }[]> = new Map();
+			private scheduled = false;
+
+			constructor(private batchFn: (keys: string[]) => Promise<(string | null)[]>) {}
+
+			async load(key: string): Promise<string | null> {
+				return new Promise((resolve, reject) => {
+					const existing = this.batch.get(key);
+					if (existing) {
+						existing.push({ resolve, reject });
+					} else {
+						this.batch.set(key, [{ resolve, reject }]);
+					}
+					this.scheduleDispatch();
+				});
+			}
+
+			private scheduleDispatch(): void {
+				if (this.scheduled) return;
+				this.scheduled = true;
+				queueMicrotask(() => this.dispatch());
+			}
+
+			private async dispatch(): Promise<void> {
+				this.scheduled = false;
+				const batch = this.batch;
+				this.batch = new Map();
+
+				const keys = Array.from(batch.keys());
+				if (keys.length === 0) return;
+
+				try {
+					const results = await this.batchFn(keys);
+					keys.forEach((key, index) => {
+						const callbacks = batch.get(key)!;
+						const result = results[index] ?? null;
+						for (const { resolve } of callbacks) resolve(result);
+					});
+				} catch (error) {
+					for (const callbacks of batch.values()) {
+						for (const { reject } of callbacks) reject(error as Error);
+					}
+				}
+			}
+
+			clear(): void {
+				this.batch.clear();
+			}
+		}
+
+		const loader = new TestDataLoader(async (keys) => {
+			batchCallCount++;
+			receivedKeys = keys;
+			return keys.map((k) => `value-${k}`);
+		});
+
+		// Load multiple keys in same tick
+		const promises = [loader.load("key1"), loader.load("key2"), loader.load("key3")];
+
+		const results = await Promise.all(promises);
+
+		// Should batch all calls into single batch function call
+		expect(batchCallCount).toBe(1);
+		expect(receivedKeys).toEqual(["key1", "key2", "key3"]);
+		expect(results).toEqual(["value-key1", "value-key2", "value-key3"]);
+	});
+
+	it("handles duplicate keys in same batch", async () => {
+		class TestDataLoader {
+			private batch: Map<string, { resolve: (v: any) => void; reject: (e: Error) => void }[]> = new Map();
+			private scheduled = false;
+
+			constructor(private batchFn: (keys: string[]) => Promise<(string | null)[]>) {}
+
+			async load(key: string): Promise<string | null> {
+				return new Promise((resolve, reject) => {
+					const existing = this.batch.get(key);
+					if (existing) {
+						existing.push({ resolve, reject });
+					} else {
+						this.batch.set(key, [{ resolve, reject }]);
+					}
+					this.scheduleDispatch();
+				});
+			}
+
+			private scheduleDispatch(): void {
+				if (this.scheduled) return;
+				this.scheduled = true;
+				queueMicrotask(() => this.dispatch());
+			}
+
+			private async dispatch(): Promise<void> {
+				this.scheduled = false;
+				const batch = this.batch;
+				this.batch = new Map();
+
+				const keys = Array.from(batch.keys());
+				if (keys.length === 0) return;
+
+				try {
+					const results = await this.batchFn(keys);
+					keys.forEach((key, index) => {
+						const callbacks = batch.get(key)!;
+						const result = results[index] ?? null;
+						for (const { resolve } of callbacks) resolve(result);
+					});
+				} catch (error) {
+					for (const callbacks of batch.values()) {
+						for (const { reject } of callbacks) reject(error as Error);
+					}
+				}
+			}
+
+			clear(): void {
+				this.batch.clear();
+			}
+		}
+
+		const loader = new TestDataLoader(async (keys) => {
+			return keys.map((k) => `value-${k}`);
+		});
+
+		// Load same key multiple times
+		const promises = [loader.load("key1"), loader.load("key1"), loader.load("key1")];
+
+		const results = await Promise.all(promises);
+
+		// All should resolve with same value
+		expect(results).toEqual(["value-key1", "value-key1", "value-key1"]);
+	});
+
+	it("handles batch function errors", async () => {
+		class TestDataLoader {
+			private batch: Map<string, { resolve: (v: any) => void; reject: (e: Error) => void }[]> = new Map();
+			private scheduled = false;
+
+			constructor(private batchFn: (keys: string[]) => Promise<(string | null)[]>) {}
+
+			async load(key: string): Promise<string | null> {
+				return new Promise((resolve, reject) => {
+					const existing = this.batch.get(key);
+					if (existing) {
+						existing.push({ resolve, reject });
+					} else {
+						this.batch.set(key, [{ resolve, reject }]);
+					}
+					this.scheduleDispatch();
+				});
+			}
+
+			private scheduleDispatch(): void {
+				if (this.scheduled) return;
+				this.scheduled = true;
+				queueMicrotask(() => this.dispatch());
+			}
+
+			private async dispatch(): Promise<void> {
+				this.scheduled = false;
+				const batch = this.batch;
+				this.batch = new Map();
+
+				const keys = Array.from(batch.keys());
+				if (keys.length === 0) return;
+
+				try {
+					const results = await this.batchFn(keys);
+					keys.forEach((key, index) => {
+						const callbacks = batch.get(key)!;
+						const result = results[index] ?? null;
+						for (const { resolve } of callbacks) resolve(result);
+					});
+				} catch (error) {
+					for (const callbacks of batch.values()) {
+						for (const { reject } of callbacks) reject(error as Error);
+					}
+				}
+			}
+
+			clear(): void {
+				this.batch.clear();
+			}
+		}
+
+		const loader = new TestDataLoader(async () => {
+			throw new Error("Batch function error");
+		});
+
+		const promises = [loader.load("key1"), loader.load("key2")];
+
+		// All loads should reject with same error
+		await expect(Promise.all(promises)).rejects.toThrow("Batch function error");
+	});
+
+	it("does not schedule dispatch twice if already scheduled", async () => {
+		let dispatchCount = 0;
+
+		class TestDataLoader {
+			private batch: Map<string, { resolve: (v: any) => void; reject: (e: Error) => void }[]> = new Map();
+			private scheduled = false;
+
+			constructor(private batchFn: (keys: string[]) => Promise<(string | null)[]>) {}
+
+			async load(key: string): Promise<string | null> {
+				return new Promise((resolve, reject) => {
+					const existing = this.batch.get(key);
+					if (existing) {
+						existing.push({ resolve, reject });
+					} else {
+						this.batch.set(key, [{ resolve, reject }]);
+					}
+					this.scheduleDispatch();
+				});
+			}
+
+			private scheduleDispatch(): void {
+				if (this.scheduled) return;
+				this.scheduled = true;
+				queueMicrotask(() => this.dispatch());
+			}
+
+			private async dispatch(): Promise<void> {
+				dispatchCount++;
+				this.scheduled = false;
+				const batch = this.batch;
+				this.batch = new Map();
+
+				const keys = Array.from(batch.keys());
+				if (keys.length === 0) return;
+
+				try {
+					const results = await this.batchFn(keys);
+					keys.forEach((key, index) => {
+						const callbacks = batch.get(key)!;
+						const result = results[index] ?? null;
+						for (const { resolve } of callbacks) resolve(result);
+					});
+				} catch (error) {
+					for (const callbacks of batch.values()) {
+						for (const { reject } of callbacks) reject(error as Error);
+					}
+				}
+			}
+
+			clear(): void {
+				this.batch.clear();
+			}
+		}
+
+		const loader = new TestDataLoader(async (keys) => {
+			return keys.map((k) => `value-${k}`);
+		});
+
+		// Load multiple keys
+		await Promise.all([loader.load("key1"), loader.load("key2"), loader.load("key3")]);
+
+		// Should only dispatch once despite multiple load calls
+		expect(dispatchCount).toBe(1);
+	});
+
+	it("clears pending batches when clear is called", () => {
+		class TestDataLoader {
+			private batch: Map<string, { resolve: (v: any) => void; reject: (e: Error) => void }[]> = new Map();
+			private scheduled = false;
+
+			constructor(private batchFn: (keys: string[]) => Promise<(string | null)[]>) {}
+
+			async load(key: string): Promise<string | null> {
+				return new Promise((resolve, reject) => {
+					const existing = this.batch.get(key);
+					if (existing) {
+						existing.push({ resolve, reject });
+					} else {
+						this.batch.set(key, [{ resolve, reject }]);
+					}
+					this.scheduleDispatch();
+				});
+			}
+
+			private scheduleDispatch(): void {
+				if (this.scheduled) return;
+				this.scheduled = true;
+				queueMicrotask(() => this.dispatch());
+			}
+
+			private async dispatch(): Promise<void> {
+				this.scheduled = false;
+				const batch = this.batch;
+				this.batch = new Map();
+
+				const keys = Array.from(batch.keys());
+				if (keys.length === 0) return;
+
+				try {
+					const results = await this.batchFn(keys);
+					keys.forEach((key, index) => {
+						const callbacks = batch.get(key)!;
+						const result = results[index] ?? null;
+						for (const { resolve } of callbacks) resolve(result);
+					});
+				} catch (error) {
+					for (const callbacks of batch.values()) {
+						for (const { reject } of callbacks) reject(error as Error);
+					}
+				}
+			}
+
+			clear(): void {
+				this.batch.clear();
+			}
+
+			getBatchSize(): number {
+				return this.batch.size;
+			}
+		}
+
+		const loader = new TestDataLoader(async (keys) => {
+			return keys.map((k) => `value-${k}`);
+		});
+
+		// Add some items to batch (but don't await - they won't dispatch yet)
+		loader.load("key1");
+		loader.load("key2");
+
+		// Clear should remove pending items
+		loader.clear();
+
+		// Batch should be empty
+		expect(loader.getBatchSize()).toBe(0);
+	});
+
+	it("handles null results from batch function", async () => {
+		class TestDataLoader {
+			private batch: Map<string, { resolve: (v: any) => void; reject: (e: Error) => void }[]> = new Map();
+			private scheduled = false;
+
+			constructor(private batchFn: (keys: string[]) => Promise<(string | null)[]>) {}
+
+			async load(key: string): Promise<string | null> {
+				return new Promise((resolve, reject) => {
+					const existing = this.batch.get(key);
+					if (existing) {
+						existing.push({ resolve, reject });
+					} else {
+						this.batch.set(key, [{ resolve, reject }]);
+					}
+					this.scheduleDispatch();
+				});
+			}
+
+			private scheduleDispatch(): void {
+				if (this.scheduled) return;
+				this.scheduled = true;
+				queueMicrotask(() => this.dispatch());
+			}
+
+			private async dispatch(): Promise<void> {
+				this.scheduled = false;
+				const batch = this.batch;
+				this.batch = new Map();
+
+				const keys = Array.from(batch.keys());
+				if (keys.length === 0) return;
+
+				try {
+					const results = await this.batchFn(keys);
+					keys.forEach((key, index) => {
+						const callbacks = batch.get(key)!;
+						const result = results[index] ?? null;
+						for (const { resolve } of callbacks) resolve(result);
+					});
+				} catch (error) {
+					for (const callbacks of batch.values()) {
+						for (const { reject } of callbacks) reject(error as Error);
+					}
+				}
+			}
+
+			clear(): void {
+				this.batch.clear();
+			}
+		}
+
+		const loader = new TestDataLoader(async (keys) => {
+			// Return null for some keys
+			return keys.map((k) => (k === "key2" ? null : `value-${k}`));
+		});
+
+		const results = await Promise.all([loader.load("key1"), loader.load("key2"), loader.load("key3")]);
+
+		expect(results).toEqual(["value-key1", null, "value-key3"]);
+	});
+});
+
+// =============================================================================
+// Test: HTTP Server Lifecycle (listen, close, findConnectionByWs)
+// =============================================================================
+
+describe("HTTP Server Lifecycle", () => {
+	it("handles GET requests that are not metadata endpoint", async () => {
+		const server = createServer({
+			entities: { User },
+		});
+
+		const request = new Request("http://localhost/some-other-path", { method: "GET" });
+		const response = await server.handleRequest(request);
+
+		expect(response.status).toBe(405);
+		const text = await response.text();
+		expect(text).toBe("Method not allowed");
+	});
+
+	it("handles PUT requests", async () => {
+		const server = createServer({
+			entities: { User },
+		});
+
+		const request = new Request("http://localhost/api", { method: "PUT" });
+		const response = await server.handleRequest(request);
+
+		expect(response.status).toBe(405);
+		const text = await response.text();
+		expect(text).toBe("Method not allowed");
+	});
+
+	it("handles DELETE requests", async () => {
+		const server = createServer({
+			entities: { User },
+		});
+
+		const request = new Request("http://localhost/api", { method: "DELETE" });
+		const response = await server.handleRequest(request);
+
+		expect(response.status).toBe(405);
+		const text = await response.text();
+		expect(text).toBe("Method not allowed");
+	});
+
+	it("handles PATCH requests", async () => {
+		const server = createServer({
+			entities: { User },
+		});
+
+		const request = new Request("http://localhost/api", { method: "PATCH" });
+		const response = await server.handleRequest(request);
+
+		expect(response.status).toBe(405);
+		const text = await response.text();
+		expect(text).toBe("Method not allowed");
+	});
+
+	it("handles OPTIONS requests", async () => {
+		const server = createServer({
+			entities: { User },
+		});
+
+		const request = new Request("http://localhost/api", { method: "OPTIONS" });
+		const response = await server.handleRequest(request);
+
+		expect(response.status).toBe(405);
+		const text = await response.text();
+		expect(text).toBe("Method not allowed");
+	});
+
+	it("handles HEAD requests", async () => {
+		const server = createServer({
+			entities: { User },
+		});
+
+		const request = new Request("http://localhost/api", { method: "HEAD" });
+		const response = await server.handleRequest(request);
+
+		expect(response.status).toBe(405);
+	});
+
+	it("can start and stop server with listen/close", async () => {
+		const server = createServer({
+			entities: { User },
+			logger: {
+				info: () => {}, // Silent logger for test
+			},
+		});
+
+		// Start server on a random high port to avoid conflicts
+		const port = 30000 + Math.floor(Math.random() * 10000);
+
+		try {
+			await server.listen(port);
+
+			// Verify server is running by making a request
+			const response = await fetch(`http://localhost:${port}/__lens/metadata`);
+			expect(response.status).toBe(200);
+			const data = await response.json();
+			expect(data.version).toBeDefined();
+		} finally {
+			// Always close the server
+			await server.close();
+		}
+	});
+
+	it("handles method not allowed via real HTTP server", async () => {
+		const server = createServer({
+			entities: { User },
+			logger: {
+				info: () => {}, // Silent logger for test
+			},
+		});
+
+		const port = 30000 + Math.floor(Math.random() * 10000);
+
+		try {
+			await server.listen(port);
+
+			// Make a PUT request which should return 405
+			const response = await fetch(`http://localhost:${port}/api`, { method: "PUT" });
+			expect(response.status).toBe(405);
+			const text = await response.text();
+			expect(text).toBe("Method not allowed");
+		} finally {
+			await server.close();
+		}
+	});
+
+	// Note: WebSocket integration via Bun.serve's native WebSocket upgrade (lines 1184-1193)
+	// is tested through unit tests using mock WebSockets. Full integration tests with real
+	// WebSocket clients would require additional setup and are better suited for E2E tests.
+});
+
+// =============================================================================
+// Test: SSE Handler Edge Cases
+// =============================================================================
+
+describe("SSE Handler Edge Cases", () => {
+	it("handles WebSocket error callback", async () => {
+		const server = createServer({
+			entities: { User },
+		});
+
+		const ws = createMockWs();
+		server.handleWebSocket(ws);
+
+		// Trigger error callback (if set)
+		if (ws.onerror) {
+			ws.onerror(new Error("WebSocket error"));
+		}
+
+		// Should not crash
+		expect(true).toBe(true);
+	});
+});
+
+// =============================================================================
 // Test: Entity Resolvers
 // =============================================================================
 

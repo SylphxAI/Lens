@@ -517,7 +517,7 @@ describe("http transport", () => {
 			// Create a mock response that returns data with circular reference
 			// We need to bypass Response.json() and return the circular data directly
 			const circularData: Record<string, unknown> = { name: "test" };
-			circularData["self"] = circularData;
+			circularData.self = circularData;
 
 			const mockFetch = mock(async () => {
 				return {

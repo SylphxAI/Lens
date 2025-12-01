@@ -47,6 +47,8 @@
 	},
 	"devDependencies": {
 		"@preact/signals": "^2.0.0",
+		"@testing-library/preact": "^3.2.4",
+		"happy-dom": "^20.0.10",
 		"preact": "^10.25.4",
 		"typescript": "^5.9.3"
 	}

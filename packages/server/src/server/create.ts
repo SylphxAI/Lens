@@ -248,9 +248,9 @@ function sugarToPipeline(
 		typeof optimistic === "object" &&
 		optimistic !== null &&
 		"merge" in optimistic &&
-		typeof (optimistic as Record<string, unknown>)["merge"] === "object"
+		typeof (optimistic as Record<string, unknown>).merge === "object"
 	) {
-		const extra = (optimistic as { merge: Record<string, unknown> })["merge"];
+		const extra = (optimistic as { merge: Record<string, unknown> }).merge;
 		const args: Record<string, unknown> = { type: entityType };
 		for (const field of inputFields) {
 			args[field] = { $input: field };
@@ -1300,7 +1300,7 @@ class LensServerImpl<
 
 		// Always include id
 		if ("id" in obj) {
-			result["id"] = obj["id"];
+			result.id = obj.id;
 		}
 
 		// Handle string array (simple field list)

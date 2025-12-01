@@ -40,7 +40,7 @@ describe("inProcess transport", () => {
 			const metadata = await transport.connect();
 
 			expect(metadata.version).toBe("1.0.0");
-			expect(metadata.operations["user"]).toBeDefined();
+			expect(metadata.operations.user).toBeDefined();
 		});
 
 		it("returns server metadata directly without network call", async () => {
