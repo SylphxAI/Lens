@@ -1,5 +1,11 @@
 # @sylphx/lens-core
 
+## 1.15.1 (2025-12-01)
+
+### ♻️ Refactoring
+
+- **core:** remove unused Prisma-style types ([aa5fc6f](https://github.com/SylphxAI/Lens/commit/aa5fc6f18fc36b2813d62dd2633740dd4933a309))
+
 ## 1.15.0 (2025-12-01)
 
 ### ✨ Features

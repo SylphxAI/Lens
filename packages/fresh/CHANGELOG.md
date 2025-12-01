@@ -1,5 +1,9 @@
 # @sylphx/lens-fresh
 
+## 1.2.23 (2025-12-01)
+
+No notable changes.
+
 ## 1.2.22 (2025-12-01)
 
 ### 🐛 Bug Fixes
