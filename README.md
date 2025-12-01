@@ -1,6 +1,16 @@
-# Lens
+<div align="center">
 
-> **Type-Safe Reactive API Framework for TypeScript**
+# 🔮 Lens
+
+> Type-safe, real-time API framework for TypeScript
+
+[![npm](https://img.shields.io/npm/v/@sylphx/lens-server)](https://www.npmjs.com/package/@sylphx/lens-server)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![CI](https://github.com/SylphxAI/Lens/actions/workflows/ci.yml/badge.svg)](https://github.com/SylphxAI/Lens/actions/workflows/ci.yml)
+
+</div>
+
+---
 
 A **GraphQL-like** frontend-driven framework with **automatic live queries** and **incremental transfer**. Full type safety from server to client, no codegen required.
 
@@ -1551,8 +1561,21 @@ MIT © Sylphx AI
 
 ---
 
-## Credits
+## Star History
 
-Built with [@sylphx/biome-config](https://github.com/SylphxAI/configs), [@sylphx/tsconfig](https://github.com/SylphxAI/configs), [@sylphx/doctor](https://github.com/SylphxAI/doctor), [@sylphx/bump](https://github.com/SylphxAI/bump), [@sylphx/reify](https://github.com/SylphxAI/reify), and [@sylphx/standard-entity](https://github.com/SylphxAI/standard-entity).
+[![Star History Chart](https://api.star-history.com/svg?repos=SylphxAI/Lens&type=Date)](https://star-history.com/#SylphxAI/Lens&Date)
 
-✨ Powered by Sylphx
+## Powered by Sylphx
+
+- [@sylphx/biome-config](https://github.com/SylphxAI/configs) - Shared Biome configuration
+- [@sylphx/tsconfig](https://github.com/SylphxAI/configs) - Shared TypeScript configuration
+- [@sylphx/doctor](https://github.com/SylphxAI/doctor) - Project health checker
+- [@sylphx/bump](https://github.com/SylphxAI/bump) - Version management
+- [@sylphx/reify](https://github.com/SylphxAI/reify) - Declarative entity operations
+- [@sylphx/standard-entity](https://github.com/SylphxAI/standard-entity) - Standard entity definitions
+
+---
+
+<div align="center">
+<sub>Built with ❤️ by <a href="https://github.com/SylphxAI">Sylphx</a></sub>
+</div>

@@ -4,14 +4,15 @@
 			"type": "http",
 			"url": "https://mcp.context7.com/mcp"
 		},
-		"playwright": {
+		"coderag": {
 			"type": "stdio",
 			"command": "npx",
-			"args": ["@playwright/mcp@latest"]
-		},
-		"grep": {
-			"type": "http",
-			"url": "https://mcp.grep.app"
+			"args": ["-y", "@sylphx/coderag-mcp"],
+			"env": {
+				"OPENAI_API_KEY": "",
+				"CODEBASE_ROOT": "",
+				"INDEX_PATH": ".coderag"
+			}
 		}
 	}
 }
