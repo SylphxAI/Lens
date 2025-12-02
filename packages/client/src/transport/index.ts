@@ -74,3 +74,10 @@ export {
 	type WsTransportOptions,
 	ws,
 } from "./ws.js";
+// SSE (Server-Sent Events)
+export {
+	sse,
+	type SseConnectionState,
+	type SseTransportInstance,
+	type SseTransportOptions,
+} from "./sse.js";

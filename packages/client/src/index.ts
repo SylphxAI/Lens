@@ -54,6 +54,11 @@ export {
 	route,
 	routeByPath,
 	routeByType,
+	// SSE
+	sse,
+	type SseConnectionState,
+	type SseTransportInstance,
+	type SseTransportOptions,
 	// Types
 	type Transport,
 	type Unsubscribable,
