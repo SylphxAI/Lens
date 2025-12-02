@@ -3,12 +3,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import {
-	OperationLog,
-	applyPatch,
-	coalescePatches,
-	estimatePatchSize,
-} from "./operation-log.js";
+import { applyPatch, coalescePatches, estimatePatchSize, OperationLog } from "./operation-log.js";
 import type { OperationLogEntry, PatchOperation } from "./types.js";
 
 // =============================================================================
@@ -19,7 +14,7 @@ function createEntry(
 	entityKey: string,
 	version: number,
 	patch: PatchOperation[] = [],
-	timestamp = Date.now()
+	timestamp = Date.now(),
 ): OperationLogEntry {
 	return {
 		entityKey,
@@ -77,11 +72,7 @@ describe("OperationLog", () => {
 
 	describe("appendBatch", () => {
 		it("appends multiple entries efficiently", () => {
-			const entries = [
-				createEntry("user:123", 1),
-				createEntry("user:123", 2),
-				createEntry("user:123", 3),
-			];
+			const entries = [createEntry("user:123", 1), createEntry("user:123", 2), createEntry("user:123", 3)];
 
 			log.appendBatch(entries);
 
@@ -400,9 +391,7 @@ describe("coalescePatches", () => {
 
 describe("estimatePatchSize", () => {
 	it("estimates size correctly", () => {
-		const patch: PatchOperation[] = [
-			{ op: "replace", path: "/name", value: "Alice" },
-		];
+		const patch: PatchOperation[] = [{ op: "replace", path: "/name", value: "Alice" }];
 
 		const size = estimatePatchSize(patch);
 		expect(size).toBeGreaterThan(0);
@@ -422,9 +411,7 @@ describe("estimatePatchSize", () => {
 describe("applyPatch", () => {
 	it("applies replace operation", () => {
 		const target = { name: "Alice", age: 30 };
-		const patch: PatchOperation[] = [
-			{ op: "replace", path: "/name", value: "Bob" },
-		];
+		const patch: PatchOperation[] = [{ op: "replace", path: "/name", value: "Bob" }];
 
 		const result = applyPatch(target, patch);
 		expect(result.name).toBe("Bob");
@@ -451,9 +438,7 @@ describe("applyPatch", () => {
 
 	it("applies nested operations", () => {
 		const target = { user: { name: "Alice", address: { city: "NYC" } } };
-		const patch: PatchOperation[] = [
-			{ op: "replace", path: "/user/address/city", value: "LA" },
-		];
+		const patch: PatchOperation[] = [{ op: "replace", path: "/user/address/city", value: "LA" }];
 
 		const result = applyPatch(target, patch);
 		expect(result.user.address.city).toBe("LA");
@@ -461,9 +446,7 @@ describe("applyPatch", () => {
 
 	it("does not mutate original", () => {
 		const target = { name: "Alice" };
-		const patch: PatchOperation[] = [
-			{ op: "replace", path: "/name", value: "Bob" },
-		];
+		const patch: PatchOperation[] = [{ op: "replace", path: "/name", value: "Bob" }];
 
 		applyPatch(target, patch);
 		expect(target.name).toBe("Alice");

@@ -66,7 +66,7 @@ export class SubscriptionRegistry {
 	 * Register new subscription.
 	 */
 	add(
-		sub: Omit<TrackedSubscription, "state" | "lastDataHash" | "createdAt" | "lastUpdateAt">
+		sub: Omit<TrackedSubscription, "state" | "lastDataHash" | "createdAt" | "lastUpdateAt">,
 	): void {
 		const tracked: TrackedSubscription = {
 			...sub,
@@ -147,11 +147,7 @@ export class SubscriptionRegistry {
 	/**
 	 * Update version after receiving update from server.
 	 */
-	updateVersion(
-		id: string,
-		version: Version,
-		data?: Record<string, unknown>
-	): void {
+	updateVersion(id: string, version: Version, data?: Record<string, unknown>): void {
 		const sub = this.subscriptions.get(id);
 		if (!sub) return;
 
@@ -258,15 +254,19 @@ export class SubscriptionRegistry {
 			// Only reconnect subscriptions that were active
 			// (have received at least one update or were previously active)
 			if (sub.state === "reconnecting" || sub.state === "active") {
-				result.push({
+				const reconnectSub: ReconnectSubscription = {
 					id: sub.id,
 					entity: sub.entity,
 					entityId: sub.entityId,
 					fields: sub.fields,
 					version: sub.version,
-					dataHash: sub.lastDataHash ?? undefined,
 					input: sub.input,
-				});
+				};
+				// Only include dataHash if available
+				if (sub.lastDataHash) {
+					reconnectSub.dataHash = sub.lastDataHash;
+				}
+				result.push(reconnectSub);
 			}
 		}
 
@@ -276,11 +276,7 @@ export class SubscriptionRegistry {
 	/**
 	 * Process reconnect result for single subscription.
 	 */
-	processReconnectResult(
-		id: string,
-		version: Version,
-		data?: Record<string, unknown>
-	): void {
+	processReconnectResult(id: string, version: Version, data?: Record<string, unknown>): void {
 		const sub = this.subscriptions.get(id);
 		if (!sub) return;
 

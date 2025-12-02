@@ -4,10 +4,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { hashEntityState } from "./hash.js";
-import {
-	SubscriptionRegistry,
-	createSubscriptionRegistry,
-} from "./subscription-registry.js";
+import { createSubscriptionRegistry, SubscriptionRegistry } from "./subscription-registry.js";
 import type { TrackedSubscription } from "./types.js";
 
 // =============================================================================
@@ -18,7 +15,9 @@ function createSubscription(
 	id: string,
 	entity: string,
 	entityId: string,
-	options: Partial<Omit<TrackedSubscription, "id" | "entity" | "entityId" | "state" | "lastDataHash" | "createdAt" | "lastUpdateAt">> = {}
+	options: Partial<
+		Omit<TrackedSubscription, "id" | "entity" | "entityId" | "state" | "lastDataHash" | "createdAt" | "lastUpdateAt">
+	> = {},
 ): Omit<TrackedSubscription, "state" | "lastDataHash" | "createdAt" | "lastUpdateAt"> {
 	return {
 		id,

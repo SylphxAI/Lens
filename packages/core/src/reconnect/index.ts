@@ -10,58 +10,51 @@
 // =============================================================================
 
 export type {
-	// Version tracking
-	Version,
-	VersionedEntityState,
-	VersionedArrayState,
-
+	CompressedPayload,
+	// Compression
+	CompressionAlgorithm,
+	ConnectionQuality,
+	// Connection state
+	ConnectionState,
+	OperationLogConfig,
+	OperationLogEntry,
+	OperationLogStats,
 	// Operation log
 	PatchOperation,
-	OperationLogEntry,
-	OperationLogConfig,
-	OperationLogStats,
-
+	ReconnectAckMessage,
+	ReconnectConfig,
+	ReconnectionHealth,
+	// Metrics
+	ReconnectionMetrics,
+	ReconnectMessage,
+	ReconnectResult,
+	ReconnectStatus,
+	// Protocol messages
+	ReconnectSubscription,
+	SubscriptionAckMessage,
+	SubscriptionObserver,
+	SubscriptionRegistryStats,
+	SubscriptionResult,
 	// Subscription tracking
 	SubscriptionState,
 	TrackedSubscription,
-	SubscriptionObserver,
-	SubscriptionResult,
-	SubscriptionRegistryStats,
-
-	// Protocol messages
-	ReconnectSubscription,
-	ReconnectMessage,
-	ReconnectStatus,
-	ReconnectResult,
-	ReconnectAckMessage,
-	SubscriptionAckMessage,
-	VersionedFieldUpdate,
+	// Version tracking
+	Version,
+	VersionedArrayState,
+	VersionedEntityState,
 	VersionedEntityUpdate,
+	VersionedFieldUpdate,
 	VersionedUpdateMessage,
-
-	// Connection state
-	ConnectionState,
-	ReconnectConfig,
-	ConnectionQuality,
-
-	// Metrics
-	ReconnectionMetrics,
-	ReconnectionHealth,
-
-	// Compression
-	CompressionAlgorithm,
-	CompressedPayload,
 } from "./types.js";
 
 export {
-	// Constants
-	PROTOCOL_VERSION,
 	DEFAULT_OPERATION_LOG_CONFIG,
 	DEFAULT_RECONNECT_CONFIG,
-
+	generateReconnectId,
 	// Utilities
 	isCompressedPayload,
-	generateReconnectId,
+	// Constants
+	PROTOCOL_VERSION,
 } from "./types.js";
 
 // =============================================================================
@@ -69,22 +62,19 @@ export {
 // =============================================================================
 
 export {
-	// MurmurHash3
-	murmurhash3,
-
-	// Value hashing
-	hashValue,
-	stableStringify,
-	hashEntityState,
-	hashEntityFields,
-
+	deepEqual,
+	FieldHashMap,
 	// Hash utilities
 	HashCache,
-	FieldHashMap,
-
+	hashEntityFields,
+	hashEntityState,
+	// Value hashing
+	hashValue,
+	// MurmurHash3
+	murmurhash3,
+	stableStringify,
 	// Comparison
 	valuesEqual,
-	deepEqual,
 } from "./hash.js";
 
 // =============================================================================
@@ -92,10 +82,10 @@ export {
 // =============================================================================
 
 export {
-	OperationLog,
+	applyPatch,
 	coalescePatches,
 	estimatePatchSize,
-	applyPatch,
+	OperationLog,
 } from "./operation-log.js";
 
 // =============================================================================
@@ -103,6 +93,6 @@ export {
 // =============================================================================
 
 export {
-	SubscriptionRegistry,
 	createSubscriptionRegistry,
+	SubscriptionRegistry,
 } from "./subscription-registry.js";

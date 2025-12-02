@@ -45,19 +45,19 @@ export function murmurhash3(key: string, seed = 0): string {
 
 	let k1 = 0;
 
-	switch (remainder) {
-		case 3:
-			k1 ^= (key.charCodeAt(i + 2) & 0xff) << 16;
-		// falls through
-		case 2:
-			k1 ^= (key.charCodeAt(i + 1) & 0xff) << 8;
-		// falls through
-		case 1:
-			k1 ^= key.charCodeAt(i) & 0xff;
-			k1 = Math.imul(k1, c1);
-			k1 = (k1 << 15) | (k1 >>> 17);
-			k1 = Math.imul(k1, c2);
-			h1 ^= k1;
+	// Handle remaining bytes (1-3 bytes that don't fit in a 4-byte block)
+	if (remainder >= 3) {
+		k1 ^= (key.charCodeAt(i + 2) & 0xff) << 16;
+	}
+	if (remainder >= 2) {
+		k1 ^= (key.charCodeAt(i + 1) & 0xff) << 8;
+	}
+	if (remainder >= 1) {
+		k1 ^= key.charCodeAt(i) & 0xff;
+		k1 = Math.imul(k1, c1);
+		k1 = (k1 << 15) | (k1 >>> 17);
+		k1 = Math.imul(k1, c2);
+		h1 ^= k1;
 	}
 
 	h1 ^= key.length;
@@ -146,7 +146,7 @@ export function stableStringify(value: unknown): string {
 	// Sort keys for objects
 	const keys = Object.keys(value as object).sort();
 	const pairs = keys.map(
-		(key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`
+		(key) => `${JSON.stringify(key)}:${stableStringify((value as Record<string, unknown>)[key])}`,
 	);
 	return `{${pairs.join(",")}}`;
 }
@@ -174,10 +174,7 @@ export function hashEntityState(data: Record<string, unknown>): string {
  * @param fields - Fields to include in hash
  * @returns Hash string
  */
-export function hashEntityFields(
-	data: Record<string, unknown>,
-	fields: string[]
-): string {
+export function hashEntityFields(data: Record<string, unknown>, fields: string[]): string {
 	const subset: Record<string, unknown> = {};
 	for (const field of fields.sort()) {
 		if (field in data) {
@@ -325,9 +322,7 @@ export class FieldHashMap {
 	 * Get combined hash of all fields.
 	 */
 	getCombinedHash(): string {
-		const sorted = Array.from(this.hashes.entries()).sort((a, b) =>
-			a[0].localeCompare(b[0])
-		);
+		const sorted = Array.from(this.hashes.entries()).sort((a, b) => a[0].localeCompare(b[0]));
 		return murmurhash3(sorted.map(([k, v]) => `${k}:${v}`).join("|"));
 	}
 }
@@ -346,12 +341,7 @@ export class FieldHashMap {
  * @param bHash - Pre-computed hash of b (optional)
  * @returns Whether values are equal
  */
-export function valuesEqual(
-	a: unknown,
-	b: unknown,
-	aHash?: string,
-	bHash?: string
-): boolean {
+export function valuesEqual(a: unknown, b: unknown, aHash?: string, bHash?: string): boolean {
 	// Fast path: reference equality
 	if (a === b) {
 		return true;
@@ -396,11 +386,8 @@ export function deepEqual(a: unknown, b: unknown): boolean {
 
 	for (const key of keysA) {
 		if (
-			!Object.prototype.hasOwnProperty.call(b, key) ||
-			!deepEqual(
-				(a as Record<string, unknown>)[key],
-				(b as Record<string, unknown>)[key]
-			)
+			!Object.hasOwn(b as object, key) ||
+			!deepEqual((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])
 		) {
 			return false;
 		}

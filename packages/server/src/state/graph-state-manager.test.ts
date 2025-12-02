@@ -305,6 +305,11 @@ describe("GraphStateManager", () => {
 				clients: 0,
 				entities: 0,
 				totalSubscriptions: 0,
+				operationLog: {
+					entryCount: 0,
+					entityCount: 0,
+					memoryUsage: 0,
+				},
 			});
 		});
 	});
@@ -1100,6 +1105,177 @@ describe("GraphStateManager", () => {
 			manager.emitArrayOperation("Users", "list", { op: "removeById", id: "999" });
 
 			expect(mockClient.messages.length).toBe(0);
+		});
+	});
+
+	describe("reconnection support", () => {
+		it("tracks entity versions", () => {
+			expect(manager.getVersion("Post", "123")).toBe(0);
+
+			manager.emit("Post", "123", { title: "Hello" });
+			expect(manager.getVersion("Post", "123")).toBe(1);
+
+			manager.emit("Post", "123", { title: "World" });
+			expect(manager.getVersion("Post", "123")).toBe(2);
+		});
+
+		it("includes version in update messages", () => {
+			manager.subscribe("client-1", "Post", "123", "*");
+			mockClient.messages = [];
+
+			manager.emit("Post", "123", { title: "Hello" });
+			expect(mockClient.messages[0].version).toBe(1);
+
+			mockClient.messages = [];
+			manager.emit("Post", "123", { title: "World" });
+			expect(mockClient.messages[0].version).toBe(2);
+		});
+
+		it("version does not increment when no change", () => {
+			manager.emit("Post", "123", { title: "Same" });
+			expect(manager.getVersion("Post", "123")).toBe(1);
+
+			manager.emit("Post", "123", { title: "Same" });
+			expect(manager.getVersion("Post", "123")).toBe(1);
+		});
+
+		it("handleReconnect returns current status when client is up-to-date", () => {
+			manager.emit("Post", "123", { title: "Hello" });
+
+			const results = manager.handleReconnect([{ id: "sub-1", entity: "Post", entityId: "123", version: 1 }]);
+
+			expect(results.length).toBe(1);
+			expect(results[0].id).toBe("sub-1");
+			expect(results[0].status).toBe("current");
+			expect(results[0].version).toBe(1);
+		});
+
+		it("handleReconnect returns patched status with patches", () => {
+			// Create entity and emit multiple updates
+			manager.emit("Post", "123", { title: "V1" });
+			manager.emit("Post", "123", { title: "V2" });
+			manager.emit("Post", "123", { title: "V3" });
+
+			// Client is at version 1, needs patches for v2 and v3
+			const results = manager.handleReconnect([{ id: "sub-1", entity: "Post", entityId: "123", version: 1 }]);
+
+			expect(results.length).toBe(1);
+			expect(results[0].status).toBe("patched");
+			expect(results[0].version).toBe(3);
+			expect(results[0].patches).toBeDefined();
+			expect(results[0].patches!.length).toBe(2); // v2 and v3
+		});
+
+		it("handleReconnect returns snapshot status when patches not available", () => {
+			// Create entity with operation log that can't serve old versions
+			const smallManager = new GraphStateManager({
+				operationLog: { maxEntries: 2 },
+			});
+			smallManager.addClient(mockClient);
+
+			// Emit many updates to exceed operation log capacity
+			smallManager.emit("Post", "123", { title: "V1" });
+			smallManager.emit("Post", "123", { title: "V2" });
+			smallManager.emit("Post", "123", { title: "V3" });
+			smallManager.emit("Post", "123", { title: "V4" });
+			smallManager.emit("Post", "123", { title: "V5" });
+
+			// Client at version 1 - patches no longer available
+			const results = smallManager.handleReconnect([{ id: "sub-1", entity: "Post", entityId: "123", version: 1 }]);
+
+			expect(results.length).toBe(1);
+			expect(results[0].status).toBe("snapshot");
+			expect(results[0].data).toEqual({ title: "V5" });
+			expect(results[0].version).toBe(5);
+
+			smallManager.dispose();
+		});
+
+		it("handleReconnect returns deleted status for non-existent entity", () => {
+			const results = manager.handleReconnect([{ id: "sub-1", entity: "Post", entityId: "999", version: 5 }]);
+
+			expect(results.length).toBe(1);
+			expect(results[0].status).toBe("deleted");
+		});
+
+		it("handleReconnect handles multiple subscriptions", () => {
+			manager.emit("Post", "123", { title: "Post1" });
+			manager.emit("Post", "456", { title: "Post2-V1" });
+			manager.emit("Post", "456", { title: "Post2-V2" });
+
+			const results = manager.handleReconnect([
+				{ id: "sub-1", entity: "Post", entityId: "123", version: 1 }, // current
+				{ id: "sub-2", entity: "Post", entityId: "456", version: 1 }, // needs patch
+				{ id: "sub-3", entity: "Post", entityId: "789", version: 1 }, // deleted
+			]);
+
+			expect(results.length).toBe(3);
+			expect(results[0].status).toBe("current");
+			expect(results[1].status).toBe("patched");
+			expect(results[2].status).toBe("deleted");
+		});
+
+		it("handleReconnect verifies data hash when provided", () => {
+			manager.emit("Post", "123", { title: "Hello" });
+
+			// Correct hash - should return current
+			const correctResults = manager.handleReconnect([
+				{
+					id: "sub-1",
+					entity: "Post",
+					entityId: "123",
+					version: 1,
+					dataHash: "e:3cd9ce8c", // actual hash of { title: "Hello" }
+				},
+			]);
+
+			// Wrong hash - should return snapshot despite version match
+			const wrongResults = manager.handleReconnect([
+				{
+					id: "sub-1",
+					entity: "Post",
+					entityId: "123",
+					version: 1,
+					dataHash: "wronghash",
+				},
+			]);
+
+			expect(correctResults[0].status).toBe("current");
+			expect(wrongResults[0].status).toBe("snapshot");
+		});
+
+		it("operation log tracks patches correctly", () => {
+			manager.emit("Post", "123", { title: "V1", content: "C1" });
+			manager.emit("Post", "123", { title: "V2" });
+			manager.emit("Post", "123", { content: "C2" });
+
+			const stats = manager.getOperationLogStats();
+			expect(stats.entryCount).toBe(3);
+			expect(stats.entityCount).toBe(1);
+		});
+
+		it("emitField increments version", () => {
+			manager.emitField("Post", "123", "title", { strategy: "value", data: "Hello" });
+			expect(manager.getVersion("Post", "123")).toBe(1);
+
+			manager.emitField("Post", "123", "content", { strategy: "value", data: "World" });
+			expect(manager.getVersion("Post", "123")).toBe(2);
+		});
+
+		it("emitBatch increments version once", () => {
+			manager.emitBatch("Post", "123", [
+				{ field: "title", update: { strategy: "value", data: "Hello" } },
+				{ field: "content", update: { strategy: "value", data: "World" } },
+			]);
+			expect(manager.getVersion("Post", "123")).toBe(1);
+		});
+
+		it("dispose cleans up operation log", () => {
+			manager.emit("Post", "123", { title: "Hello" });
+			expect(manager.getOperationLogStats().entryCount).toBe(1);
+
+			manager.dispose();
+			expect(manager.getOperationLogStats().entryCount).toBe(0);
 		});
 	});
 });

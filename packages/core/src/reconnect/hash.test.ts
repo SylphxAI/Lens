@@ -4,9 +4,9 @@
 
 import { describe, expect, it } from "bun:test";
 import {
+	deepEqual,
 	FieldHashMap,
 	HashCache,
-	deepEqual,
 	hashEntityFields,
 	hashEntityState,
 	hashValue,

@@ -386,11 +386,7 @@ export interface VersionedUpdateMessage {
 /**
  * Connection state for client.
  */
-export type ConnectionState =
-	| "disconnected"
-	| "connecting"
-	| "connected"
-	| "reconnecting";
+export type ConnectionState = "disconnected" | "connecting" | "connected" | "reconnecting";
 
 /**
  * Reconnect configuration.

@@ -62,10 +62,7 @@ export class OperationLog {
 
 		// Start cleanup timer
 		if (this.config.cleanupInterval > 0) {
-			this.cleanupTimer = setInterval(
-				() => this.cleanup(),
-				this.config.cleanupInterval
-			);
+			this.cleanupTimer = setInterval(() => this.cleanup(), this.config.cleanupInterval);
 		}
 	}
 
@@ -244,10 +241,7 @@ export class OperationLog {
 		}
 
 		// Memory-based eviction
-		while (
-			this.totalMemory > this.config.maxMemory &&
-			this.entries.length > 0
-		) {
+		while (this.totalMemory > this.config.maxMemory && this.entries.length > 0) {
 			this.removeOldest();
 			removedCount++;
 		}
@@ -319,8 +313,7 @@ export class OperationLog {
 	 */
 	private checkLimits(): void {
 		const needsCleanup =
-			this.entries.length > this.config.maxEntries ||
-			this.totalMemory > this.config.maxMemory;
+			this.entries.length > this.config.maxEntries || this.totalMemory > this.config.maxMemory;
 
 		if (needsCleanup) {
 			this.cleanup();
@@ -378,10 +371,7 @@ export class OperationLog {
 			clearInterval(this.cleanupTimer);
 		}
 		if (this.config.cleanupInterval > 0) {
-			this.cleanupTimer = setInterval(
-				() => this.cleanup(),
-				this.config.cleanupInterval
-			);
+			this.cleanupTimer = setInterval(() => this.cleanup(), this.config.cleanupInterval);
 		}
 
 		// Apply new limits
@@ -469,7 +459,7 @@ export function estimatePatchSize(patch: PatchOperation[]): number {
  */
 export function applyPatch<T extends Record<string, unknown>>(
 	target: T,
-	patch: PatchOperation[]
+	patch: PatchOperation[],
 ): T {
 	// Deep clone to avoid mutation
 	let result = JSON.parse(JSON.stringify(target)) as T;
@@ -484,10 +474,7 @@ export function applyPatch<T extends Record<string, unknown>>(
 /**
  * Apply single patch operation.
  */
-function applySinglePatch<T extends Record<string, unknown>>(
-	target: T,
-	op: PatchOperation
-): T {
+function applySinglePatch<T extends Record<string, unknown>>(target: T, op: PatchOperation): T {
 	const pathParts = op.path.split("/").filter(Boolean);
 
 	if (pathParts.length === 0) {
@@ -555,10 +542,7 @@ function decodeJsonPointer(segment: string): string {
 /**
  * Get value at path in object.
  */
-function getValueAtPath(
-	obj: Record<string, unknown>,
-	path: string[]
-): unknown {
+function getValueAtPath(obj: Record<string, unknown>, path: string[]): unknown {
 	let current: unknown = obj;
 	for (const key of path) {
 		if (current === null || typeof current !== "object") {
@@ -572,10 +556,7 @@ function getValueAtPath(
 /**
  * Remove value at path in object (mutates).
  */
-function removeValueAtPath(
-	obj: Record<string, unknown>,
-	path: string[]
-): void {
+function removeValueAtPath(obj: Record<string, unknown>, path: string[]): void {
 	if (path.length === 0) return;
 
 	let current: Record<string, unknown> = obj;

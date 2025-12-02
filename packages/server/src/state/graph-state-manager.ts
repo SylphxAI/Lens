@@ -16,9 +16,19 @@ import {
 	createUpdate,
 	type EmitCommand,
 	type EntityKey,
+	FieldHashMap,
+	hashEntityState,
 	type InternalFieldUpdate,
 	makeEntityKey,
+	OperationLog,
+	// Reconnection imports
+	type OperationLogConfig,
+	type PatchOperation,
+	type ReconnectResult,
+	type ReconnectStatus,
+	type ReconnectSubscription,
 	type Update,
+	type Version,
 } from "@sylphx/lens-core";
 
 // Re-export for convenience
@@ -35,6 +45,8 @@ export interface StateUpdateMessage {
 	type: "update";
 	entity: string;
 	id: string;
+	/** Entity version (for reconnection support) */
+	version: Version;
 	/** Field-level updates with strategy */
 	updates: Record<string, Update>;
 }
@@ -71,6 +83,8 @@ interface ClientArrayState {
 export interface GraphStateManagerConfig {
 	/** Called when an entity has no more subscribers */
 	onEntityUnsubscribed?: (entity: string, id: string) => void;
+	/** Operation log configuration for reconnection support */
+	operationLog?: Partial<OperationLogConfig>;
 }
 
 // =============================================================================
@@ -120,8 +134,22 @@ export class GraphStateManager {
 	/** Configuration */
 	private config: GraphStateManagerConfig;
 
+	// ===========================================================================
+	// Version Tracking (Reconnection Support)
+	// ===========================================================================
+
+	/** Version counter per entity (monotonically increasing) */
+	private versions = new Map<EntityKey, Version>();
+
+	/** Operation log for efficient reconnection (stores recent patches) */
+	private operationLog: OperationLog;
+
+	/** Per-entity field hashes for efficient change detection */
+	private fieldHashes = new Map<EntityKey, FieldHashMap>();
+
 	constructor(config: GraphStateManagerConfig = {}) {
 		this.config = config;
+		this.operationLog = new OperationLog(config.operationLog);
 	}
 
 	// ===========================================================================
@@ -248,24 +276,51 @@ export class GraphStateManager {
 		const key = this.makeKey(entity, id);
 
 		// Get or create canonical state
-		let currentCanonical = this.canonical.get(key);
+		const previousCanonical = this.canonical.get(key);
+		let currentCanonical: Record<string, unknown>;
 
-		if (options.replace || !currentCanonical) {
+		if (options.replace || !previousCanonical) {
 			// Replace mode or first emit
 			currentCanonical = { ...data };
 		} else {
 			// Merge mode (default)
-			currentCanonical = { ...currentCanonical, ...data };
+			currentCanonical = { ...previousCanonical, ...data };
+		}
+
+		// Check if state actually changed using hash comparison
+		const previousHash = previousCanonical ? hashEntityState(previousCanonical) : null;
+		const currentHash = hashEntityState(currentCanonical);
+
+		if (previousHash === currentHash) {
+			// No actual change, skip update
+			return;
 		}
 
 		this.canonical.set(key, currentCanonical);
+
+		// Increment version and compute patches for operation log
+		const previousVersion = this.versions.get(key) ?? 0;
+		const newVersion = previousVersion + 1;
+		this.versions.set(key, newVersion);
+
+		// Compute and log patch for reconnection support
+		const patch = this.computePatch(previousCanonical ?? {}, currentCanonical);
+		if (patch.length > 0) {
+			this.operationLog.append({
+				entityKey: key,
+				version: newVersion,
+				timestamp: Date.now(),
+				patch,
+				patchSize: JSON.stringify(patch).length,
+			});
+		}
 
 		// Push updates to all subscribed clients
 		const subscribers = this.entitySubscribers.get(key);
 		if (!subscribers) return;
 
 		for (const clientId of subscribers) {
-			this.pushToClient(clientId, entity, id, key, currentCanonical);
+			this.pushToClient(clientId, entity, id, key, currentCanonical, newVersion);
 		}
 	}
 
@@ -282,24 +337,46 @@ export class GraphStateManager {
 		const key = this.makeKey(entity, id);
 
 		// Get or create canonical state
-		let currentCanonical = this.canonical.get(key);
-		if (!currentCanonical) {
-			currentCanonical = {};
+		const previousCanonical = this.canonical.get(key) ?? {};
+		const oldValue = previousCanonical[field];
+		const newValue = applyUpdate(oldValue, update);
+
+		// Check if value actually changed using field hash
+		let fieldHashMap = this.fieldHashes.get(key);
+		if (!fieldHashMap) {
+			fieldHashMap = new FieldHashMap();
+			this.fieldHashes.set(key, fieldHashMap);
 		}
 
-		// Apply update to canonical state based on strategy
-		const oldValue = currentCanonical[field];
-		const newValue = applyUpdate(oldValue, update);
-		currentCanonical = { ...currentCanonical, [field]: newValue };
+		if (!fieldHashMap.hasChanged(field, newValue)) {
+			// No actual change, skip update
+			return;
+		}
 
+		const currentCanonical = { ...previousCanonical, [field]: newValue };
 		this.canonical.set(key, currentCanonical);
+
+		// Increment version and log patch
+		const previousVersion = this.versions.get(key) ?? 0;
+		const newVersion = previousVersion + 1;
+		this.versions.set(key, newVersion);
+
+		// Log field patch for reconnection
+		const patch: PatchOperation[] = [{ op: "replace", path: `/${field}`, value: newValue }];
+		this.operationLog.append({
+			entityKey: key,
+			version: newVersion,
+			timestamp: Date.now(),
+			patch,
+			patchSize: JSON.stringify(patch).length,
+		});
 
 		// Push updates to all subscribed clients
 		const subscribers = this.entitySubscribers.get(key);
 		if (!subscribers) return;
 
 		for (const clientId of subscribers) {
-			this.pushFieldToClient(clientId, entity, id, key, field, newValue);
+			this.pushFieldToClient(clientId, entity, id, key, field, newValue, newVersion);
 		}
 	}
 
@@ -314,29 +391,65 @@ export class GraphStateManager {
 	emitBatch(entity: string, id: string, updates: InternalFieldUpdate[]): void {
 		const key = this.makeKey(entity, id);
 
-		// Get or create canonical state
-		let currentCanonical = this.canonical.get(key);
-		if (!currentCanonical) {
-			currentCanonical = {};
+		// Get or create canonical state and field hash map
+		const previousCanonical = this.canonical.get(key) ?? {};
+		let fieldHashMap = this.fieldHashes.get(key);
+		if (!fieldHashMap) {
+			fieldHashMap = new FieldHashMap();
+			this.fieldHashes.set(key, fieldHashMap);
 		}
 
-		// Apply all updates to canonical state
+		// Apply all updates and track actual changes
+		const currentCanonical = { ...previousCanonical };
 		const changedFields: string[] = [];
+		const patchOps: PatchOperation[] = [];
+
 		for (const { field, update } of updates) {
 			const oldValue = currentCanonical[field];
 			const newValue = applyUpdate(oldValue, update);
-			currentCanonical[field] = newValue;
-			changedFields.push(field);
+
+			// Only track if actually changed
+			if (fieldHashMap.hasChanged(field, newValue)) {
+				currentCanonical[field] = newValue;
+				changedFields.push(field);
+				patchOps.push({ op: "replace", path: `/${field}`, value: newValue });
+			}
+		}
+
+		// Skip if no actual changes
+		if (changedFields.length === 0) {
+			return;
 		}
 
 		this.canonical.set(key, currentCanonical);
+
+		// Increment version and log patch
+		const previousVersion = this.versions.get(key) ?? 0;
+		const newVersion = previousVersion + 1;
+		this.versions.set(key, newVersion);
+
+		this.operationLog.append({
+			entityKey: key,
+			version: newVersion,
+			timestamp: Date.now(),
+			patch: patchOps,
+			patchSize: JSON.stringify(patchOps).length,
+		});
 
 		// Push updates to all subscribed clients
 		const subscribers = this.entitySubscribers.get(key);
 		if (!subscribers) return;
 
 		for (const clientId of subscribers) {
-			this.pushFieldsToClient(clientId, entity, id, key, changedFields, currentCanonical);
+			this.pushFieldsToClient(
+				clientId,
+				entity,
+				id,
+				key,
+				changedFields,
+				currentCanonical,
+				newVersion,
+			);
 		}
 	}
 
@@ -519,6 +632,9 @@ export class GraphStateManager {
 			return;
 		}
 
+		// Get current version
+		const version = this.versions.get(key) ?? 0;
+
 		// Compute optimal array diff
 		const diff = computeArrayDiff(lastState, newArray);
 
@@ -528,6 +644,7 @@ export class GraphStateManager {
 				type: "update",
 				entity,
 				id,
+				version,
 				updates: {
 					_items: { strategy: "value", data: newArray },
 				},
@@ -538,6 +655,7 @@ export class GraphStateManager {
 				type: "update",
 				entity,
 				id,
+				version,
 				updates: {
 					_items: { strategy: "value", data: newArray },
 				},
@@ -548,6 +666,7 @@ export class GraphStateManager {
 				type: "update",
 				entity,
 				id,
+				version,
 				updates: {
 					_items: { strategy: "array", data: diff },
 				},
@@ -593,6 +712,7 @@ export class GraphStateManager {
 		id: string,
 		key: EntityKey,
 		newState: Record<string, unknown>,
+		version: Version,
 	): void {
 		const client = this.clients.get(clientId);
 		if (!client) return;
@@ -634,11 +754,12 @@ export class GraphStateManager {
 
 		if (!hasChanges) return;
 
-		// Send update
+		// Send update with version
 		client.send({
 			type: "update",
 			entity,
 			id,
+			version,
 			updates,
 		});
 
@@ -661,6 +782,7 @@ export class GraphStateManager {
 		key: EntityKey,
 		field: string,
 		newValue: unknown,
+		version: Version,
 	): void {
 		const client = this.clients.get(clientId);
 		if (!client) return;
@@ -693,11 +815,12 @@ export class GraphStateManager {
 		// Compute optimal update for transfer
 		const update = createUpdate(oldValue, newValue);
 
-		// Send update
+		// Send update with version
 		client.send({
 			type: "update",
 			entity,
 			id,
+			version,
 			updates: { [field]: update },
 		});
 
@@ -716,6 +839,7 @@ export class GraphStateManager {
 		key: EntityKey,
 		changedFields: string[],
 		newState: Record<string, unknown>,
+		version: Version,
 	): void {
 		const client = this.clients.get(clientId);
 		if (!client) return;
@@ -759,11 +883,12 @@ export class GraphStateManager {
 
 		if (!hasChanges) return;
 
-		// Send update
+		// Send update with version
 		client.send({
 			type: "update",
 			entity,
 			id,
+			version,
 			updates,
 		});
 
@@ -804,11 +929,15 @@ export class GraphStateManager {
 			}
 		}
 
+		// Get current version
+		const version = this.versions.get(key) ?? 0;
+
 		// Send as update message with value strategy
 		client.send({
 			type: "update",
 			entity,
 			id,
+			version,
 			updates,
 		});
 
@@ -841,6 +970,172 @@ export class GraphStateManager {
 		return makeEntityKey(entity, id);
 	}
 
+	/**
+	 * Compute JSON Patch operations between two states.
+	 * Returns minimal patch to transform oldState into newState.
+	 */
+	private computePatch(
+		oldState: Record<string, unknown>,
+		newState: Record<string, unknown>,
+	): PatchOperation[] {
+		const patch: PatchOperation[] = [];
+		const oldKeys = new Set(Object.keys(oldState));
+		const newKeys = new Set(Object.keys(newState));
+
+		// Additions and replacements
+		for (const key of newKeys) {
+			const oldValue = oldState[key];
+			const newValue = newState[key];
+
+			if (!oldKeys.has(key)) {
+				// New field
+				patch.push({ op: "add", path: `/${key}`, value: newValue });
+			} else if (JSON.stringify(oldValue) !== JSON.stringify(newValue)) {
+				// Changed field
+				patch.push({ op: "replace", path: `/${key}`, value: newValue });
+			}
+		}
+
+		// Deletions
+		for (const key of oldKeys) {
+			if (!newKeys.has(key)) {
+				patch.push({ op: "remove", path: `/${key}` });
+			}
+		}
+
+		return patch;
+	}
+
+	// ===========================================================================
+	// Reconnection Support
+	// ===========================================================================
+
+	/**
+	 * Get current version for an entity.
+	 * Returns 0 if entity doesn't exist yet.
+	 */
+	getVersion(entity: string, id: string): Version {
+		return this.versions.get(this.makeKey(entity, id)) ?? 0;
+	}
+
+	/**
+	 * Handle a reconnection request from a client.
+	 * Determines the most efficient way to sync each subscription.
+	 *
+	 * @param subscriptions - Array of subscriptions to reconnect
+	 * @returns Array of reconnection results
+	 */
+	handleReconnect(subscriptions: ReconnectSubscription[]): ReconnectResult[] {
+		const results: ReconnectResult[] = [];
+
+		for (const sub of subscriptions) {
+			const result = this.processReconnectSubscription(sub);
+			results.push(result);
+		}
+
+		return results;
+	}
+
+	/**
+	 * Process a single subscription for reconnection.
+	 * Determines if client is current, can be patched, or needs full snapshot.
+	 */
+	private processReconnectSubscription(sub: ReconnectSubscription): ReconnectResult {
+		const key = this.makeKey(sub.entity, sub.entityId);
+		const currentVersion = this.versions.get(key);
+		const currentState = this.canonical.get(key);
+
+		// Entity doesn't exist (might have been deleted)
+		if (currentVersion === undefined || currentState === undefined) {
+			return {
+				id: sub.id,
+				entity: sub.entity,
+				entityId: sub.entityId,
+				status: "deleted" as ReconnectStatus,
+				version: 0,
+			};
+		}
+
+		// Client is already at latest version
+		if (sub.version >= currentVersion) {
+			// Optionally verify with hash if provided
+			if (sub.dataHash) {
+				const serverHash = hashEntityState(currentState);
+				if (sub.dataHash !== serverHash) {
+					// Hash mismatch - send full snapshot despite version match
+					return {
+						id: sub.id,
+						entity: sub.entity,
+						entityId: sub.entityId,
+						status: "snapshot" as ReconnectStatus,
+						version: currentVersion,
+						data: currentState,
+					};
+				}
+			}
+
+			return {
+				id: sub.id,
+				entity: sub.entity,
+				entityId: sub.entityId,
+				status: "current" as ReconnectStatus,
+				version: currentVersion,
+			};
+		}
+
+		// Try to get patches from operation log
+		const entries = this.operationLog.getSince(key, sub.version);
+
+		if (entries !== null && entries.length > 0) {
+			// Can patch - return coalesced patches
+			const patches = entries.map((e) => e.patch);
+
+			return {
+				id: sub.id,
+				entity: sub.entity,
+				entityId: sub.entityId,
+				status: "patched" as ReconnectStatus,
+				version: currentVersion,
+				patches,
+			};
+		}
+
+		// Patches not available - send full snapshot
+		return {
+			id: sub.id,
+			entity: sub.entity,
+			entityId: sub.entityId,
+			status: "snapshot" as ReconnectStatus,
+			version: currentVersion,
+			data: currentState,
+		};
+	}
+
+	/**
+	 * Get operation log statistics.
+	 */
+	getOperationLogStats(): {
+		entryCount: number;
+		entityCount: number;
+		memoryUsage: number;
+	} {
+		const stats = this.operationLog.getStats();
+		return {
+			entryCount: stats.entryCount,
+			entityCount: stats.entityCount,
+			memoryUsage: stats.memoryUsage,
+		};
+	}
+
+	/**
+	 * Dispose operation log resources.
+	 * Call when shutting down the manager.
+	 */
+	dispose(): void {
+		this.operationLog.dispose();
+		this.clear();
+	}
+
 	// ===========================================================================
 	// Stats & Debug
 	// ===========================================================================
@@ -852,16 +1147,28 @@ export class GraphStateManager {
 		clients: number;
 		entities: number;
 		totalSubscriptions: number;
+		operationLog: {
+			entryCount: number;
+			entityCount: number;
+			memoryUsage: number;
+		};
 	} {
 		let totalSubscriptions = 0;
 		for (const subscribers of this.entitySubscribers.values()) {
 			totalSubscriptions += subscribers.size;
 		}
 
+		const opLogStats = this.operationLog.getStats();
+
 		return {
 			clients: this.clients.size,
 			entities: this.canonical.size,
 			totalSubscriptions,
+			operationLog: {
+				entryCount: opLogStats.entryCount,
+				entityCount: opLogStats.entityCount,
+				memoryUsage: opLogStats.memoryUsage,
+			},
 		};
 	}
 
@@ -875,6 +1182,9 @@ export class GraphStateManager {
 		this.clientStates.clear();
 		this.clientArrayStates.clear();
 		this.entitySubscribers.clear();
+		this.versions.clear();
+		this.fieldHashes.clear();
+		this.operationLog.clear();
 	}
 }
 
