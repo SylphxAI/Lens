@@ -4,13 +4,18 @@
  * Type infrastructure for plugin-driven type extensions.
  * Plugins can extend builder methods with full TypeScript type safety.
  *
+ * The plugin system works by:
+ * 1. Each plugin defines a PluginExtension interface with method signatures
+ * 2. The TPlugins type parameter flows through the entire builder chain
+ * 3. At each stage, plugin methods are merged via ExtractPluginMethods
+ *
  * @example
  * ```typescript
  * // Define a plugin extension
  * interface MyPluginExtension extends PluginExtension {
  *   name: 'my-plugin';
  *   MutationBuilderWithReturns: {
- *     myMethod(): MutationBuilderWithOptimistic<TInput, TOutput, TContext>;
+ *     myMethod<TInput, TOutput, TContext>(): MutationBuilderWithOptimistic<TInput, TOutput, TContext>;
  *   };
  * }
  *
@@ -27,24 +32,32 @@
 /**
  * Base interface for plugin type extensions.
  *
- * Each plugin can declare the methods it adds to various builders.
- * These are merged at the type level when lens({ plugins }) is called.
+ * Each plugin declares methods it adds to various builder stages.
+ * Methods are generic over TInput, TOutput, TContext to work with any operation.
+ *
+ * IMPORTANT: Plugin methods must be defined with proper generics to receive
+ * the builder's type parameters. Use the helper types below.
  */
 export interface PluginExtension {
 	/** Plugin name - must match the runtime plugin's name */
 	readonly name: string;
 
 	/**
-	 * Methods added to MutationBuilder after .returns() is called.
-	 * These methods are available before .resolve().
+	 * Methods added to MutationBuilder (before .input())
 	 */
-	readonly MutationBuilderWithReturns?: Record<string, unknown>;
+	readonly MutationBuilder?: Record<string, unknown>;
 
 	/**
 	 * Methods added to MutationBuilder after .input() is called.
 	 * These methods are available before .returns() or .resolve().
 	 */
 	readonly MutationBuilderWithInput?: Record<string, unknown>;
+
+	/**
+	 * Methods added to MutationBuilder after .returns() is called.
+	 * These methods are available before .resolve().
+	 */
+	readonly MutationBuilderWithReturns?: Record<string, unknown>;
 
 	/**
 	 * Methods added to QueryBuilder.
@@ -54,19 +67,19 @@ export interface PluginExtension {
 
 /**
  * Empty extension type - represents no additional methods.
- * Uses Record<string, never> to satisfy lint rules while representing empty objects.
+ * Uses {} (any object) rather than Record<string, never> because
+ * Record<string, never> breaks intersection types (T & Record<string, never> = never-like).
+ * With {}, we get T & {} = T, which is the desired behavior for "no additional methods".
  */
-export type EmptyExtension = Record<string, never>;
+// biome-ignore lint/complexity/noBannedTypes: Empty object needed for intersection identity (T & {} = T)
+export type EmptyExtension = {};
 
 /**
  * Empty plugin extension (no methods added).
  * Used as default when no plugins configured.
  */
-export interface NoExtension extends PluginExtension {
+export interface NoPlugins extends PluginExtension {
 	readonly name: "none";
-	readonly MutationBuilderWithReturns: EmptyExtension;
-	readonly MutationBuilderWithInput: EmptyExtension;
-	readonly QueryBuilder: EmptyExtension;
 }
 
 // =============================================================================
@@ -94,45 +107,60 @@ export type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never
 export type Prettify<T> = { [K in keyof T]: T[K] } & {};
 
 /**
- * Extract a specific extension type from plugin array.
+ * Plugin Method Registry - central registry for plugin methods.
+ *
+ * Plugins augment this interface to register their methods with proper generics.
+ * The TInput, TOutput, TContext parameters allow methods to use the builder's types.
  *
  * @example
  * ```typescript
- * type Plugins = [OptimisticPlugin, ValidationPlugin];
- * type Ext = ExtractExtension<Plugins, 'MutationBuilderWithReturns'>;
- * // Result: OptimisticMethods & ValidationMethods
+ * // In optimistic-extension.ts
+ * declare module './types.js' {
+ *   interface PluginMethodRegistry<TInput, TOutput, TContext> {
+ *     optimistic: {
+ *       MutationBuilderWithReturns: {
+ *         optimistic(spec: OptimisticDSL): MutationBuilderWithOptimistic<TInput, TOutput, TContext>;
+ *       };
+ *     };
+ *   }
+ * }
  * ```
  */
-export type ExtractExtension<
-	Plugins extends readonly PluginExtension[],
-	Key extends keyof PluginExtension,
-> = UnionToIntersection<
-	Plugins[number] extends infer P
-		? P extends PluginExtension
-			? P[Key] extends Record<string, unknown>
-				? P[Key]
-				: EmptyExtension
-			: EmptyExtension
-		: EmptyExtension
->;
+// biome-ignore lint/suspicious/noEmptyInterface: Registry is populated via declaration merging
+export interface PluginMethodRegistry<_TInput, _TOutput, _TContext> {}
 
 /**
- * Merge all plugin extensions into a single type.
+ * Extract methods for a specific builder stage from plugin array.
+ *
+ * Uses the PluginMethodRegistry to get properly typed methods for each plugin.
  *
  * @example
  * ```typescript
- * type Merged = MergeExtensions<[OptimisticPlugin, ValidationPlugin]>;
- * // Result: {
- * //   MutationBuilderWithReturns: { optimistic: ..., validate: ... };
- * //   QueryBuilder: { ... };
- * // }
+ * type Plugins = [OptimisticPluginExtension];
+ * type Methods = ExtractPluginMethods<Plugins, 'MutationBuilderWithReturns', TInput, TOutput, TContext>;
+ * // Result: { optimistic(spec): MutationBuilderWithOptimistic<TInput, TOutput, TContext> }
  * ```
  */
-export type MergeExtensions<Plugins extends readonly PluginExtension[]> = {
-	MutationBuilderWithReturns: ExtractExtension<Plugins, "MutationBuilderWithReturns">;
-	MutationBuilderWithInput: ExtractExtension<Plugins, "MutationBuilderWithInput">;
-	QueryBuilder: ExtractExtension<Plugins, "QueryBuilder">;
-};
+export type ExtractPluginMethods<
+	TPlugins extends readonly PluginExtension[],
+	TStage extends string,
+	TInput = unknown,
+	TOutput = unknown,
+	TContext = unknown,
+> = TPlugins extends readonly []
+	? // Empty array - no methods
+		EmptyExtension
+	: UnionToIntersection<
+			TPlugins[number] extends infer P
+				? P extends { readonly name: infer N }
+					? N extends keyof PluginMethodRegistry<TInput, TOutput, TContext>
+						? TStage extends keyof PluginMethodRegistry<TInput, TOutput, TContext>[N]
+							? PluginMethodRegistry<TInput, TOutput, TContext>[N][TStage]
+							: EmptyExtension
+						: EmptyExtension
+					: EmptyExtension
+				: EmptyExtension
+		>;
 
 /**
  * Check if plugin array includes a specific plugin by name.
@@ -143,9 +171,9 @@ export type MergeExtensions<Plugins extends readonly PluginExtension[]> = {
  * type HasNot = HasPlugin<[ValidationPlugin], 'optimistic'>; // false
  * ```
  */
-export type HasPlugin<Plugins extends readonly PluginExtension[], Name extends string> = Extract<
-	Plugins[number],
-	{ name: Name }
+export type HasPlugin<TPlugins extends readonly PluginExtension[], Name extends string> = Extract<
+	TPlugins[number],
+	{ readonly name: Name }
 > extends never
 	? false
 	: true;
@@ -155,15 +183,74 @@ export type HasPlugin<Plugins extends readonly PluginExtension[], Name extends s
  *
  * @example
  * ```typescript
- * type Result = IfPlugin<Plugins, 'optimistic', { optimistic(): void }, {}>;
+ * type Result = IfPlugin<Plugins, 'optimistic', { optimistic(): void }, {}>
  * ```
  */
 export type IfPlugin<
-	Plugins extends readonly PluginExtension[],
+	TPlugins extends readonly PluginExtension[],
 	Name extends string,
 	Then,
 	Else = EmptyExtension,
-> = HasPlugin<Plugins, Name> extends true ? Then : Else;
+> = HasPlugin<TPlugins, Name> extends true ? Then : Else;
+
+// =============================================================================
+// Backward Compatibility Types (Legacy Plugin Extraction)
+// =============================================================================
+
+/**
+ * Extract methods from a specific stage across all plugins.
+ * This is the legacy approach that extracts directly from plugin extension interfaces.
+ * For plugins with generic parameters, use ExtractPluginMethods with PluginMethodRegistry.
+ *
+ * @deprecated Use ExtractPluginMethods with PluginMethodRegistry for generic-aware extraction
+ *
+ * @example
+ * ```typescript
+ * type Methods = ExtractExtension<[PluginA, PluginB], 'MutationBuilderWithReturns'>;
+ * // Result: { methodA(): void } & { methodB(): void }
+ * ```
+ */
+export type ExtractExtension<
+	TPlugins extends readonly PluginExtension[],
+	TStage extends keyof PluginExtension,
+> = UnionToIntersection<
+	TPlugins[number] extends infer P
+		? P extends PluginExtension
+			? TStage extends keyof P
+				? P[TStage] extends Record<string, unknown>
+					? P[TStage]
+					: EmptyExtension
+				: EmptyExtension
+			: EmptyExtension
+		: EmptyExtension
+>;
+
+/**
+ * Merge all extension categories from plugins into a single extension type.
+ * This is the legacy approach that merges directly from plugin extension interfaces.
+ *
+ * @deprecated Use ExtractPluginMethods for individual stage extraction
+ *
+ * @example
+ * ```typescript
+ * type Merged = MergeExtensions<[PluginA, PluginB]>;
+ * // Result: {
+ * //   MutationBuilderWithReturns: { methodA(): void } & { methodB(): void };
+ * //   QueryBuilder: { queryMethod(): void };
+ * // }
+ * ```
+ */
+export type MergeExtensions<TPlugins extends readonly PluginExtension[]> = {
+	MutationBuilder: ExtractExtension<TPlugins, "MutationBuilder">;
+	MutationBuilderWithInput: ExtractExtension<TPlugins, "MutationBuilderWithInput">;
+	MutationBuilderWithReturns: ExtractExtension<TPlugins, "MutationBuilderWithReturns">;
+	QueryBuilder: ExtractExtension<TPlugins, "QueryBuilder">;
+};
+
+/**
+ * @deprecated Use NoPlugins instead
+ */
+export type NoExtension = NoPlugins;
 
 // =============================================================================
 // Runtime Plugin Interface
@@ -172,6 +259,8 @@ export type IfPlugin<
 /**
  * Runtime plugin marker.
  * Used to connect type extensions with runtime plugin instances.
+ *
+ * @typeParam TExt - The plugin's type extension interface
  */
 export interface RuntimePlugin<TExt extends PluginExtension = PluginExtension> {
 	/** Plugin name - must match extension's name */
@@ -184,15 +273,20 @@ export interface RuntimePlugin<TExt extends PluginExtension = PluginExtension> {
 	readonly _extension?: TExt;
 
 	/**
+	 * Runtime hooks for the plugin.
+	 * Called at various points during operation execution.
+	 */
+	readonly hooks?: PluginHooks;
+
+	/**
 	 * Extension methods to add to builders.
 	 * Called during lens() initialization to wire up methods.
 	 */
 	readonly builderExtensions?: {
 		/**
-		 * Factory for MutationBuilderWithReturns methods.
-		 * Receives the builder instance, returns method implementations.
+		 * Factory for MutationBuilder methods (before .input()).
 		 */
-		MutationBuilderWithReturns?: (builder: unknown) => Record<string, unknown>;
+		MutationBuilder?: (builder: unknown) => Record<string, unknown>;
 
 		/**
 		 * Factory for MutationBuilderWithInput methods.
@@ -200,10 +294,61 @@ export interface RuntimePlugin<TExt extends PluginExtension = PluginExtension> {
 		MutationBuilderWithInput?: (builder: unknown) => Record<string, unknown>;
 
 		/**
+		 * Factory for MutationBuilderWithReturns methods.
+		 */
+		MutationBuilderWithReturns?: (builder: unknown) => Record<string, unknown>;
+
+		/**
 		 * Factory for QueryBuilder methods.
 		 */
 		QueryBuilder?: (builder: unknown) => Record<string, unknown>;
 	};
+}
+
+/**
+ * Plugin lifecycle hooks.
+ * Plugins can hook into various stages of operation execution.
+ */
+export interface PluginHooks {
+	/**
+	 * Called before mutation execution.
+	 * Can modify input or abort execution.
+	 */
+	beforeMutation?: (ctx: {
+		path: string;
+		input: unknown;
+		meta: Record<string, unknown>;
+	}) => void | Promise<void>;
+
+	/**
+	 * Called after mutation execution.
+	 * Can modify output or perform side effects.
+	 */
+	afterMutation?: (ctx: {
+		path: string;
+		input: unknown;
+		output: unknown;
+		meta: Record<string, unknown>;
+	}) => void | Promise<void>;
+
+	/**
+	 * Called before query execution.
+	 */
+	beforeQuery?: (ctx: {
+		path: string;
+		input: unknown;
+		meta: Record<string, unknown>;
+	}) => void | Promise<void>;
+
+	/**
+	 * Called after query execution.
+	 */
+	afterQuery?: (ctx: {
+		path: string;
+		input: unknown;
+		output: unknown;
+		meta: Record<string, unknown>;
+	}) => void | Promise<void>;
 }
 
 /**
@@ -225,17 +370,14 @@ export function isRuntimePlugin(value: unknown): value is RuntimePlugin {
 type ExtractSingleExtension<P> = P extends { readonly _extension?: infer E }
 	? E extends PluginExtension
 		? E
-		: NoExtension
-	: NoExtension;
+		: NoPlugins
+	: NoPlugins;
 
 /**
  * Extract PluginExtension types from a RuntimePlugin array.
  *
  * This allows lens({ plugins: [optimisticPlugin()] }) to work where
  * optimisticPlugin() returns RuntimePlugin<OptimisticPluginExtension>.
- *
- * Uses the _extension phantom property for reliable extraction,
- * avoiding issues with `infer` on branded/extended types.
  *
  * @example
  * ```typescript

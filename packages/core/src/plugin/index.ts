@@ -26,21 +26,27 @@ export {
 	isOptimisticPlugin,
 	type MutationBuilderWithOptimisticExt,
 	OPTIMISTIC_PLUGIN_SYMBOL,
-	type OptimisticMutationMethods,
 	// Optimistic plugin extension
 	type OptimisticPluginExtension,
 	type OptimisticPluginMarker,
 } from "./optimistic-extension.js";
+
 export {
 	type EmptyExtension,
+	// Legacy extraction types (backward compatibility)
 	type ExtractExtension,
+	type ExtractPluginExtensions,
+	type ExtractPluginMethods,
 	type HasPlugin,
 	type IfPlugin,
 	isRuntimePlugin,
 	type MergeExtensions,
 	type NoExtension,
+	type NoPlugins,
 	// Extension protocol
 	type PluginExtension,
+	type PluginHooks,
+	type PluginMethodRegistry,
 	type Prettify,
 	// Runtime
 	type RuntimePlugin,

@@ -17,6 +17,7 @@
  */
 
 import type {
+	MutationBuilderWithOptimistic,
 	MutationDef,
 	OptimisticCallback,
 	OptimisticDSL,
@@ -25,84 +26,78 @@ import type {
 import type { PluginExtension, RuntimePlugin } from "./types.js";
 
 // =============================================================================
+// Module Augmentation - Register Optimistic Methods in Plugin Registry
+// =============================================================================
+
+/**
+ * Augment the PluginMethodRegistry to add optimistic plugin methods.
+ *
+ * This is the key mechanism that allows plugins to add type-safe methods
+ * to builders. The TInput, TOutput, TContext parameters are bound from
+ * the builder's generic context.
+ */
+declare module "./types.js" {
+	// Note: Parameter names must match the original interface exactly
+	interface PluginMethodRegistry<_TInput, _TOutput, _TContext> {
+		/**
+		 * Optimistic plugin methods.
+		 * Registered under 'optimistic' key matching the plugin name.
+		 */
+		optimistic: {
+			/**
+			 * Methods added after .returns() is called.
+			 */
+			MutationBuilderWithReturns: {
+				/**
+				 * Define optimistic update behavior.
+				 *
+				 * @param spec - Optimistic update specification (sugar or Pipeline)
+				 * @returns Builder with .resolve() method
+				 */
+				optimistic(
+					spec: OptimisticDSL,
+				): MutationBuilderWithOptimistic<_TInput, _TOutput, _TContext>;
+
+				/**
+				 * Define optimistic update with typed input callback.
+				 *
+				 * @param callback - Function that receives typed input proxy and returns step builders
+				 * @returns Builder with .resolve() method
+				 */
+				optimistic(
+					callback: OptimisticCallback<_TInput>,
+				): MutationBuilderWithOptimistic<_TInput, _TOutput, _TContext>;
+			};
+		};
+	}
+}
+
+// =============================================================================
 // Optimistic Plugin Extension Type
 // =============================================================================
 
 /**
  * Type extension for optimistic updates plugin.
  *
- * Adds the .optimistic() method to MutationBuilderWithReturns.
- * This type is used by the lens() factory to compose builder types.
+ * This interface is used by the lens() factory to identify the plugin
+ * and compose builder types. The actual methods come from the
+ * PluginMethodRegistry augmentation above.
  */
 export interface OptimisticPluginExtension extends PluginExtension {
 	readonly name: "optimistic";
-
-	/**
-	 * Methods added to MutationBuilder after .returns() is called.
-	 *
-	 * Note: Generic parameters TInput, TOutput, TContext are bound when
-	 * the builder is created. The intersection happens at that point.
-	 */
-	readonly MutationBuilderWithReturns: OptimisticMutationMethods;
 }
 
-/**
- * Optimistic mutation methods interface.
- *
- * These methods are added to MutationBuilderWithReturns when
- * optimisticPlugin() is included in the plugins array.
- */
-export interface OptimisticMutationMethods {
-	/** Index signature to satisfy Record<string, unknown> constraint */
-	[key: string]: unknown;
-
-	/**
-	 * Define optimistic update behavior.
-	 *
-	 * Sugar syntax:
-	 * - "merge" - Update entity with input fields
-	 * - "create" - Create new entity with temp ID
-	 * - "delete" - Mark entity as deleted
-	 * - { merge: {...} } - Merge with additional static fields
-	 *
-	 * @example
-	 * ```typescript
-	 * // Sugar syntax
-	 * .optimistic('merge')
-	 * .optimistic('create')
-	 * .optimistic('delete')
-	 * .optimistic({ merge: { updatedAt: Date.now() } })
-	 *
-	 * // Callback with typed input
-	 * .optimistic(({ input }) => [
-	 *   entity.update('User', { id: input.id, name: input.name })
-	 * ])
-	 * ```
-	 */
-	optimistic<TInput, TOutput, TContext>(
-		spec: OptimisticDSL,
-	): MutationBuilderWithOptimisticExt<TInput, TOutput, TContext>;
-
-	/**
-	 * Define optimistic update with typed input callback.
-	 *
-	 * The callback receives a typed input proxy and returns
-	 * an array of step builders (Reify DSL).
-	 */
-	optimistic<TInput, TOutput, TContext>(
-		callback: OptimisticCallback<TInput>,
-	): MutationBuilderWithOptimisticExt<TInput, TOutput, TContext>;
-}
+// =============================================================================
+// Legacy Types (for backward compatibility)
+// =============================================================================
 
 /**
  * Mutation builder state after .optimistic() is called.
  * Only .resolve() is available at this point.
+ *
+ * @deprecated Use MutationBuilderWithOptimistic from operations/index.ts
  */
 export interface MutationBuilderWithOptimisticExt<TInput, TOutput, TContext> {
-	/**
-	 * Define the resolver function.
-	 * This completes the mutation definition.
-	 */
 	resolve(fn: ResolverFn<TInput, TOutput, TContext>): MutationDef<TInput, TOutput>;
 }
 

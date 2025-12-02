@@ -289,6 +289,7 @@ export {
 export {
 	// Types
 	type Lens,
+	type LensBuilder,
 	type LensConfig,
 	type LensMutation,
 	type LensQuery,
@@ -377,7 +378,11 @@ export {
 // =============================================================================
 
 export {
+	// Legacy extraction types (backward compatibility)
 	type ExtractExtension,
+	type ExtractPluginExtensions,
+	// Registry-based extraction (for generic-aware plugins)
+	type ExtractPluginMethods,
 	type HasPlugin,
 	type IfPlugin,
 	isOptimisticPlugin,
@@ -387,15 +392,18 @@ export {
 	type MergeExtensions,
 	type MutationBuilderWithOptimisticExt,
 	type NoExtension,
+	type NoPlugins,
 	OPTIMISTIC_PLUGIN_SYMBOL,
-	type OptimisticMutationMethods,
 	// Optimistic Plugin Extension
 	type OptimisticPluginExtension,
 	type OptimisticPluginMarker,
 	type PairedPlugin,
 	// Plugin Extension Protocol
 	type PluginExtension,
+	type PluginHooks,
+	type PluginMethodRegistry,
 	type Prettify,
+	// Runtime
 	type RuntimePlugin,
 	resolveClientPlugins,
 	resolveServerPlugins,
