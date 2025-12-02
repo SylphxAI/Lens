@@ -2,7 +2,7 @@
  * Test the Lens example app
  */
 import { describe, it, expect, beforeEach } from "bun:test";
-import { server, db, type AppRouter } from "./server";
+import { app, db, type AppRouter } from "./server";
 import { createClient, inProcess } from "@sylphx/lens-client";
 import type { InferRouterClient } from "@sylphx/lens-core";
 

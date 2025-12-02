@@ -3,8 +3,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { applyPatch, coalescePatches, estimatePatchSize, OperationLog } from "./operation-log.js";
-import type { OperationLogEntry, PatchOperation } from "./types.js";
+import { applyPatch, type OperationLogEntry, type PatchOperation } from "@sylphx/lens-core";
+import { coalescePatches, estimatePatchSize, OperationLog } from "./operation-log.js";
 
 // =============================================================================
 // Test Helpers

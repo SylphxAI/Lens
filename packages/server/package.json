@@ -33,7 +33,6 @@
 		"@sylphx/lens-core": "workspace:*"
 	},
 	"devDependencies": {
-		"@sylphx/lens-client": "workspace:*",
 		"pusher": "^5.2.0",
 		"typescript": "^5.9.3",
 		"zod": "^4.1.13"

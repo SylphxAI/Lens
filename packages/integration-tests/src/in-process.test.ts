@@ -1,13 +1,21 @@
 /**
- * @sylphx/lens-client - In-Process Transport Tests
+ * @sylphx/lens-integration-tests - In-Process Transport Tests
+ *
+ * Tests that require both @sylphx/lens-client and @sylphx/lens-server.
  */
 
 import { describe, expect, it, mock } from "bun:test";
+import {
+	type ExtractServerTypes,
+	inProcess,
+	type LensServerInterface,
+	type Observable,
+	type Result,
+	type TypedTransport,
+} from "@sylphx/lens-client";
 import { entity, lens, router, t } from "@sylphx/lens-core";
 import { createServer } from "@sylphx/lens-server";
 import { z } from "zod";
-import { type ExtractServerTypes, inProcess, type LensServerInterface, type TypedTransport } from "./in-process.js";
-import type { Observable, Result } from "./types.js";
 
 // =============================================================================
 // Mock App

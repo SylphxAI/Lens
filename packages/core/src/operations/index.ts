@@ -705,7 +705,7 @@ export {
 	isRouterDef,
 	type MutationResultType,
 	type QueryResultType,
-	router,
 	type RouterDef,
 	type RouterRoutes,
+	router,
 } from "../router/index.js";

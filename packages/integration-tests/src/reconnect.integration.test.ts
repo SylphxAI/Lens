@@ -24,7 +24,7 @@ import {
 	type ReconnectSubscription,
 	type Version,
 } from "@sylphx/lens-core";
-import { coalescePatches, OperationLog } from "./operation-log.js";
+import { coalescePatches, OperationLog } from "@sylphx/lens-server";
 
 // =============================================================================
 // Test Fixtures - Simulated Server State Manager

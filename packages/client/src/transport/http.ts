@@ -279,9 +279,6 @@ export interface ServerTransport {
 	listen(server: LensServerInterface): void;
 }
 
-// Re-export for backward compatibility
-export type { LensServerInterface } from "./types.js";
-
 /**
  * Create HTTP server transport.
  *

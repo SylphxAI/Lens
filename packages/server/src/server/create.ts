@@ -489,27 +489,27 @@ class LensServerImpl<
 		};
 
 		for (const [name, def] of Object.entries(this.queries)) {
-			const meta: Record<string, unknown> = { type: "query" };
+			const meta: OperationMeta = { type: "query" };
 			// Let plugins enhance metadata
 			this.pluginManager.runEnhanceOperationMeta({
 				path: name,
 				type: "query",
-				meta,
+				meta: meta as unknown as Record<string, unknown>,
 				definition: def,
 			});
-			setNested(name, meta as OperationMeta);
+			setNested(name, meta);
 		}
 
 		for (const [name, def] of Object.entries(this.mutations)) {
-			const meta: Record<string, unknown> = { type: "mutation" };
+			const meta: OperationMeta = { type: "mutation" };
 			// Let plugins enhance metadata (e.g., optimisticPlugin adds optimistic config)
 			this.pluginManager.runEnhanceOperationMeta({
 				path: name,
 				type: "mutation",
-				meta,
+				meta: meta as unknown as Record<string, unknown>,
 				definition: def,
 			});
-			setNested(name, meta as OperationMeta);
+			setNested(name, meta);
 		}
 
 		return result;
@@ -683,8 +683,8 @@ class LensServerImpl<
 	}
 
 	private matchesEntity(obj: Record<string, unknown>, entityDef: EntityDef<string, any>): boolean {
-		const idField = entityDef._idField ?? "id";
-		return idField in obj;
+		// Check if object has an "id" field (common convention) or entity name field
+		return "id" in obj || entityDef._name! in obj;
 	}
 
 	private getOrCreateLoaderForField(
@@ -698,7 +698,12 @@ class LensServerImpl<
 				const results: unknown[] = [];
 				for (const parent of parents) {
 					try {
-						const result = await resolverDef.resolveField(fieldName, parent, {}, {});
+						const result = await resolverDef.resolveField(
+							fieldName,
+							parent as Record<string, unknown>,
+							{},
+							{},
+						);
 						results.push(result);
 					} catch {
 						results.push(null);

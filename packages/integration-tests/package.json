@@ -1,0 +1,16 @@
+{
+	"name": "@sylphx/lens-integration-tests",
+	"version": "0.0.0",
+	"private": true,
+	"description": "Integration tests for Lens packages",
+	"type": "module",
+	"scripts": {
+		"test": "bun test"
+	},
+	"devDependencies": {
+		"@sylphx/lens-client": "workspace:*",
+		"@sylphx/lens-core": "workspace:*",
+		"@sylphx/lens-server": "workspace:*",
+		"zod": "^4.1.13"
+	}
+}

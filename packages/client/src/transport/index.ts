@@ -72,11 +72,7 @@ export {
 // HTTP
 export { type HttpServerTransportOptions, type HttpTransportOptions, http } from "./http.js";
 // In-Process
-export {
-	type InProcessTransportOptions,
-	inProcess,
-	type LensServerInterface,
-} from "./in-process.js";
+export { type InProcessTransportOptions, inProcess } from "./in-process.js";
 // Route
 export {
 	type RouteByTypeConfig,

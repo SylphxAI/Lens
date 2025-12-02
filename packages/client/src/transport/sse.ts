@@ -220,7 +220,7 @@ export function sse(options: SseTransportOptions): SseTransportInstance {
 					};
 
 					// Handle custom events
-					eventSource.addEventListener("error", (event) => {
+					eventSource.addEventListener("error", (_event) => {
 						// EventSource will auto-reconnect on most errors
 						// But we track state for visibility
 						if (eventSource.readyState === EventSourceImpl.CLOSED) {

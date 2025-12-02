@@ -6,8 +6,8 @@
  */
 
 import type { LensServer } from "../server/create.js";
-import { createGraphStateManager, type GraphStateManager } from "../state/index.js";
 import { SSEHandler } from "../sse/handler.js";
+import { createGraphStateManager, type GraphStateManager } from "../state/index.js";
 import { createHTTPHandler, type HTTPHandlerOptions } from "./http.js";
 
 // =============================================================================
@@ -94,7 +94,7 @@ export function createHandler(server: LensServer, options: HandlerOptions = {}):
 	// Create SSE handler
 	const sseHandler = new SSEHandler({
 		stateManager,
-		heartbeatInterval,
+		...(heartbeatInterval !== undefined && { heartbeatInterval }),
 	});
 
 	const handler = async (request: Request): Promise<Response> => {

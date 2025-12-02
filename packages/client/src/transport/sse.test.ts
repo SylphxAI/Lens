@@ -288,7 +288,7 @@ describe("SSE Transport", () => {
 			// Should return observable
 			expect(result).toHaveProperty("subscribe");
 
-			const observable = result as { subscribe: Function };
+			const observable = result as { subscribe: (observer: unknown) => { unsubscribe: () => void } };
 			const next = mock(() => {});
 
 			observable.subscribe({ next });
@@ -317,7 +317,7 @@ describe("SSE Transport", () => {
 			});
 
 			const messages: unknown[] = [];
-			const observable = result as { subscribe: Function };
+			const observable = result as { subscribe: (observer: unknown) => { unsubscribe: () => void } };
 
 			observable.subscribe({
 				next: (r: { data: unknown }) => messages.push(r.data),
@@ -348,7 +348,7 @@ describe("SSE Transport", () => {
 				type: "subscription",
 			});
 
-			const observable = result as { subscribe: Function };
+			const observable = result as { subscribe: (observer: unknown) => { unsubscribe: () => void } };
 			const subscription = observable.subscribe({ next: () => {} });
 
 			await new Promise((r) => setTimeout(r, 10));
@@ -376,7 +376,7 @@ describe("SSE Transport", () => {
 			});
 
 			const complete = mock(() => {});
-			const observable = result as { subscribe: Function };
+			const observable = result as { subscribe: (observer: unknown) => { unsubscribe: () => void } };
 
 			observable.subscribe({ complete });
 
@@ -408,7 +408,7 @@ describe("SSE Transport", () => {
 				type: "subscription",
 			});
 
-			const observable = result as { subscribe: Function };
+			const observable = result as { subscribe: (observer: unknown) => { unsubscribe: () => void } };
 			observable.subscribe({ next: () => {} });
 
 			// Wait for connection
@@ -431,7 +431,7 @@ describe("SSE Transport", () => {
 				type: "subscription",
 			});
 
-			const observable = result as { subscribe: Function };
+			const observable = result as { subscribe: (observer: unknown) => { unsubscribe: () => void } };
 			const sub = observable.subscribe({ next: () => {} });
 
 			await new Promise((r) => setTimeout(r, 20));
@@ -455,13 +455,13 @@ describe("SSE Transport", () => {
 				id: "sub-7",
 				path: "user.watch",
 				type: "subscription",
-			}) as { subscribe: Function };
+			}) as { subscribe: (observer: unknown) => { unsubscribe: () => void } };
 
 			const result2 = transport.execute({
 				id: "sub-8",
 				path: "post.watch",
 				type: "subscription",
-			}) as { subscribe: Function };
+			}) as { subscribe: (observer: unknown) => { unsubscribe: () => void } };
 
 			result1.subscribe({ next: () => {} });
 			result2.subscribe({ next: () => {} });
@@ -491,7 +491,7 @@ describe("SSE Transport", () => {
 				id: "sub-9",
 				path: "user.watch",
 				type: "subscription",
-			}) as { subscribe: Function };
+			}) as { subscribe: (observer: unknown) => { unsubscribe: () => void } };
 
 			result.subscribe({
 				error: (err: Error) => errors.push(err),

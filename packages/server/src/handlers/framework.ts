@@ -144,7 +144,7 @@ export async function handleWebMutation(
 	request: Request,
 ): Promise<Response> {
 	try {
-		const body = await request.json();
+		const body = (await request.json()) as { input?: unknown };
 		const input = body.input;
 
 		const result = await server.execute({ path, input });

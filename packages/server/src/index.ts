@@ -93,37 +93,37 @@ export {
 // =============================================================================
 
 export {
-	// Unified Handler (HTTP + SSE)
-	createHandler,
-	type Handler,
-	type HandlerOptions,
-	// HTTP Handler
-	createHTTPHandler,
-	type HTTPHandler,
-	type HTTPHandlerOptions,
-	// SSE Handler
-	createSSEHandler,
-	type SSEHandlerOptions,
-	// WebSocket Handler
-	createWSHandler,
-	type WSHandler,
-	type WSHandlerOptions,
 	// Framework Handler Utilities
 	createFrameworkHandler,
+	// Unified Handler (HTTP + SSE)
+	createHandler,
+	// Deprecated aliases
+	createHTTPAdapter,
+	// HTTP Handler
+	createHTTPHandler,
 	createServerClientProxy,
+	createSSEAdapter,
+	// SSE Handler
+	createSSEHandler,
+	createWSAdapter,
+	// WebSocket Handler
+	createWSHandler,
 	type FrameworkHandlerOptions,
+	type Handler,
+	type HandlerOptions,
+	type HTTPAdapter,
+	type HTTPAdapterOptions,
+	type HTTPHandler,
+	type HTTPHandlerOptions,
 	handleWebMutation,
 	handleWebQuery,
 	handleWebSSE,
-	// Deprecated aliases
-	createHTTPAdapter,
-	createSSEAdapter,
-	createWSAdapter,
-	type HTTPAdapter,
-	type HTTPAdapterOptions,
 	type SSEAdapterOptions,
+	type SSEHandlerOptions,
 	type WSAdapter,
 	type WSAdapterOptions,
+	type WSHandler,
+	type WSHandlerOptions,
 } from "./handlers/index.js";
 
 // =============================================================================

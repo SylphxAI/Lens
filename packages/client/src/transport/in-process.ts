@@ -18,9 +18,6 @@ import type {
 // Types
 // =============================================================================
 
-// Re-export LensServerInterface for backward compatibility
-export type { LensServerInterface } from "./types.js";
-
 /**
  * Extract _types from a server (if present).
  * Handles both `{ _types: T }` and intersection types.

@@ -45,7 +45,6 @@
 	},
 	"devDependencies": {
 		"@preact/signals-core": "^1.8.0",
-		"@sylphx/lens-server": "workspace:*",
 		"typescript": "^5.9.3",
 		"zod": "^4.1.13"
 	}
