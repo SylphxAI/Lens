@@ -57,14 +57,34 @@ interface MutationDefLike {
 
 /**
  * Extract entity type name from return spec.
+ *
+ * Entity definitions can have different formats:
+ * 1. Direct entity: { _name: "User", fields: {...}, "~entity": { name: "User" } }
+ * 2. Return spec wrapper: { _tag: "entity", entityDef: { _name: "User" } }
+ * 3. Array: { _tag: "array", element: <entity> }
  */
 function getEntityTypeName(returnSpec: unknown): string | undefined {
 	if (!returnSpec) return undefined;
+	if (typeof returnSpec !== "object") return undefined;
 
-	if (typeof returnSpec === "object" && "_tag" in returnSpec) {
-		const spec = returnSpec as { _tag: string; entityDef?: { _name?: string }; element?: unknown };
-		if (spec._tag === "entity" && spec.entityDef?._name) {
-			return spec.entityDef._name;
+	const spec = returnSpec as Record<string, unknown>;
+
+	// Direct entity definition with _name
+	if ("_name" in spec && typeof spec._name === "string") {
+		return spec._name;
+	}
+
+	// ~entity marker (entity definitions have this)
+	if ("~entity" in spec) {
+		const entity = spec["~entity"] as { name?: string } | undefined;
+		if (entity?.name) return entity.name;
+	}
+
+	// Return spec wrapper with _tag
+	if ("_tag" in spec) {
+		if (spec._tag === "entity" && spec.entityDef) {
+			const entityDef = spec.entityDef as { _name?: string };
+			if (entityDef._name) return entityDef._name;
 		}
 		if (spec._tag === "array" && spec.element) {
 			return getEntityTypeName(spec.element);
@@ -83,14 +103,46 @@ function getInputFields(schema: { shape?: Record<string, unknown> } | undefined)
 }
 
 /**
+ * Create a Reify $input reference.
+ */
+function $input(field: string): { $input: string } {
+	return { $input: field };
+}
+
+/**
+ * Create a Reify Pipeline step.
+ */
+interface ReifyPipelineStep {
+	$do: string;
+	$with: Record<string, unknown>;
+	$as: string;
+}
+
+/**
+ * Create a Reify Pipeline.
+ */
+interface ReifyPipeline {
+	$pipe: ReifyPipelineStep[];
+}
+
+/**
  * Convert sugar syntax to Reify Pipeline.
  *
  * Sugar syntax:
- * - "merge" → merge input fields into entity
- * - "create" → add new entity from output
- * - "delete" → remove entity by input.id
+ * - "merge" → entity.update with input fields
+ * - "create" → entity.create from output
+ * - "delete" → entity.delete by input.id
  *
  * Returns the original value if already a Pipeline.
+ *
+ * Output format (Reify DSL):
+ * {
+ *   "$pipe": [{
+ *     "$do": "entity.create",
+ *     "$with": { "type": "Entity", "field": { "$input": "field" } },
+ *     "$as": "result"
+ *   }]
+ * }
  */
 function sugarToPipeline(
 	sugar: OptimisticDSL | undefined,
@@ -103,23 +155,90 @@ function sugarToPipeline(
 	const entity = entityType ?? "Entity";
 
 	switch (sugar) {
-		case "merge":
-			return [{ type: "merge", target: { entity, id: ["input", "id"] }, fields: inputFields }];
-		case "create":
-			return [{ type: "add", entity, data: ["output"] }];
-		case "delete":
-			return [{ type: "remove", entity, id: ["input", "id"] }];
+		case "merge": {
+			// entity.update('Entity', { id: input.id, ...fields })
+			const updateData: Record<string, unknown> = {
+				type: entity,
+				id: $input("id"),
+			};
+			// Add all input fields as $input references
+			for (const field of inputFields) {
+				if (field !== "id") {
+					updateData[field] = $input(field);
+				}
+			}
+			const pipeline: ReifyPipeline = {
+				$pipe: [
+					{
+						$do: "entity.update",
+						$with: updateData,
+						$as: "result",
+					},
+				],
+			};
+			return pipeline as unknown as Pipeline;
+		}
+		case "create": {
+			// entity.create('Entity', { id: temp(), ...from output })
+			// For create, we use a special marker that client interprets as "use mutation output"
+			const pipeline: ReifyPipeline = {
+				$pipe: [
+					{
+						$do: "entity.create",
+						$with: {
+							type: entity,
+							id: { $temp: true },
+							$fromOutput: true, // Special marker: use mutation output data
+						},
+						$as: "result",
+					},
+				],
+			};
+			return pipeline as unknown as Pipeline;
+		}
+		case "delete": {
+			// entity.delete('Entity', { id: input.id })
+			const pipeline: ReifyPipeline = {
+				$pipe: [
+					{
+						$do: "entity.delete",
+						$with: {
+							type: entity,
+							id: { id: $input("id") },
+						},
+						$as: "result",
+					},
+				],
+			};
+			return pipeline as unknown as Pipeline;
+		}
 		default:
 			// Handle { merge: {...} } sugar
 			if (typeof sugar === "object" && "merge" in sugar) {
-				return [
-					{
-						type: "merge",
-						target: { entity, id: ["input", "id"] },
-						fields: inputFields,
-						extra: sugar.merge,
-					},
-				];
+				const updateData: Record<string, unknown> = {
+					type: entity,
+					id: $input("id"),
+				};
+				// Add input fields
+				for (const field of inputFields) {
+					if (field !== "id") {
+						updateData[field] = $input(field);
+					}
+				}
+				// Add extra static fields from merge object
+				for (const [key, value] of Object.entries(sugar.merge)) {
+					updateData[key] = value;
+				}
+				const pipeline: ReifyPipeline = {
+					$pipe: [
+						{
+							$do: "entity.update",
+							$with: updateData,
+							$as: "result",
+						},
+					],
+				};
+				return pipeline as unknown as Pipeline;
 			}
 			return undefined;
 	}
