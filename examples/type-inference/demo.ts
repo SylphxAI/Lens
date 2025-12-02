@@ -7,7 +7,7 @@
  * Run: bun run examples/type-inference/demo.ts
  */
 
-import { createServer } from "@sylphx/lens-server";
+import { createServer, optimisticPlugin } from "@sylphx/lens-server";
 import { createClient, inProcess } from "@sylphx/lens-client";
 import { entity, lens, router, t } from "@sylphx/lens-core";
 import { z } from "zod";
@@ -65,7 +65,9 @@ interface AppContext {
 
 console.log("🔧 Creating typed builders with lens<AppContext>()...\n");
 
-const { query, mutation } = lens<AppContext>();
+const { query, mutation, plugins } = lens<AppContext>({
+	plugins: [optimisticPlugin()],
+});
 
 // =============================================================================
 // 4. Define Operations with .returns() for Type Inference
@@ -257,6 +259,7 @@ console.log("🚀 Creating server...\n");
 
 const server = createServer({
 	router: appRouter,
+	plugins,
 	context: () => ({
 		db: {
 			users: new Map([

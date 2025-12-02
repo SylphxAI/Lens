@@ -12,7 +12,7 @@
 import { entity, t, router, lens } from "@sylphx/lens-core";
 import { entity as e, temp, ref, now, branch } from "@sylphx/reify";
 // Note: `e` is the Reify entity helper, `entity` is the Lens entity definition builder
-import { createServer } from "@sylphx/lens-server";
+import { createServer, optimisticPlugin } from "@sylphx/lens-server";
 import { z } from "zod";
 
 // =============================================================================
@@ -95,7 +95,9 @@ const db = {
 // Typed Builders (functional pattern - define context once)
 // =============================================================================
 
-const { query, mutation, resolver } = lens<AppContext>();
+const { query, mutation, resolver, plugins } = lens<AppContext>({
+	plugins: [optimisticPlugin()],
+});
 
 // =============================================================================
 // Field Resolvers (pure values - no mutable registry)
@@ -436,6 +438,7 @@ export const server = createServer({
 	router: appRouter,
 	entities: { User, Post, Comment, Session, Message },
 	resolvers: [userResolver, postResolver, commentResolver],  // Array of pure values
+	plugins,  // From lens({ plugins })
 	context: () => ({
 		db,
 		currentUser: db.users.get("1") ?? null,

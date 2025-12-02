@@ -1,8 +1,8 @@
 /**
  * Example Lens Server
  */
-import { entity, t, query, mutation, router } from "@sylphx/lens-core";
-import { createServer } from "@sylphx/lens-server";
+import { entity, t, lens, router } from "@sylphx/lens-core";
+import { createServer, optimisticPlugin } from "@sylphx/lens-server";
 import { z } from "zod";
 
 // =============================================================================
@@ -48,11 +48,19 @@ db.users.set("user-2", { id: "user-2", name: "Bob", email: "bob@example.com", cr
 db.posts.set("post-1", { id: "post-1", title: "Hello World", content: "My first post", published: true, authorId: "user-1", createdAt: new Date() });
 
 // =============================================================================
+// Typed Builders with Plugin
+// =============================================================================
+
+const { query, mutation, plugins } = lens<AppContext>({
+	plugins: [optimisticPlugin()],
+});
+
+// =============================================================================
 // Operations
 // =============================================================================
 
 const userRouter = router({
-	get: query<AppContext>()
+	get: query()
 		.input(z.object({ id: z.string() }))
 		.returns(User)
 		.resolve(({ input }) => {
@@ -61,11 +69,11 @@ const userRouter = router({
 			return user;
 		}),
 
-	list: query<AppContext>()
+	list: query()
 		.returns([User])
 		.resolve(() => Array.from(db.users.values())),
 
-	create: mutation<AppContext>()
+	create: mutation()
 		.input(z.object({ name: z.string(), email: z.string() }))
 		.returns(User)
 		.optimistic("create")
@@ -78,7 +86,7 @@ const userRouter = router({
 });
 
 const postRouter = router({
-	get: query<AppContext>()
+	get: query()
 		.input(z.object({ id: z.string() }))
 		.returns(Post)
 		.resolve(({ input }) => {
@@ -87,18 +95,18 @@ const postRouter = router({
 			return post;
 		}),
 
-	list: query<AppContext>()
+	list: query()
 		.returns([Post])
 		.resolve(() => Array.from(db.posts.values())),
 
-	byAuthor: query<AppContext>()
+	byAuthor: query()
 		.input(z.object({ authorId: z.string() }))
 		.returns([Post])
 		.resolve(({ input }) =>
 			Array.from(db.posts.values()).filter(p => p.authorId === input.authorId)
 		),
 
-	create: mutation<AppContext>()
+	create: mutation()
 		.input(z.object({ title: z.string(), content: z.string(), authorId: z.string() }))
 		.returns(Post)
 		.optimistic("create")
@@ -109,7 +117,7 @@ const postRouter = router({
 			return post;
 		}),
 
-	update: mutation<AppContext>()
+	update: mutation()
 		.input(z.object({ id: z.string(), title: z.string().optional(), content: z.string().optional() }))
 		.returns(Post)
 		.optimistic("merge")
@@ -121,7 +129,7 @@ const postRouter = router({
 			return updated;
 		}),
 
-	publish: mutation<AppContext>()
+	publish: mutation()
 		.input(z.object({ id: z.string() }))
 		.returns(Post)
 		.optimistic({ merge: { published: true } })
@@ -132,7 +140,7 @@ const postRouter = router({
 			return post;
 		}),
 
-	delete: mutation<AppContext>()
+	delete: mutation()
 		.input(z.object({ id: z.string() }))
 		.resolve(({ input }) => {
 			const existed = db.posts.delete(input.id);
@@ -158,6 +166,7 @@ export type AppRouter = typeof appRouter;
 export const server = createServer({
 	router: appRouter,
 	entities: { User, Post },
+	plugins,
 	context: () => ({
 		currentUser: { id: "user-1", name: "Alice" },
 	}),
