@@ -1,12 +1,11 @@
 /**
- * @sylphx/lens-server - Subscription Transports
+ * @sylphx/lens-server - Subscription Helpers
  *
- * Transport implementations for delivering subscription updates.
+ * Client-side helpers for subscribing to updates via third-party services.
  */
 
 export {
 	createPusherSubscription,
-	pusher,
 	type PusherLike,
 	type PusherTransportOptions,
 } from "./pusher.js";

@@ -1,118 +1,13 @@
 /**
- * @sylphx/lens-server - Pusher Transport Tests
+ * @sylphx/lens-server - Pusher Subscription Helper Tests
  */
 
 import { describe, expect, it } from "bun:test";
-import { createPusherSubscription, pusher, type PusherLike } from "./pusher.js";
+import { createPusherSubscription, type PusherLike } from "./pusher.js";
 
 // =============================================================================
-// Tests
+// createPusherSubscription Tests
 // =============================================================================
-
-describe("pusher transport", () => {
-	it("creates transport with correct name", () => {
-		const transport = pusher({
-			appId: "test-app-id",
-			key: "test-key",
-			secret: "test-secret",
-			cluster: "us2",
-		});
-
-		expect(transport.name).toBe("pusher");
-	});
-
-	it("has required transport methods", () => {
-		const transport = pusher({
-			appId: "test-app-id",
-			key: "test-key",
-			secret: "test-secret",
-			cluster: "us2",
-		});
-
-		expect(typeof transport.init).toBe("function");
-		expect(typeof transport.publish).toBe("function");
-		expect(typeof transport.subscribe).toBe("function");
-		expect(typeof transport.close).toBe("function");
-	});
-
-	it("throws on publish before init", async () => {
-		const transport = pusher({
-			appId: "test-app-id",
-			key: "test-key",
-			secret: "test-secret",
-			cluster: "us2",
-		});
-
-		await expect(transport.publish("test-channel", { data: "test" })).rejects.toThrow(
-			"Pusher transport not initialized",
-		);
-	});
-
-	it("subscribe returns unsubscribe function", () => {
-		const transport = pusher({
-			appId: "test-app-id",
-			key: "test-key",
-			secret: "test-secret",
-			cluster: "us2",
-		});
-
-		// Subscribe doesn't require init for Pusher (clients subscribe directly)
-		const unsubscribe = transport.subscribe("client-1", "test-channel", () => {});
-
-		expect(typeof unsubscribe).toBe("function");
-
-		// Calling unsubscribe should not throw
-		expect(() => unsubscribe()).not.toThrow();
-	});
-
-	it("close does not throw", async () => {
-		const transport = pusher({
-			appId: "test-app-id",
-			key: "test-key",
-			secret: "test-secret",
-			cluster: "us2",
-		});
-
-		await expect(transport.close?.()).resolves.toBeUndefined();
-	});
-
-	it("uses custom channel prefix", () => {
-		const transport = pusher({
-			appId: "test-app-id",
-			key: "test-key",
-			secret: "test-secret",
-			cluster: "us2",
-			channelPrefix: "custom-",
-		});
-
-		expect(transport.name).toBe("pusher");
-		// Channel prefix is used internally - we verify it's accepted without error
-	});
-
-	it("accepts useTLS option", () => {
-		const transport = pusher({
-			appId: "test-app-id",
-			key: "test-key",
-			secret: "test-secret",
-			cluster: "us2",
-			useTLS: false,
-		});
-
-		expect(transport.name).toBe("pusher");
-	});
-
-	it("accepts debug option", () => {
-		const transport = pusher({
-			appId: "test-app-id",
-			key: "test-key",
-			secret: "test-secret",
-			cluster: "us2",
-			debug: true,
-		});
-
-		expect(transport.name).toBe("pusher");
-	});
-});
 
 describe("createPusherSubscription", () => {
 	it("subscribes to channel with prefix", () => {

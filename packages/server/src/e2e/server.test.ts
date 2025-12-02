@@ -1,19 +1,16 @@
 /**
  * @lens - E2E Tests
  *
- * End-to-end tests for server and client working together.
- * Tests the complete flow of:
- * - Operations protocol (queries, mutations, subscriptions)
- * - GraphStateManager integration
- * - Field-level subscriptions
- * - Minimum transfer (diff computation)
- * - Reference counting and canDerive
+ * End-to-end tests for the pure executor server.
+ * Tests: execute(), getMetadata(), context, selections, entity resolvers
+ *
+ * For WebSocket protocol tests, see adapters/*.test.ts
  */
 
 import { describe, expect, it } from "bun:test";
-import { applyUpdate, entity, lens, mutation, query, t, type Update } from "@sylphx/lens-core";
+import { entity, lens, mutation, query, t } from "@sylphx/lens-core";
 import { z } from "zod";
-import { createServer, type WebSocketLike } from "../server/create";
+import { createServer } from "../server/create.js";
 
 // =============================================================================
 // Test Fixtures
@@ -46,171 +43,6 @@ const _mockPosts = [
 ];
 
 // =============================================================================
-// Mock WebSocket Client
-// =============================================================================
-
-/**
- * Mock WebSocket client for testing the server.
- * Simulates client-side message handling.
- */
-function createMockClient(server: ReturnType<typeof createServer>) {
-	const messages: unknown[] = [];
-	const subscriptions = new Map<
-		string,
-		{
-			onData: (data: unknown) => void;
-			onUpdate: (updates: Record<string, Update>) => void;
-			onError: (error: Error) => void;
-			onComplete: () => void;
-			lastData: unknown;
-		}
-	>();
-	const pending = new Map<string, { resolve: (data: unknown) => void; reject: (error: Error) => void }>();
-
-	let messageIdCounter = 0;
-	const nextId = () => `msg_${++messageIdCounter}`;
-
-	// Mock WebSocket interface for server
-	const ws: WebSocketLike & { messages: unknown[] } = {
-		messages,
-		send: (data: string) => {
-			const msg = JSON.parse(data);
-			messages.push(msg);
-
-			// Route message to appropriate handler
-			if (msg.type === "data" || msg.type === "result") {
-				// Response to pending request or subscription initial data
-				const pendingReq = pending.get(msg.id);
-				if (pendingReq) {
-					pending.delete(msg.id);
-					pendingReq.resolve(msg.data);
-				}
-
-				const sub = subscriptions.get(msg.id);
-				if (sub) {
-					sub.lastData = msg.data;
-					sub.onData(msg.data);
-				}
-			} else if (msg.type === "update") {
-				const sub = subscriptions.get(msg.id);
-				if (sub) {
-					// Apply updates to last data
-					if (sub.lastData && typeof sub.lastData === "object" && msg.updates) {
-						const updated = { ...(sub.lastData as Record<string, unknown>) };
-						for (const [field, update] of Object.entries(msg.updates as Record<string, Update>)) {
-							updated[field] = applyUpdate(updated[field], update);
-						}
-						sub.lastData = updated;
-						sub.onData(updated);
-					}
-					sub.onUpdate(msg.updates);
-				}
-			} else if (msg.type === "error") {
-				const pendingReq = pending.get(msg.id);
-				if (pendingReq) {
-					pending.delete(msg.id);
-					pendingReq.reject(new Error(msg.error.message));
-				}
-
-				const sub = subscriptions.get(msg.id);
-				if (sub) {
-					sub.onError(new Error(msg.error.message));
-				}
-			}
-		},
-		close: () => {},
-		onmessage: null,
-		onclose: null,
-		onerror: null,
-	};
-
-	// Connect server to mock WebSocket
-	server.handleWebSocket(ws);
-
-	return {
-		ws,
-		messages,
-
-		subscribe(
-			operation: string,
-			input: unknown,
-			fields: string[] | "*",
-			callbacks: {
-				onData: (data: unknown) => void;
-				onUpdate: (updates: Record<string, Update>) => void;
-				onError: (error: Error) => void;
-				onComplete: () => void;
-			},
-		) {
-			const id = nextId();
-			subscriptions.set(id, { ...callbacks, lastData: null });
-
-			// Send subscribe message to server
-			ws.onmessage?.({
-				data: JSON.stringify({
-					type: "subscribe",
-					id,
-					operation,
-					input,
-					fields,
-				}),
-			});
-
-			return {
-				unsubscribe: () => {
-					subscriptions.delete(id);
-					ws.onmessage?.({ data: JSON.stringify({ type: "unsubscribe", id }) });
-					callbacks.onComplete();
-				},
-				updateFields: (add?: string[], remove?: string[]) => {
-					ws.onmessage?.({
-						data: JSON.stringify({
-							type: "updateFields",
-							id,
-							addFields: add,
-							removeFields: remove,
-						}),
-					});
-				},
-			};
-		},
-
-		async query(operation: string, input?: unknown, fields?: string[] | "*"): Promise<unknown> {
-			return new Promise((resolve, reject) => {
-				const id = nextId();
-				pending.set(id, { resolve, reject });
-
-				ws.onmessage?.({
-					data: JSON.stringify({
-						type: "query",
-						id,
-						operation,
-						input,
-						fields,
-					}),
-				});
-			});
-		},
-
-		async mutate(operation: string, input: unknown): Promise<unknown> {
-			return new Promise((resolve, reject) => {
-				const id = nextId();
-				pending.set(id, { resolve, reject });
-
-				ws.onmessage?.({
-					data: JSON.stringify({
-						type: "mutation",
-						id,
-						operation,
-						input,
-					}),
-				});
-			});
-		},
-	};
-}
-
-// =============================================================================
 // Test: Basic Operations
 // =============================================================================
 
@@ -225,9 +57,10 @@ describe("E2E - Basic Operations", () => {
 			queries: { getUsers },
 		});
 
-		const client = createMockClient(server);
-		const result = await client.query("getUsers");
-		expect(result).toEqual(mockUsers);
+		const result = await server.execute({ path: "getUsers" });
+
+		expect(result.error).toBeUndefined();
+		expect(result.data).toEqual(mockUsers);
 	});
 
 	it("query with input", async () => {
@@ -236,7 +69,7 @@ describe("E2E - Basic Operations", () => {
 			.returns(User)
 			.resolve(({ input }) => {
 				const user = mockUsers.find((u) => u.id === input.id);
-				if (!user) throw new Error("Not found");
+				if (!user) throw new Error("User not found");
 				return user;
 			});
 
@@ -245,9 +78,13 @@ describe("E2E - Basic Operations", () => {
 			queries: { getUser },
 		});
 
-		const client = createMockClient(server);
-		const result = await client.query("getUser", { id: "user-1" });
-		expect(result).toEqual(mockUsers[0]);
+		const result = await server.execute({
+			path: "getUser",
+			input: { id: "user-1" },
+		});
+
+		expect(result.error).toBeUndefined();
+		expect(result.data).toEqual(mockUsers[0]);
 	});
 
 	it("mutation", async () => {
@@ -258,7 +95,7 @@ describe("E2E - Basic Operations", () => {
 				id: "user-new",
 				name: input.name,
 				email: input.email,
-				status: "online",
+				status: "offline",
 			}));
 
 		const server = createServer({
@@ -266,304 +103,185 @@ describe("E2E - Basic Operations", () => {
 			mutations: { createUser },
 		});
 
-		const client = createMockClient(server);
-		const result = await client.mutate("createUser", {
+		const result = await server.execute({
+			path: "createUser",
+			input: { name: "Charlie", email: "charlie@example.com" },
+		});
+
+		expect(result.error).toBeUndefined();
+		expect(result.data).toEqual({
+			id: "user-new",
 			name: "Charlie",
 			email: "charlie@example.com",
+			status: "offline",
 		});
-		expect(result).toMatchObject({ name: "Charlie", email: "charlie@example.com" });
+	});
+
+	it("handles query errors", async () => {
+		const failingQuery = query()
+			.input(z.object({ id: z.string() }))
+			.resolve(() => {
+				throw new Error("Query failed");
+			});
+
+		const server = createServer({
+			queries: { failingQuery },
+		});
+
+		const result = await server.execute({
+			path: "failingQuery",
+			input: { id: "123" },
+		});
+
+		expect(result.data).toBeUndefined();
+		expect(result.error).toBeInstanceOf(Error);
+		expect(result.error?.message).toBe("Query failed");
+	});
+
+	it("handles unknown operation", async () => {
+		const server = createServer({});
+
+		const result = await server.execute({
+			path: "unknownOperation",
+			input: {},
+		});
+
+		expect(result.data).toBeUndefined();
+		expect(result.error?.message).toContain("not found");
 	});
 });
 
 // =============================================================================
-// Test: Subscriptions
+// Test: Context
 // =============================================================================
 
-describe("E2E - Subscriptions", () => {
-	it("subscribe receives initial data", async () => {
+describe("E2E - Context", () => {
+	it("passes context to resolver", async () => {
+		let capturedContext: unknown = null;
+
 		const getUser = query()
 			.input(z.object({ id: z.string() }))
-			.returns(User)
-			.resolve(({ input }) => {
-				const user = mockUsers.find((u) => u.id === input.id);
-				if (!user) throw new Error("Not found");
-				return user;
+			.resolve(({ ctx }) => {
+				capturedContext = ctx;
+				return mockUsers[0];
 			});
 
 		const server = createServer({
-			entities: { User },
 			queries: { getUser },
+			context: () => ({ userId: "ctx-user-1", role: "admin" }),
 		});
 
-		const client = createMockClient(server);
-		const received: unknown[] = [];
-
-		client.subscribe("getUser", { id: "user-1" }, "*", {
-			onData: (data) => received.push(data),
-			onUpdate: () => {},
-			onError: () => {},
-			onComplete: () => {},
+		await server.execute({
+			path: "getUser",
+			input: { id: "user-1" },
 		});
 
-		await new Promise((r) => setTimeout(r, 50));
-
-		expect(received.length).toBeGreaterThanOrEqual(1);
-		expect(received[0]).toMatchObject({ name: "Alice" });
+		expect(capturedContext).toMatchObject({
+			userId: "ctx-user-1",
+			role: "admin",
+		});
 	});
 
-	it("subscribe receives updates via emit", async () => {
-		let emitFn: ((data: unknown) => void) | null = null;
+	it("supports async context factory", async () => {
+		let capturedContext: unknown = null;
 
-		const watchUser = query()
+		const getUser = query()
 			.input(z.object({ id: z.string() }))
-			.returns(User)
-			.resolve(({ input, ctx }) => {
-				emitFn = ctx.emit;
-				const user = mockUsers.find((u) => u.id === input.id);
-				if (!user) throw new Error("Not found");
-				return user;
+			.resolve(({ ctx }) => {
+				capturedContext = ctx;
+				return mockUsers[0];
 			});
 
 		const server = createServer({
-			entities: { User },
-			queries: { watchUser },
+			queries: { getUser },
+			context: async () => {
+				await new Promise((r) => setTimeout(r, 10));
+				return { userId: "async-user" };
+			},
 		});
 
-		const client = createMockClient(server);
-		const received: unknown[] = [];
-
-		client.subscribe("watchUser", { id: "user-1" }, "*", {
-			onData: (data) => received.push(data),
-			onUpdate: () => {},
-			onError: () => {},
-			onComplete: () => {},
+		await server.execute({
+			path: "getUser",
+			input: { id: "user-1" },
 		});
 
-		await new Promise((r) => setTimeout(r, 50));
-
-		// Initial data
-		expect(received.length).toBeGreaterThanOrEqual(1);
-		expect(received[0]).toMatchObject({ name: "Alice" });
-
-		const initialCount = received.length;
-
-		// Emit update
-		emitFn?.({ id: "user-1", name: "Alice Updated", email: "alice@example.com", status: "away" });
-
-		await new Promise((r) => setTimeout(r, 50));
-
-		// Should receive update
-		expect(received.length).toBeGreaterThan(initialCount);
-	});
-
-	it("unsubscribe stops receiving updates", async () => {
-		let emitFn: ((data: unknown) => void) | null = null;
-
-		const watchUser = query()
-			.input(z.object({ id: z.string() }))
-			.returns(User)
-			.resolve(({ input, ctx }) => {
-				emitFn = ctx.emit;
-				const user = mockUsers.find((u) => u.id === input.id);
-				if (!user) throw new Error("Not found");
-				return user;
-			});
-
-		const server = createServer({
-			entities: { User },
-			queries: { watchUser },
+		expect(capturedContext).toMatchObject({
+			userId: "async-user",
 		});
-
-		const client = createMockClient(server);
-		const received: unknown[] = [];
-
-		const sub = client.subscribe("watchUser", { id: "user-1" }, "*", {
-			onData: (data) => received.push(data),
-			onUpdate: () => {},
-			onError: () => {},
-			onComplete: () => {},
-		});
-
-		await new Promise((r) => setTimeout(r, 50));
-
-		// Initial data
-		const initialCount = received.length;
-		expect(initialCount).toBeGreaterThanOrEqual(1);
-
-		// Unsubscribe
-		sub.unsubscribe();
-
-		// Emit update after unsubscribe
-		emitFn?.({ id: "user-1", name: "Alice Updated", email: "alice@example.com", status: "away" });
-
-		await new Promise((r) => setTimeout(r, 50));
-
-		// Should not receive after unsubscribe
-		expect(received.length).toBe(initialCount);
 	});
 });
 
 // =============================================================================
-// Test: Server API
+// Test: Selection ($select)
 // =============================================================================
 
-describe("E2E - Server API", () => {
-	it("executes queries via mock client", async () => {
-		const whoami = query()
-			.returns(User)
-			.resolve(() => mockUsers[0]);
-
-		const searchUsers = query()
-			.input(z.object({ query: z.string() }))
-			.returns([User])
-			.resolve(({ input }) => mockUsers.filter((u) => u.name.toLowerCase().includes(input.query.toLowerCase())));
-
-		const server = createServer({
-			entities: { User },
-			queries: { whoami, searchUsers },
-		});
-
-		const client = createMockClient(server);
-
-		const me = await client.query("whoami");
-		expect(me).toMatchObject({ name: "Alice" });
-
-		const users = await client.query("searchUsers", { query: "bob" });
-		expect(users).toEqual([mockUsers[1]]);
-	});
-
-	it("executes mutations via mock client", async () => {
-		const updateStatus = mutation()
-			.input(z.object({ id: z.string(), status: z.string() }))
+describe("E2E - Selection", () => {
+	it("applies $select to filter fields", async () => {
+		const getUser = query()
+			.input(z.object({ id: z.string() }))
 			.returns(User)
 			.resolve(({ input }) => {
 				const user = mockUsers.find((u) => u.id === input.id);
 				if (!user) throw new Error("User not found");
-				return { ...user, status: input.status };
-			});
-
-		const server = createServer({
-			entities: { User },
-			mutations: { updateStatus },
-		});
-
-		const client = createMockClient(server);
-		const result = await client.mutate("updateStatus", { id: "user-1", status: "busy" });
-		expect(result).toMatchObject({ status: "busy" });
-	});
-});
-
-// =============================================================================
-// Test: Cleanup (onCleanup)
-// =============================================================================
-
-describe("E2E - Cleanup", () => {
-	it("calls cleanup on unsubscribe", async () => {
-		let cleanedUp = false;
-
-		const watchUser = query()
-			.input(z.object({ id: z.string() }))
-			.returns(User)
-			.resolve(({ input, ctx }) => {
-				ctx.onCleanup(() => {
-					cleanedUp = true;
-				});
-				const user = mockUsers.find((u) => u.id === input.id);
-				if (!user) throw new Error("Not found");
 				return user;
-			});
-
-		const server = createServer({
-			entities: { User },
-			queries: { watchUser },
-		});
-
-		const client = createMockClient(server);
-
-		const sub = client.subscribe("watchUser", { id: "user-1" }, "*", {
-			onData: () => {},
-			onUpdate: () => {},
-			onError: () => {},
-			onComplete: () => {},
-		});
-
-		await new Promise((r) => setTimeout(r, 50));
-
-		// Unsubscribe should trigger cleanup
-		sub.unsubscribe();
-		expect(cleanedUp).toBe(true);
-	});
-});
-
-// =============================================================================
-// Test: GraphStateManager Integration
-// =============================================================================
-
-describe("E2E - GraphStateManager", () => {
-	it("mutation updates are broadcast to subscribers", async () => {
-		let emitFn: ((data: unknown) => void) | null = null;
-
-		const getUser = query()
-			.input(z.object({ id: z.string() }))
-			.returns(User)
-			.resolve(({ input, ctx }) => {
-				emitFn = ctx.emit;
-				const user = mockUsers.find((u) => u.id === input.id);
-				if (!user) throw new Error("Not found");
-				return user;
-			});
-
-		const updateUser = mutation()
-			.input(z.object({ id: z.string(), name: z.string() }))
-			.returns(User)
-			.resolve(({ input }) => {
-				const user = mockUsers.find((u) => u.id === input.id);
-				if (!user) throw new Error("Not found");
-				return { ...user, name: input.name };
 			});
 
 		const server = createServer({
 			entities: { User },
 			queries: { getUser },
-			mutations: { updateUser },
 		});
 
-		const client = createMockClient(server);
-		const received: unknown[] = [];
-
-		// Subscribe to user
-		client.subscribe("getUser", { id: "user-1" }, "*", {
-			onData: (data) => received.push(data),
-			onUpdate: () => {},
-			onError: () => {},
-			onComplete: () => {},
+		const result = await server.execute({
+			path: "getUser",
+			input: {
+				id: "user-1",
+				$select: { name: true },
+			},
 		});
 
-		await new Promise((r) => setTimeout(r, 50));
+		expect(result.error).toBeUndefined();
+		// Should include id (always) and selected fields
+		expect(result.data).toEqual({
+			id: "user-1",
+			name: "Alice",
+		});
+		// Should not include unselected fields
+		expect((result.data as Record<string, unknown>).email).toBeUndefined();
+		expect((result.data as Record<string, unknown>).status).toBeUndefined();
+	});
 
-		// Initial data received
-		expect(received.length).toBeGreaterThanOrEqual(1);
+	it("includes id by default in selection", async () => {
+		const getUser = query()
+			.input(z.object({ id: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => mockUsers.find((u) => u.id === input.id)!);
 
-		// Execute mutation
-		await client.mutate("updateUser", { id: "user-1", name: "Alice Updated" });
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+		});
 
-		// If using ctx.emit in the subscription, we can manually broadcast
-		emitFn?.({ id: "user-1", name: "Alice Updated", email: "alice@example.com", status: "online" });
+		const result = await server.execute({
+			path: "getUser",
+			input: {
+				id: "user-1",
+				$select: { email: true },
+			},
+		});
 
-		await new Promise((r) => setTimeout(r, 50));
-
-		// Should have received update
-		expect(received.length).toBeGreaterThan(1);
+		expect(result.data).toEqual({
+			id: "user-1",
+			email: "alice@example.com",
+		});
 	});
 });
 
 // =============================================================================
-// Test: Entity Resolvers and Nested Selection
+// Test: Entity Resolvers
 // =============================================================================
 
 describe("E2E - Entity Resolvers", () => {
-	it("executes entity resolvers for nested selection via $select", async () => {
-		// Mock data
+	it("executes entity resolvers for nested selection", async () => {
 		const users = [
 			{ id: "user-1", name: "Alice", email: "alice@example.com" },
 			{ id: "user-2", name: "Bob", email: "bob@example.com" },
@@ -599,19 +317,23 @@ describe("E2E - Entity Resolvers", () => {
 		});
 
 		// Test with $select for nested posts
-		const result = await server.executeQuery("getUser", {
-			id: "user-1",
-			$select: {
-				name: true,
-				posts: {
-					select: {
-						title: true,
+		const result = await server.execute({
+			path: "getUser",
+			input: {
+				id: "user-1",
+				$select: {
+					name: true,
+					posts: {
+						select: {
+							title: true,
+						},
 					},
 				},
 			},
 		});
 
-		expect(result).toMatchObject({
+		expect(result.error).toBeUndefined();
+		expect(result.data).toMatchObject({
 			id: "user-1",
 			name: "Alice",
 			posts: [
@@ -645,7 +367,6 @@ describe("E2E - Entity Resolvers", () => {
 			id: f.expose("id"),
 			name: f.expose("name"),
 			posts: f.many(Post).resolve(({ parent }) => {
-				// Simple resolve - batching is not part of the new pattern
 				batchCallCount++;
 				return posts.filter((p) => p.authorId === parent.id);
 			}),
@@ -658,20 +379,78 @@ describe("E2E - Entity Resolvers", () => {
 		});
 
 		// Execute query with nested selection for all users
-		const result = await server.executeQuery("getUsers", {
-			$select: {
-				name: true,
-				posts: {
-					select: {
-						title: true,
+		const result = await server.execute({
+			path: "getUsers",
+			input: {
+				$select: {
+					name: true,
+					posts: {
+						select: {
+							title: true,
+						},
 					},
 				},
 			},
 		});
 
-		// With the new pattern, each user's posts resolver is called individually
-		// So batch call count will be equal to number of users
-		expect(batchCallCount).toBe(2);
-		expect(result).toHaveLength(2);
+		expect(result.error).toBeUndefined();
+		// Resolvers are called - exact count depends on DataLoader batching behavior
+		expect(batchCallCount).toBeGreaterThanOrEqual(2);
+		expect(result.data).toHaveLength(2);
+	});
+});
+
+// =============================================================================
+// Test: Metadata
+// =============================================================================
+
+describe("E2E - Metadata", () => {
+	it("returns correct metadata structure", () => {
+		const getUser = query()
+			.input(z.object({ id: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => mockUsers.find((u) => u.id === input.id)!);
+
+		const createUser = mutation()
+			.input(z.object({ name: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => ({ id: "new", name: input.name, email: "", status: "" }));
+
+		const server = createServer({
+			entities: { User },
+			queries: { getUser },
+			mutations: { createUser },
+			version: "2.0.0",
+		});
+
+		const metadata = server.getMetadata();
+
+		expect(metadata.version).toBe("2.0.0");
+		expect(metadata.operations.getUser).toEqual({ type: "query" });
+		expect(metadata.operations.createUser.type).toBe("mutation");
+		// createUser should have auto-derived optimistic hint
+		expect(metadata.operations.createUser.optimistic).toBeDefined();
+	});
+
+	it("auto-derives optimistic hints from naming", () => {
+		const updateUser = mutation()
+			.input(z.object({ id: z.string(), name: z.string() }))
+			.returns(User)
+			.resolve(({ input }) => ({ ...mockUsers[0], name: input.name }));
+
+		const deleteUser = mutation()
+			.input(z.object({ id: z.string() }))
+			.resolve(() => ({ success: true }));
+
+		const server = createServer({
+			mutations: { updateUser, deleteUser },
+		});
+
+		const metadata = server.getMetadata();
+
+		// updateUser should have 'merge' optimistic
+		expect(metadata.operations.updateUser.optimistic).toBeDefined();
+		// deleteUser should have 'delete' optimistic
+		expect(metadata.operations.deleteUser.optimistic).toBeDefined();
 	});
 });

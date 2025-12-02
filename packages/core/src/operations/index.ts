@@ -806,21 +806,27 @@ export function router<TRoutes extends RouterRoutes>(
 export function flattenRouter(routerDef: RouterDef, prefix = ""): Map<string, AnyProcedure> {
 	const result = new Map<string, AnyProcedure>();
 
-	for (const [key, value] of Object.entries(routerDef._routes)) {
-		const path = prefix ? `${prefix}.${key}` : key;
+	const flatten = (routes: Record<string, unknown>, currentPrefix: string) => {
+		for (const [key, value] of Object.entries(routes)) {
+			const path = currentPrefix ? `${currentPrefix}.${key}` : key;
 
-		if (isRouterDef(value)) {
-			// Recursively flatten nested routers
-			const nested = flattenRouter(value, path);
-			for (const [nestedPath, procedure] of nested) {
-				result.set(nestedPath, procedure);
+			if (isRouterDef(value)) {
+				// Recursively flatten nested RouterDef
+				const nested = flattenRouter(value, path);
+				for (const [nestedPath, procedure] of nested) {
+					result.set(nestedPath, procedure);
+				}
+			} else if (isQueryDef(value) || isMutationDef(value)) {
+				// It's a procedure (query or mutation)
+				result.set(path, value);
+			} else if (value && typeof value === "object" && !Array.isArray(value)) {
+				// Plain nested object - recursively process
+				flatten(value as Record<string, unknown>, path);
 			}
-		} else {
-			// It's a procedure (query or mutation)
-			result.set(path, value);
 		}
-	}
+	};
 
+	flatten(routerDef._routes as Record<string, unknown>, prefix);
 	return result;
 }
 

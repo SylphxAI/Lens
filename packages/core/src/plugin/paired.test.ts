@@ -3,12 +3,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import {
-	isPairedPlugin,
-	type PairedPlugin,
-	resolveClientPlugins,
-	resolveServerPlugins,
-} from "./paired.js";
+import { isPairedPlugin, type PairedPlugin, resolveClientPlugins, resolveServerPlugins } from "./paired.js";
 
 // =============================================================================
 // Mock Types

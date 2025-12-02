@@ -36,17 +36,13 @@ export {
 export {
 	// Factory
 	createServer,
-	// Subscription transports (legacy - use adapters instead)
-	directTransport,
+	// Types
 	type EntitiesMap,
-	// Type inference utilities (tRPC-style)
 	type InferApi,
 	type InferInput,
 	type InferOutput,
-	// In-process transport types
 	type LensOperation,
 	type LensResult,
-	// Types
 	type LensServer,
 	type LensServerConfig as ServerConfig,
 	type MutationsMap,
@@ -54,9 +50,7 @@ export {
 	type OperationsMap,
 	type QueriesMap,
 	type SelectionObject,
-	// Metadata types (for transport handshake)
 	type ServerMetadata,
-	type SubscriptionTransport,
 	type WebSocketLike,
 } from "./server/create.js";
 
@@ -136,13 +130,11 @@ export {
 } from "./sse/handler.js";
 
 // =============================================================================
-// Subscription Transports (for third-party services)
+// Subscription Helpers (for third-party services)
 // =============================================================================
 
 export {
-	// Pusher transport
 	createPusherSubscription,
-	pusher,
 	type PusherLike,
 	type PusherTransportOptions,
 } from "./transport/index.js";

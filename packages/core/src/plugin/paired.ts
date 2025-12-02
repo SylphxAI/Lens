@@ -49,9 +49,7 @@ export interface PairedPlugin<S = unknown, C = unknown> {
  * @param plugin - Value to check
  * @returns true if plugin is a PairedPlugin
  */
-export function isPairedPlugin<S, C>(
-	plugin: unknown,
-): plugin is PairedPlugin<S, C> {
+export function isPairedPlugin<S, C>(plugin: unknown): plugin is PairedPlugin<S, C> {
 	return (
 		typeof plugin === "object" &&
 		plugin !== null &&
@@ -68,9 +66,7 @@ export function isPairedPlugin<S, C>(
  * @param plugins - Array of server plugins or paired plugins
  * @returns Array of server plugins only
  */
-export function resolveServerPlugins<S>(
-	plugins: (S | PairedPlugin<S, unknown>)[],
-): S[] {
+export function resolveServerPlugins<S>(plugins: (S | PairedPlugin<S, unknown>)[]): S[] {
 	return plugins.map((p) => (isPairedPlugin<S, unknown>(p) ? p.server : p));
 }
 
@@ -82,8 +78,6 @@ export function resolveServerPlugins<S>(
  * @param plugins - Array of client plugins or paired plugins
  * @returns Array of client plugins only
  */
-export function resolveClientPlugins<C>(
-	plugins: (C | PairedPlugin<unknown, C>)[],
-): C[] {
+export function resolveClientPlugins<C>(plugins: (C | PairedPlugin<unknown, C>)[]): C[] {
 	return plugins.map((p) => (isPairedPlugin<unknown, C>(p) ? p.client : p));
 }
