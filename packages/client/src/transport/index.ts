@@ -9,6 +9,8 @@
 // =============================================================================
 
 export type {
+	// Connection state
+	ConnectionState,
 	// Transport capability interfaces
 	FullTransport,
 	Metadata,
@@ -91,9 +93,4 @@ export {
 	sse,
 } from "./sse.js";
 // WebSocket
-export {
-	type ConnectionState,
-	type WsTransportInstance,
-	type WsTransportOptions,
-	ws,
-} from "./ws.js";
+export { type WsTransportInstance, type WsTransportOptions, ws } from "./ws.js";

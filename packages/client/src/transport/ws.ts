@@ -21,7 +21,14 @@ import {
 	type Version,
 } from "@sylphx/lens-core";
 import { SubscriptionRegistry } from "../reconnect/subscription-registry.js";
-import type { Metadata, Observable, Operation, Result, Transport } from "./types.js";
+import type {
+	ConnectionState,
+	Metadata,
+	Observable,
+	Operation,
+	Result,
+	Transport,
+} from "./types.js";
 
 // =============================================================================
 // Types
@@ -43,10 +50,8 @@ export interface WsTransportOptions {
 	onReconnect?: (results: ReconnectResult[]) => void;
 }
 
-/**
- * Connection state.
- */
-export type ConnectionState = "disconnected" | "connecting" | "connected" | "reconnecting";
+// Re-export ConnectionState from types for convenience
+export type { ConnectionState } from "./types.js";
 
 /**
  * Internal message types.

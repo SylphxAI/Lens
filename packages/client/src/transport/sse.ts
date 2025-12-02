@@ -10,7 +10,15 @@
  * - Better serverless compatibility than WebSocket
  */
 
-import type { Metadata, Observable, Observer, Operation, Result, Transport } from "./types.js";
+import type {
+	ConnectionState,
+	Metadata,
+	Observable,
+	Observer,
+	Operation,
+	Result,
+	Transport,
+} from "./types.js";
 
 // =============================================================================
 // Types
@@ -40,20 +48,20 @@ export interface SseTransportOptions {
 		maxDelay?: number;
 	};
 	/** Callback when connection state changes */
-	onConnectionStateChange?: (state: SseConnectionState) => void;
+	onConnectionStateChange?: (state: ConnectionState) => void;
 }
 
 /**
- * SSE connection state.
+ * @deprecated Use `ConnectionState` from types.ts instead
  */
-export type SseConnectionState = "disconnected" | "connecting" | "connected" | "reconnecting";
+export type SseConnectionState = ConnectionState;
 
 /**
  * SSE transport instance with additional methods.
  */
 export interface SseTransportInstance extends Transport {
 	/** Get current connection state */
-	getConnectionState(): SseConnectionState;
+	getConnectionState(): ConnectionState;
 	/** Get active subscription count */
 	getSubscriptionCount(): number;
 	/** Close all connections */
@@ -117,10 +125,10 @@ export function sse(options: SseTransportOptions): SseTransportInstance {
 		}
 	>();
 
-	let connectionState: SseConnectionState = "disconnected";
+	let connectionState: ConnectionState = "disconnected";
 
 	// Helper to update connection state
-	function setConnectionState(state: SseConnectionState) {
+	function setConnectionState(state: ConnectionState) {
 		if (connectionState !== state) {
 			connectionState = state;
 			onConnectionStateChange?.(state);
@@ -315,7 +323,7 @@ export function sse(options: SseTransportOptions): SseTransportInstance {
 		/**
 		 * Get current connection state.
 		 */
-		getConnectionState(): SseConnectionState {
+		getConnectionState(): ConnectionState {
 			return connectionState;
 		},
 

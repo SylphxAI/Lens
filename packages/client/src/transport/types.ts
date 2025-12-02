@@ -56,6 +56,16 @@ export interface Result<T = unknown> {
 }
 
 // =============================================================================
+// Connection State
+// =============================================================================
+
+/**
+ * Connection state for transports that maintain persistent connections.
+ * Used by WebSocket and SSE transports.
+ */
+export type ConnectionState = "disconnected" | "connecting" | "connected" | "reconnecting";
+
+// =============================================================================
 // Optimistic DSL Types
 // =============================================================================
 
