@@ -4,6 +4,9 @@
  * Protocol handlers for bridging the Lens app to various frameworks.
  */
 
+// Unified Handler (HTTP + SSE)
+export { createHandler, type Handler, type HandlerOptions } from "./unified.js";
+
 // SSE Handler
 export {
 	createSSEHandler,

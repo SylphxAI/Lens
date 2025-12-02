@@ -93,26 +93,30 @@ export {
 // =============================================================================
 
 export {
-	// Deprecated aliases
-	createHTTPAdapter,
+	// Unified Handler (HTTP + SSE)
+	createHandler,
+	type Handler,
+	type HandlerOptions,
 	// HTTP Handler
 	createHTTPHandler,
-	createSSEAdapter,
-	// SSE Handler
-	createSSEHandler,
-	createWSAdapter,
-	// WebSocket Handler
-	createWSHandler,
-	type HTTPAdapter,
-	type HTTPAdapterOptions,
 	type HTTPHandler,
 	type HTTPHandlerOptions,
-	type SSEAdapterOptions,
+	// SSE Handler
+	createSSEHandler,
 	type SSEHandlerOptions,
-	type WSAdapter,
-	type WSAdapterOptions,
+	// WebSocket Handler
+	createWSHandler,
 	type WSHandler,
 	type WSHandlerOptions,
+	// Deprecated aliases
+	createHTTPAdapter,
+	createSSEAdapter,
+	createWSAdapter,
+	type HTTPAdapter,
+	type HTTPAdapterOptions,
+	type SSEAdapterOptions,
+	type WSAdapter,
+	type WSAdapterOptions,
 } from "./handlers/index.js";
 
 // =============================================================================

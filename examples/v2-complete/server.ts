@@ -12,7 +12,7 @@
 import { entity, t, router, lens } from "@sylphx/lens-core";
 import { entity as e, temp, ref, now, branch } from "@sylphx/reify";
 // Note: `e` is the Reify entity helper, `entity` is the Lens entity definition builder
-import { createApp, createHTTPHandler, optimisticPlugin } from "@sylphx/lens-server";
+import { createApp, createHandler, optimisticPlugin } from "@sylphx/lens-server";
 import { z } from "zod";
 
 // =============================================================================
@@ -455,7 +455,7 @@ export { db };
 // =============================================================================
 
 const PORT = 3000;
-const handler = createHTTPHandler(app);
+const handler = createHandler(app);
 
 Bun.serve({
 	port: PORT,
@@ -464,6 +464,11 @@ Bun.serve({
 
 console.log(`
 🔭 Lens Server running on http://localhost:${PORT}
+
+Endpoints:
+  POST /              → queries & mutations
+  GET /__lens/sse     → SSE subscriptions
+  GET /__lens/metadata → server metadata
 
 Routes:
   user.whoami, user.get, user.search, user.update, user.bulkPromote
