@@ -12,8 +12,12 @@
 import {
 	type ArrayOperation,
 	applyUpdate,
+	type CompressedPayload,
+	type CompressionConfig,
+	compressIfNeeded,
 	computeArrayDiff,
 	createUpdate,
+	DEFAULT_COMPRESSION_CONFIG,
 	type EmitCommand,
 	type EntityKey,
 	FieldHashMap,
@@ -85,6 +89,17 @@ export interface GraphStateManagerConfig {
 	onEntityUnsubscribed?: (entity: string, id: string) => void;
 	/** Operation log configuration for reconnection support */
 	operationLog?: Partial<OperationLogConfig>;
+	/** Compression configuration for large payloads during reconnection */
+	compression?: Partial<CompressionConfig>;
+}
+
+/**
+ * Reconnect result with optional compression.
+ * The data field may be a CompressedPayload if compression was applied.
+ */
+export interface ReconnectResultWithCompression extends Omit<ReconnectResult, "data"> {
+	/** Full state (may be compressed) */
+	data?: Record<string, unknown> | CompressedPayload;
 }
 
 // =============================================================================
@@ -147,9 +162,13 @@ export class GraphStateManager {
 	/** Per-entity field hashes for efficient change detection */
 	private fieldHashes = new Map<EntityKey, FieldHashMap>();
 
+	/** Compression configuration */
+	private compressionConfig: CompressionConfig;
+
 	constructor(config: GraphStateManagerConfig = {}) {
 		this.config = config;
 		this.operationLog = new OperationLog(config.operationLog);
+		this.compressionConfig = { ...DEFAULT_COMPRESSION_CONFIG, ...config.compression };
 	}
 
 	// ===========================================================================
@@ -1031,6 +1050,37 @@ export class GraphStateManager {
 		for (const sub of subscriptions) {
 			const result = this.processReconnectSubscription(sub);
 			results.push(result);
+		}
+
+		return results;
+	}
+
+	/**
+	 * Handle a reconnection request with compression support.
+	 * Large snapshots will be compressed if compression is enabled.
+	 *
+	 * @param subscriptions - Array of subscriptions to reconnect
+	 * @returns Array of reconnection results (data may be compressed)
+	 */
+	async handleReconnectWithCompression(
+		subscriptions: ReconnectSubscription[],
+	): Promise<ReconnectResultWithCompression[]> {
+		const results: ReconnectResultWithCompression[] = [];
+
+		for (const sub of subscriptions) {
+			const baseResult = this.processReconnectSubscription(sub);
+
+			// Compress snapshot data if present and compression is enabled
+			if (baseResult.status === "snapshot" && baseResult.data) {
+				const compressedData = await compressIfNeeded(baseResult.data, this.compressionConfig);
+
+				results.push({
+					...baseResult,
+					data: compressedData,
+				});
+			} else {
+				results.push(baseResult as ReconnectResultWithCompression);
+			}
 		}
 
 		return results;

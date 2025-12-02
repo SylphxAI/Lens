@@ -96,3 +96,18 @@ export {
 	createSubscriptionRegistry,
 	SubscriptionRegistry,
 } from "./subscription-registry.js";
+
+// =============================================================================
+// Compression
+// =============================================================================
+
+export {
+	type CompressionConfig,
+	compressIfNeeded,
+	DEFAULT_COMPRESSION_CONFIG,
+	decompressIfNeeded,
+	formatCompressionStats,
+	getCompressionRatio,
+	getSpaceSaved,
+	isCompressionSupported,
+} from "./compression.js";

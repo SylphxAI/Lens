@@ -9,7 +9,9 @@
 import {
 	applyPatch,
 	DEFAULT_RECONNECT_CONFIG,
+	decompressIfNeeded,
 	generateReconnectId,
+	isCompressedPayload,
 	type PatchOperation,
 	PROTOCOL_VERSION,
 	type ReconnectAckMessage,
@@ -258,16 +260,16 @@ export const ws: WsTransport = function ws(options: WsTransportOptions): WsTrans
 	/**
 	 * Handle reconnect acknowledgment from server.
 	 */
-	function handleReconnectAck(ack: ReconnectAckMessage): void {
+	async function handleReconnectAck(ack: ReconnectAckMessage): Promise<void> {
 		// Verify this is the reconnect we're waiting for
 		if (ack.reconnectId !== pendingReconnect) {
 			return;
 		}
 		pendingReconnect = null;
 
-		// Process each subscription result
+		// Process each subscription result (handles decompression)
 		for (const result of ack.results) {
-			processReconnectResult(result);
+			await processReconnectResult(result);
 		}
 
 		// Notify callback
@@ -276,8 +278,9 @@ export const ws: WsTransport = function ws(options: WsTransportOptions): WsTrans
 
 	/**
 	 * Process a single reconnect result.
+	 * Handles decompression of compressed snapshots.
 	 */
-	function processReconnectResult(result: ReconnectResult): void {
+	async function processReconnectResult(result: ReconnectResult): Promise<void> {
 		const subInfo = subscriptionObservers.get(result.id);
 		if (!subInfo) return;
 
@@ -307,13 +310,19 @@ export const ws: WsTransport = function ws(options: WsTransportOptions): WsTrans
 				break;
 			}
 
-			case "snapshot":
-				// Full state replacement
+			case "snapshot": {
+				// Full state replacement (may be compressed)
 				if (result.data) {
-					registry.processReconnectResult(result.id, result.version, result.data);
-					subInfo.observer.next?.({ data: result.data });
+					// Decompress if needed
+					const data = isCompressedPayload(result.data)
+						? await decompressIfNeeded<Record<string, unknown>>(result.data)
+						: result.data;
+
+					registry.processReconnectResult(result.id, result.version, data);
+					subInfo.observer.next?.({ data });
 				}
 				break;
+			}
 
 			case "deleted":
 				// Entity was deleted
