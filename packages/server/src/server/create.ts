@@ -26,6 +26,7 @@ import {
 	isMutationDef,
 	isQueryDef,
 	type MutationDef,
+	type OptimisticDSL,
 	type QueryDef,
 	type ResolverDef,
 	type Resolvers,
@@ -70,7 +71,7 @@ type ResolverMap = Map<string, ResolverDef<any, any, any>>;
 /** Operation metadata for handshake */
 export interface OperationMeta {
 	type: "query" | "mutation" | "subscription";
-	optimistic?: unknown;
+	optimistic?: OptimisticDSL;
 }
 
 /** Nested operations structure for handshake */
