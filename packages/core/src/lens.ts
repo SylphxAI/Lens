@@ -43,10 +43,13 @@
  * ```
  */
 
+import type { StepBuilder } from "@sylphx/reify";
 import type {
 	InferReturnType,
+	MutationBuilderWithOptimistic,
 	MutationBuilderWithReturns2,
 	MutationDef,
+	OptimisticDSL,
 	QueryBuilder,
 	ResolverFn,
 	ReturnSpec,
@@ -55,7 +58,7 @@ import type {
 import { mutation as createMutation, query as createQuery } from "./operations/index.js";
 import type {
 	ExtractPluginExtensions,
-	ExtractPluginMethods,
+	HasPlugin,
 	PluginExtension,
 	RuntimePlugin,
 } from "./plugin/types.js";
@@ -125,16 +128,64 @@ export interface LensMutationBuilderWithInput<
 /**
  * Mutation builder after .returns() with plugin support.
  *
- * This is where plugin methods are merged. Each plugin can add methods
- * to this stage via the PluginMethodRegistry.
+ * Uses conditional type to select the appropriate interface:
+ * - With optimistic plugin: interface with proper optimistic() overloads
+ * - Without: base interface with just resolve()
+ *
+ * This approach preserves TypeScript's overload resolution for better
+ * callback parameter inference.
  */
 export type LensMutationBuilderWithReturns<
 	TInput,
 	TOutput,
 	TContext,
 	TPlugins extends readonly PluginExtension[],
-> = MutationBuilderWithReturns2<TInput, TOutput, TContext> &
-	ExtractPluginMethods<TPlugins, "MutationBuilderWithReturns", TInput, TOutput, TContext>;
+> = HasPlugin<TPlugins, "optimistic"> extends true
+	? LensMutationBuilderWithReturnsAndOptimistic<TInput, TOutput, TContext>
+	: MutationBuilderWithReturns2<TInput, TOutput, TContext>;
+
+/**
+ * Mutation builder with optimistic() overloads.
+ * This interface preserves proper overload semantics for callback inference.
+ *
+ * IMPORTANT: Callback overload comes FIRST to enable proper TypeScript inference
+ * for inline arrow functions. TypeScript tries overloads in order.
+ */
+export interface LensMutationBuilderWithReturnsAndOptimistic<TInput, TOutput, TContext>
+	extends MutationBuilderWithReturns2<TInput, TOutput, TContext> {
+	/**
+	 * Define optimistic update behavior with typed callback.
+	 * The callback receives `{ input }` with the input type inferred from `.input()`.
+	 *
+	 * @param callback - Callback that receives typed input and returns step builders
+	 * @returns Builder with .resolve() method
+	 *
+	 * @example
+	 * ```typescript
+	 * .optimistic(({ input }) => [
+	 *   e.update(User, { id: input.id, name: input.name }),
+	 * ])
+	 * ```
+	 */
+	optimistic(
+		callback: (ctx: { input: TInput }) => StepBuilder[],
+	): MutationBuilderWithOptimistic<TInput, TOutput, TContext>;
+
+	/**
+	 * Define optimistic update behavior with DSL spec.
+	 *
+	 * @param spec - Optimistic update specification (sugar or Pipeline)
+	 * @returns Builder with .resolve() method
+	 *
+	 * @example
+	 * ```typescript
+	 * .optimistic("merge")  // Merge input with existing entity
+	 * .optimistic("create") // Create new entity from input
+	 * .optimistic({ merge: { published: true } }) // Merge specific fields
+	 * ```
+	 */
+	optimistic(spec: OptimisticDSL): MutationBuilderWithOptimistic<TInput, TOutput, TContext>;
+}
 
 /**
  * Typed mutation factory function with plugin support.

@@ -359,18 +359,41 @@ export interface MutationDef<TInput = unknown, TOutput = unknown, TContext = unk
 	): TOutput | Promise<TOutput> | AsyncGenerator<TOutput>;
 }
 
+// Import plugin types for generic-aware builders
+import type { ExtractPluginMethods, PluginExtension } from "../plugin/types.js";
+
 /** Mutation builder - fluent interface */
-export interface MutationBuilder<_TInput = unknown, TOutput = unknown, TContext = unknown> {
+export interface MutationBuilder<
+	_TInput = unknown,
+	TOutput = unknown,
+	TContext = unknown,
+	TPlugins extends readonly PluginExtension[] = readonly PluginExtension[],
+> {
 	/** Define input validation schema (required for mutations) */
-	input<T>(schema: ZodLikeSchema<T>): MutationBuilderWithInput<T, TOutput, TContext>;
+	input<T>(schema: ZodLikeSchema<T>): MutationBuilderWithInput<T, TOutput, TContext, TPlugins>;
 }
 
 /** Mutation builder after input is defined */
-export interface MutationBuilderWithInput<TInput, _TOutput = unknown, TContext = unknown> {
-	/** Define return type (optional - for entity outputs) */
+export interface MutationBuilderWithInput<
+	TInput,
+	_TOutput = unknown,
+	TContext = unknown,
+	TPlugins extends readonly PluginExtension[] = readonly PluginExtension[],
+> {
+	/**
+	 * Define return type (optional - for entity outputs).
+	 * Returns a builder with .resolve() and any plugin methods (e.g., .optimistic()).
+	 */
 	returns<R extends ReturnSpec>(
 		spec: R,
-	): MutationBuilderWithReturns<TInput, InferReturnType<R>, TContext>;
+	): MutationBuilderWithReturns2<TInput, InferReturnType<R>, TContext> &
+		ExtractPluginMethods<
+			TPlugins,
+			"MutationBuilderWithReturns",
+			TInput,
+			InferReturnType<R>,
+			TContext
+		>;
 
 	/**
 	 * Define resolver function directly (without .returns())

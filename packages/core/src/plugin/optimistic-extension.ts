@@ -16,10 +16,10 @@
  * ```
  */
 
+import type { StepBuilder } from "@sylphx/reify";
 import type {
 	MutationBuilderWithOptimistic,
 	MutationDef,
-	OptimisticCallback,
 	OptimisticDSL,
 	ResolverFn,
 } from "../operations/index.js";
@@ -48,22 +48,40 @@ export type OptimisticPluginMethods<
 > = TStage extends "MutationBuilderWithReturns"
 	? {
 			/**
-			 * Define optimistic update behavior.
+			 * Define optimistic update behavior with typed callback.
+			 * The callback receives `{ input }` with the input type inferred from `.input()`.
+			 *
+			 * IMPORTANT: Callback overload comes FIRST to enable proper TypeScript inference
+			 * for inline arrow functions. TypeScript tries overloads in order.
+			 *
+			 * @param callback - Callback that receives typed input and returns step builders
+			 * @returns Builder with .resolve() method
+			 *
+			 * @example
+			 * ```typescript
+			 * .optimistic(({ input }) => [
+			 *   e.update(User, { id: input.id, name: input.name }),
+			 * ])
+			 * ```
+			 */
+			optimistic(
+				callback: (ctx: { input: TInput }) => StepBuilder[],
+			): MutationBuilderWithOptimistic<TInput, TOutput, TContext>;
+
+			/**
+			 * Define optimistic update behavior with DSL spec.
 			 *
 			 * @param spec - Optimistic update specification (sugar or Pipeline)
 			 * @returns Builder with .resolve() method
+			 *
+			 * @example
+			 * ```typescript
+			 * .optimistic("merge")  // Merge input with existing entity
+			 * .optimistic("create") // Create new entity from input
+			 * .optimistic({ merge: { published: true } }) // Merge specific fields
+			 * ```
 			 */
 			optimistic(spec: OptimisticDSL): MutationBuilderWithOptimistic<TInput, TOutput, TContext>;
-
-			/**
-			 * Define optimistic update with typed input callback.
-			 *
-			 * @param callback - Function that receives typed input proxy and returns step builders
-			 * @returns Builder with .resolve() method
-			 */
-			optimistic(
-				callback: OptimisticCallback<TInput>,
-			): MutationBuilderWithOptimistic<TInput, TOutput, TContext>;
 		}
 	: // biome-ignore lint/complexity/noBannedTypes: Empty object for intersection identity
 		{};
