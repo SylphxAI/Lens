@@ -11,17 +11,19 @@
  *
  * @example
  * ```typescript
- * import { createServer, pusher } from '@sylphx/lens-server';
+ * import { createServer, createHTTPAdapter, createPusherSubscription } from '@sylphx/lens-server';
  *
- * const server = createServer({
- *   router: appRouter,
- *   subscriptionTransport: pusher({
- *     appId: process.env.PUSHER_APP_ID!,
- *     key: process.env.PUSHER_KEY!,
- *     secret: process.env.PUSHER_SECRET!,
- *     cluster: process.env.PUSHER_CLUSTER!,
- *   }),
+ * const server = createServer({ router: appRouter });
+ * const httpHandler = createHTTPAdapter(server);
+ * const pusherSub = createPusherSubscription({
+ *   appId: process.env.PUSHER_APP_ID!,
+ *   key: process.env.PUSHER_KEY!,
+ *   secret: process.env.PUSHER_SECRET!,
+ *   cluster: process.env.PUSHER_CLUSTER!,
  * });
+ *
+ * // Use httpHandler for Bun/Vercel/Cloudflare
+ * // Clients receive real-time updates via Pusher
  * ```
  */
 
@@ -65,17 +67,18 @@ interface PusherClient {
  * Note: Clients must use pusher-js to subscribe to channels.
  * The server only publishes updates; subscription is handled client-side.
  *
+ * @deprecated Use createPusherSubscription instead for the new adapter pattern.
+ *
  * @example
  * ```typescript
  * // Server
- * const server = createServer({
- *   router: appRouter,
- *   subscriptionTransport: pusher({
- *     appId: 'your-app-id',
- *     key: 'your-key',
- *     secret: 'your-secret',
- *     cluster: 'us2',
- *   }),
+ * const server = createServer({ router: appRouter });
+ * const httpHandler = createHTTPAdapter(server);
+ * const pusherSub = createPusherSubscription({
+ *   appId: 'your-app-id',
+ *   key: 'your-key',
+ *   secret: 'your-secret',
+ *   cluster: 'us2',
  * });
  *
  * // Client (using pusher-js directly)

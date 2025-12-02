@@ -40,8 +40,8 @@ export interface SelectionObject {
 	[key: string]: boolean | SelectionObject | { select: SelectionObject };
 }
 
-import { GraphStateManager } from "../state/graph-state-manager.js";
 import { createPluginManager, type PluginManager, type ServerPlugin } from "../plugin/types.js";
+import { GraphStateManager } from "../state/graph-state-manager.js";
 
 // =============================================================================
 // Types
@@ -78,12 +78,13 @@ export interface LensLogger {
 }
 
 // =============================================================================
-// Subscription Transport
+// Subscription Transport (DEPRECATED - use adapters instead)
 // =============================================================================
 
 /**
  * Subscription transport interface.
- * Defines how the server delivers updates to subscribers.
+ * @deprecated Use createWSAdapter or createSSEAdapter from adapters instead.
+ * The adapter pattern properly separates protocol handling from server core.
  */
 export interface SubscriptionTransport {
 	/** Transport name (for debugging) */
@@ -120,6 +121,7 @@ export interface SubscriptionTransport {
 /**
  * Direct WebSocket transport (default).
  * Messages are sent directly to connected clients.
+ * @deprecated Use createWSAdapter from adapters instead.
  */
 export function directTransport(): SubscriptionTransport {
 	// In-memory pub/sub for direct connections
@@ -182,24 +184,6 @@ export interface LensServerConfig<
 	resolvers?: Resolvers | undefined;
 	/** Server plugins for extending behavior */
 	plugins?: ServerPlugin[] | undefined;
-	/**
-	 * Transport for delivering subscription updates.
-	 * Defaults to directTransport() (in-memory pub/sub).
-	 *
-	 * For serverless or distributed deployments, use external transports:
-	 * - pusher() - Pusher Channels
-	 * - redis() - Redis pub/sub
-	 *
-	 * @example
-	 * ```typescript
-	 * // Direct (default - WebSocket)
-	 * subscriptionTransport: directTransport()
-	 *
-	 * // Pusher (serverless-friendly)
-	 * subscriptionTransport: pusher({ appId: '...', key: '...' })
-	 * ```
-	 */
-	subscriptionTransport?: SubscriptionTransport | undefined;
 	/** Logger for server messages (default: silent) */
 	logger?: LensLogger | undefined;
 	/** Context factory - must return the context type expected by the router */
@@ -232,7 +216,34 @@ export interface LensResult<T = unknown> {
 	error?: Error;
 }
 
-/** Lens server interface */
+/**
+ * Lens server interface.
+ *
+ * ## Pure Executor API (Recommended)
+ * - `getMetadata()` - Server metadata for transport handshake
+ * - `execute()` - Execute any operation
+ * - `executeQuery()` - Execute a query
+ * - `executeMutation()` - Execute a mutation
+ *
+ * ## Protocol Handling (Use Adapters Instead)
+ * Use `createHTTPAdapter`, `createWSAdapter`, or `createSSEAdapter` from
+ * the adapters module instead of the deprecated methods below.
+ *
+ * @example
+ * ```typescript
+ * import { createServer, createHTTPAdapter, createWSAdapter } from '@sylphx/lens-server'
+ *
+ * const server = createServer({ queries, mutations })
+ * const httpHandler = createHTTPAdapter(server)
+ * const wsAdapter = createWSAdapter(server, { stateManager })
+ *
+ * Bun.serve({
+ *   port: 3000,
+ *   fetch: httpHandler,
+ *   websocket: wsAdapter.handler,
+ * })
+ * ```
+ */
 export interface LensServer {
 	/** Get server metadata for transport handshake */
 	getMetadata(): ServerMetadata;
@@ -242,15 +253,27 @@ export interface LensServer {
 	executeQuery<TInput, TOutput>(name: string, input?: TInput): Promise<TOutput>;
 	/** Execute a mutation */
 	executeMutation<TInput, TOutput>(name: string, input: TInput): Promise<TOutput>;
-	/** Handle WebSocket connection */
+	/**
+	 * Handle WebSocket connection.
+	 * @deprecated Use createWSAdapter from adapters instead.
+	 */
 	handleWebSocket(ws: WebSocketLike): void;
-	/** Handle HTTP request */
+	/**
+	 * Handle HTTP request.
+	 * @deprecated Use createHTTPAdapter from adapters instead.
+	 */
 	handleRequest(req: Request): Promise<Response>;
-	/** Get GraphStateManager for external access */
+	/**
+	 * Get GraphStateManager for external access.
+	 * @deprecated Pass stateManager to adapter options instead.
+	 */
 	getStateManager(): GraphStateManager;
-	/** Start server */
+	/**
+	 * Start server with built-in HTTP/WebSocket handler.
+	 * @deprecated Use adapters with Bun.serve directly instead.
+	 */
 	listen(port: number): Promise<void>;
-	/** Close server */
+	/** Close server and cleanup all connections. */
 	close(): Promise<void>;
 }
 
