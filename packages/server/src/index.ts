@@ -83,7 +83,11 @@ export {
 	type ConnectContext,
 	// Plugin manager
 	createPluginManager,
+	// Diff Optimizer Plugin
+	diffOptimizer,
+	type DiffOptimizerOptions,
 	type DisconnectContext,
+	isDiffOptimizerPlugin,
 	PluginManager,
 	// Plugin interface
 	type ServerPlugin,
