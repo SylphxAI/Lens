@@ -113,7 +113,7 @@ export interface LensServerConfig<
 	 *
 	 * @example
 	 * ```typescript
-	 * const server = createServer({
+	 * const server = createApp({
 	 *   router,
 	 *   plugins: [diffOptimizer()], // Adds stateful diff optimization
 	 * });
@@ -1058,18 +1058,18 @@ export type ServerConfigLegacy<
  * @example
  * ```typescript
  * // Stateless mode (default)
- * const server = createServer({ router });
+ * const server = createApp({ router });
  * createWSAdapter(server); // Sends full data on each update
  *
  * // Stateful mode (with diffOptimizer)
- * const server = createServer({
+ * const server = createApp({
  *   router,
  *   plugins: [diffOptimizer()], // Enables state tracking & diffs
  * });
  * createWSAdapter(server); // Sends minimal diffs
  * ```
  */
-export function createServer<
+export function createApp<
 	TRouter extends RouterDef,
 	Q extends QueriesMap = QueriesMap,
 	M extends MutationsMap = MutationsMap,
@@ -1079,7 +1079,7 @@ export function createServer<
 	_types: { router: TRouter; queries: Q; mutations: M; context: InferRouterContext<TRouter> };
 };
 
-export function createServer<
+export function createApp<
 	TContext extends ContextValue = ContextValue,
 	Q extends QueriesMap = QueriesMap,
 	M extends MutationsMap = MutationsMap,
@@ -1087,7 +1087,7 @@ export function createServer<
 	config: ServerConfigLegacy<TContext, Q, M>,
 ): LensServer & { _types: { queries: Q; mutations: M; context: TContext } };
 
-export function createServer<
+export function createApp<
 	TContext extends ContextValue = ContextValue,
 	Q extends QueriesMap = QueriesMap,
 	M extends MutationsMap = MutationsMap,
@@ -1099,3 +1099,8 @@ export function createServer<
 		_types: { queries: Q; mutations: M; context: TContext };
 	};
 }
+
+/**
+ * @deprecated Use `createApp` instead. Will be removed in v1.0.
+ */
+export const createServer: typeof createApp = createApp;

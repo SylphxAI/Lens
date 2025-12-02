@@ -68,6 +68,8 @@ export {
 	// Types
 	type ClientSendFn,
 	// Factory
+	createApp,
+	/** @deprecated Use `createApp` instead */
 	createServer,
 	type EntitiesMap,
 	type InferApi,
