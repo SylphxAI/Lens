@@ -9,32 +9,27 @@
  */
 import { z } from "zod";
 import { lens } from "../lens.js";
-// Import the optimistic plugin extension to register it in PluginMethodRegistry
-import type { OptimisticPluginExtension, OptimisticPluginMarker } from "./optimistic-extension.js";
 import type {
-	ExtractPluginExtensions,
-	ExtractPluginMethods,
-	HasPlugin,
-	PluginMethodRegistry,
-} from "./types.js";
+	OptimisticPluginExtension,
+	OptimisticPluginMarker,
+	OptimisticPluginMethods,
+} from "./optimistic-extension.js";
+import type { ExtractPluginExtensions, ExtractPluginMethods, HasPlugin } from "./types.js";
 
 // =============================================================================
-// Debug: Verify Module Augmentation Works
+// Debug: Verify Direct Type Lookup Works
 // =============================================================================
 
-// Check if PluginMethodRegistry has the "optimistic" key after augmentation
-type RegistryKeys = keyof PluginMethodRegistry<unknown, unknown, unknown>;
-type _DebugRegistryKeys = RegistryKeys; // Hover in IDE to see if "optimistic" is present
-
-// This should be true if the augmentation worked
-type HasOptimisticInRegistry = "optimistic" extends RegistryKeys ? true : false;
-const _debugHasOptimistic: HasOptimisticInRegistry = true; // Should compile if augmentation works
-
-// Debug: Check the entire extraction chain
-type DebugRegistry = PluginMethodRegistry<{ id: string }, unknown, { db: any }>;
-type DebugOptimisticEntry = DebugRegistry["optimistic"];
-type _DebugMutationMethods = DebugOptimisticEntry["MutationBuilderWithReturns"];
-// DebugMutationMethods should have the optimistic function signature
+// Check OptimisticPluginMethods directly
+type DebugOptimisticMethods = OptimisticPluginMethods<
+	"MutationBuilderWithReturns",
+	{ id: string },
+	unknown,
+	{ db: any }
+>;
+// Should have { optimistic: ... }
+type HasOptimisticInMethods = DebugOptimisticMethods extends { optimistic: unknown } ? true : false;
+const _debugHasOptimistic: HasOptimisticInMethods = true; // Should compile
 
 // Check ExtractPluginMethods directly
 type DebugExtract = ExtractPluginMethods<

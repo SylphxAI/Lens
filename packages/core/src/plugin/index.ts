@@ -29,6 +29,8 @@ export {
 	// Optimistic plugin extension
 	type OptimisticPluginExtension,
 	type OptimisticPluginMarker,
+	// Optimistic plugin methods (for type composition)
+	type OptimisticPluginMethods,
 } from "./optimistic-extension.js";
 
 export {
@@ -46,7 +48,6 @@ export {
 	// Extension protocol
 	type PluginExtension,
 	type PluginHooks,
-	type PluginMethodRegistry,
 	type Prettify,
 	// Runtime
 	type RuntimePlugin,

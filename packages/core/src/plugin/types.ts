@@ -5,19 +5,23 @@
  * Plugins can extend builder methods with full TypeScript type safety.
  *
  * The plugin system works by:
- * 1. Each plugin defines a PluginExtension interface with method signatures
- * 2. The TPlugins type parameter flows through the entire builder chain
- * 3. At each stage, plugin methods are merged via ExtractPluginMethods
+ * 1. Each plugin defines a PluginExtension interface with a name
+ * 2. Each plugin exports a Methods type (e.g., OptimisticPluginMethods)
+ * 3. The TPlugins type parameter flows through the entire builder chain
+ * 4. At each stage, plugin methods are looked up by name via ExtractPluginMethods
  *
  * @example
  * ```typescript
  * // Define a plugin extension
  * interface MyPluginExtension extends PluginExtension {
  *   name: 'my-plugin';
- *   MutationBuilderWithReturns: {
- *     myMethod<TInput, TOutput, TContext>(): MutationBuilderWithOptimistic<TInput, TOutput, TContext>;
- *   };
  * }
+ *
+ * // Define plugin methods as a type
+ * type MyPluginMethods<TStage, TInput, TOutput, TContext> =
+ *   TStage extends "MutationBuilderWithReturns"
+ *     ? { myMethod(): MutationBuilderWithOptimistic<TInput, TOutput, TContext> }
+ *     : {};
  *
  * // Use in lens()
  * const { mutation } = lens<AppContext>({ plugins: [myPlugin()] });
@@ -106,33 +110,42 @@ export type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never
  */
 export type Prettify<T> = { [K in keyof T]: T[K] } & {};
 
+// =============================================================================
+// Plugin Method Type Imports
+// =============================================================================
+
+// Import plugin method types for direct lookup
+// Each plugin exports a Methods type that defines methods for each builder stage
+import type { OptimisticPluginMethods } from "./optimistic-extension.js";
+
 /**
- * Plugin Method Registry - central registry for plugin methods.
+ * Plugin Method Lookup - maps plugin names to their method types.
  *
- * Plugins augment this interface to register their methods with proper generics.
- * The TInput, TOutput, TContext parameters allow methods to use the builder's types.
+ * This type performs compile-time lookup of plugin methods based on the plugin name.
  *
- * @example
- * ```typescript
- * // In optimistic-extension.ts
- * declare module './types.js' {
- *   interface PluginMethodRegistry<TInput, TOutput, TContext> {
- *     optimistic: {
- *       MutationBuilderWithReturns: {
- *         optimistic(spec: OptimisticDSL): MutationBuilderWithOptimistic<TInput, TOutput, TContext>;
- *       };
- *     };
- *   }
- * }
- * ```
+ * To add a new plugin:
+ * 1. Create MyPluginMethods<TStage, TInput, TOutput, TContext> type
+ * 2. Import it above
+ * 3. Add a conditional branch here: Name extends "my-plugin" ? MyPluginMethods<...> : ...
+ *
+ * Note: This is intentionally explicit rather than using module augmentation.
+ * It provides better cross-package type visibility and simpler TypeScript semantics.
  */
-// biome-ignore lint/suspicious/noEmptyInterface: Registry is populated via declaration merging
-export interface PluginMethodRegistry<_TInput, _TOutput, _TContext> {}
+type LookupPluginMethods<
+	Name extends string,
+	TStage extends string,
+	TInput,
+	TOutput,
+	TContext,
+> = Name extends "optimistic"
+	? OptimisticPluginMethods<TStage, TInput, TOutput, TContext>
+	: EmptyExtension;
 
 /**
  * Extract methods for a specific builder stage from plugin array.
  *
- * Uses the PluginMethodRegistry to get properly typed methods for each plugin.
+ * Uses direct type lookup based on plugin name. Each plugin's methods
+ * are defined in its own file and looked up via LookupPluginMethods.
  *
  * @example
  * ```typescript
@@ -152,12 +165,8 @@ export type ExtractPluginMethods<
 		EmptyExtension
 	: UnionToIntersection<
 			TPlugins[number] extends infer P
-				? P extends { readonly name: infer N }
-					? N extends keyof PluginMethodRegistry<TInput, TOutput, TContext>
-						? TStage extends keyof PluginMethodRegistry<TInput, TOutput, TContext>[N]
-							? PluginMethodRegistry<TInput, TOutput, TContext>[N][TStage]
-							: EmptyExtension
-						: EmptyExtension
+				? P extends { readonly name: infer N extends string }
+					? LookupPluginMethods<N, TStage, TInput, TOutput, TContext>
 					: EmptyExtension
 				: EmptyExtension
 		>;

@@ -10,8 +10,6 @@
  */
 
 import { entity, t, router, lens } from "@sylphx/lens-core";
-// Import OptimisticPluginExtension to trigger module augmentation
-import type { OptimisticPluginExtension as _ } from "@sylphx/lens-core";
 import { entity as e, temp, ref, now, branch } from "@sylphx/reify";
 // Note: `e` is the Reify entity helper, `entity` is the Lens entity definition builder
 import { createServer, optimisticPlugin } from "@sylphx/lens-server";

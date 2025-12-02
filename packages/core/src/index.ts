@@ -381,7 +381,7 @@ export {
 	// Legacy extraction types (backward compatibility)
 	type ExtractExtension,
 	type ExtractPluginExtensions,
-	// Registry-based extraction (for generic-aware plugins)
+	// Direct type lookup extraction (for generic-aware plugins)
 	type ExtractPluginMethods,
 	type HasPlugin,
 	type IfPlugin,
@@ -397,11 +397,12 @@ export {
 	// Optimistic Plugin Extension
 	type OptimisticPluginExtension,
 	type OptimisticPluginMarker,
+	// Optimistic Plugin Methods (for type composition)
+	type OptimisticPluginMethods,
 	type PairedPlugin,
 	// Plugin Extension Protocol
 	type PluginExtension,
 	type PluginHooks,
-	type PluginMethodRegistry,
 	type Prettify,
 	// Runtime
 	type RuntimePlugin,

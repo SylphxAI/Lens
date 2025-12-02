@@ -26,51 +26,47 @@ import type {
 import type { PluginExtension, RuntimePlugin } from "./types.js";
 
 // =============================================================================
-// Module Augmentation - Register Optimistic Methods in Plugin Registry
+// Optimistic Plugin Method Types
 // =============================================================================
 
 /**
- * Augment the PluginMethodRegistry to add optimistic plugin methods.
+ * Type-level method definitions for the optimistic plugin.
  *
- * This is the key mechanism that allows plugins to add type-safe methods
- * to builders. The TInput, TOutput, TContext parameters are bound from
- * the builder's generic context.
+ * This type provides the method signatures for each builder stage.
+ * Used by ExtractPluginMethods to compose builder types.
+ *
+ * @typeParam TStage - Builder stage name
+ * @typeParam TInput - Input type from .input()
+ * @typeParam TOutput - Output type from .returns()
+ * @typeParam TContext - Context type from lens<TContext>()
  */
-declare module "./types.js" {
-	// Note: Parameter names must match the original interface exactly
-	interface PluginMethodRegistry<_TInput, _TOutput, _TContext> {
-		/**
-		 * Optimistic plugin methods.
-		 * Registered under 'optimistic' key matching the plugin name.
-		 */
-		optimistic: {
+export type OptimisticPluginMethods<
+	TStage extends string,
+	TInput,
+	TOutput,
+	TContext,
+> = TStage extends "MutationBuilderWithReturns"
+	? {
 			/**
-			 * Methods added after .returns() is called.
+			 * Define optimistic update behavior.
+			 *
+			 * @param spec - Optimistic update specification (sugar or Pipeline)
+			 * @returns Builder with .resolve() method
 			 */
-			MutationBuilderWithReturns: {
-				/**
-				 * Define optimistic update behavior.
-				 *
-				 * @param spec - Optimistic update specification (sugar or Pipeline)
-				 * @returns Builder with .resolve() method
-				 */
-				optimistic(
-					spec: OptimisticDSL,
-				): MutationBuilderWithOptimistic<_TInput, _TOutput, _TContext>;
+			optimistic(spec: OptimisticDSL): MutationBuilderWithOptimistic<TInput, TOutput, TContext>;
 
-				/**
-				 * Define optimistic update with typed input callback.
-				 *
-				 * @param callback - Function that receives typed input proxy and returns step builders
-				 * @returns Builder with .resolve() method
-				 */
-				optimistic(
-					callback: OptimisticCallback<_TInput>,
-				): MutationBuilderWithOptimistic<_TInput, _TOutput, _TContext>;
-			};
-		};
-	}
-}
+			/**
+			 * Define optimistic update with typed input callback.
+			 *
+			 * @param callback - Function that receives typed input proxy and returns step builders
+			 * @returns Builder with .resolve() method
+			 */
+			optimistic(
+				callback: OptimisticCallback<TInput>,
+			): MutationBuilderWithOptimistic<TInput, TOutput, TContext>;
+		}
+	: // biome-ignore lint/complexity/noBannedTypes: Empty object for intersection identity
+		{};
 
 // =============================================================================
 // Optimistic Plugin Extension Type
