@@ -196,6 +196,21 @@ export interface UpdateFieldsContext {
 	previousFields: string[] | "*";
 }
 
+/**
+ * Context passed to enhanceOperationMeta hook.
+ * Called for each operation when building handshake metadata.
+ */
+export interface EnhanceOperationMetaContext {
+	/** Operation path (e.g., 'user.create') */
+	path: string;
+	/** Operation type */
+	type: "query" | "mutation";
+	/** Current metadata (can be modified) */
+	meta: Record<string, unknown>;
+	/** Operation definition (MutationDef or QueryDef) */
+	definition: unknown;
+}
+
 // =============================================================================
 // Plugin Interface
 // =============================================================================
@@ -286,6 +301,21 @@ export interface ServerPlugin {
 	 * Called when a client updates subscribed fields for an entity.
 	 */
 	onUpdateFields?: (ctx: UpdateFieldsContext) => void | Promise<void>;
+
+	/**
+	 * Called for each operation when building handshake metadata.
+	 * Plugin can add fields to meta (e.g., optimistic config).
+	 *
+	 * @example
+	 * ```typescript
+	 * enhanceOperationMeta: (ctx) => {
+	 *   if (ctx.type === 'mutation' && ctx.definition._optimistic) {
+	 *     ctx.meta.optimistic = convertToExecutable(ctx.definition._optimistic);
+	 *   }
+	 * }
+	 * ```
+	 */
+	enhanceOperationMeta?: (ctx: EnhanceOperationMetaContext) => void;
 }
 
 // =============================================================================
@@ -438,6 +468,18 @@ export class PluginManager {
 		for (const plugin of this.plugins) {
 			if (plugin.onUpdateFields) {
 				await plugin.onUpdateFields(ctx);
+			}
+		}
+	}
+
+	/**
+	 * Run enhanceOperationMeta hooks.
+	 * Each plugin can add fields to the operation metadata.
+	 */
+	runEnhanceOperationMeta(ctx: EnhanceOperationMetaContext): void {
+		for (const plugin of this.plugins) {
+			if (plugin.enhanceOperationMeta) {
+				plugin.enhanceOperationMeta(ctx);
 			}
 		}
 	}

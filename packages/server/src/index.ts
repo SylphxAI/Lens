@@ -139,7 +139,12 @@ export {
 	type DisconnectContext,
 	// Diff Optimizer Plugin
 	diffOptimizer,
+	type EnhanceOperationMetaContext,
 	isDiffOptimizerPlugin,
+	// Optimistic Plugin
+	isOptimisticPlugin,
+	type OptimisticPluginOptions,
+	optimisticPlugin,
 	PluginManager,
 	// Plugin interface
 	type ServerPlugin,

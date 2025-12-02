@@ -10,6 +10,14 @@ export {
 	diffOptimizer,
 	isDiffOptimizerPlugin,
 } from "./diff-optimizer.js";
+
+// Optimistic Updates Plugin
+export {
+	isOptimisticPlugin,
+	type OptimisticPluginOptions,
+	optimisticPlugin,
+} from "./optimistic.js";
+
 export {
 	// Context types
 	type AfterMutationContext,
@@ -20,6 +28,7 @@ export {
 	// Plugin manager
 	createPluginManager,
 	type DisconnectContext,
+	type EnhanceOperationMetaContext,
 	PluginManager,
 	// Plugin interface
 	type ServerPlugin,

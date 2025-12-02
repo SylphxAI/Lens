@@ -10,6 +10,7 @@
 import { describe, expect, it } from "bun:test";
 import { entity, lens, mutation, query, t } from "@sylphx/lens-core";
 import { z } from "zod";
+import { optimisticPlugin } from "../plugin/optimistic.js";
 import { createServer } from "../server/create.js";
 
 // =============================================================================
@@ -420,6 +421,7 @@ describe("E2E - Metadata", () => {
 			entities: { User },
 			queries: { getUser },
 			mutations: { createUser },
+			plugins: [optimisticPlugin()],
 			version: "2.0.0",
 		});
 
@@ -428,11 +430,11 @@ describe("E2E - Metadata", () => {
 		expect(metadata.version).toBe("2.0.0");
 		expect(metadata.operations.getUser).toEqual({ type: "query" });
 		expect(metadata.operations.createUser.type).toBe("mutation");
-		// createUser should have auto-derived optimistic hint
+		// createUser should have auto-derived optimistic hint (with plugin)
 		expect(metadata.operations.createUser.optimistic).toBeDefined();
 	});
 
-	it("auto-derives optimistic hints from naming", () => {
+	it("auto-derives optimistic hints from naming with plugin", () => {
 		const updateUser = mutation()
 			.input(z.object({ id: z.string(), name: z.string() }))
 			.returns(User)
@@ -444,13 +446,14 @@ describe("E2E - Metadata", () => {
 
 		const server = createServer({
 			mutations: { updateUser, deleteUser },
+			plugins: [optimisticPlugin()],
 		});
 
 		const metadata = server.getMetadata();
 
-		// updateUser should have 'merge' optimistic
+		// updateUser should have 'merge' optimistic (with plugin)
 		expect(metadata.operations.updateUser.optimistic).toBeDefined();
-		// deleteUser should have 'delete' optimistic
+		// deleteUser should have 'delete' optimistic (with plugin)
 		expect(metadata.operations.deleteUser.optimistic).toBeDefined();
 	});
 });

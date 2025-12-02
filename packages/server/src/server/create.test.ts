@@ -8,6 +8,7 @@
 import { describe, expect, it } from "bun:test";
 import { entity, mutation, query, router } from "@sylphx/lens-core";
 import { z } from "zod";
+import { optimisticPlugin } from "../plugin/optimistic.js";
 import { createServer } from "./create.js";
 
 // =============================================================================
@@ -132,17 +133,31 @@ describe("getMetadata", () => {
 		expect(metadata.operations.updateUser.type).toBe("mutation");
 	});
 
-	it("includes optimistic hints for mutations", () => {
+	it("includes optimistic hints for mutations with optimisticPlugin", () => {
+		const server = createServer({
+			mutations: { createUser, updateUser, deleteUser },
+			plugins: [optimisticPlugin()],
+		});
+
+		const metadata = server.getMetadata();
+
+		// Auto-derived from naming convention when using optimisticPlugin
+		expect(metadata.operations.createUser.optimistic).toBeDefined();
+		expect(metadata.operations.updateUser.optimistic).toBeDefined();
+		expect(metadata.operations.deleteUser.optimistic).toBeDefined();
+	});
+
+	it("does not include optimistic hints without optimisticPlugin", () => {
 		const server = createServer({
 			mutations: { createUser, updateUser, deleteUser },
 		});
 
 		const metadata = server.getMetadata();
 
-		// Auto-derived from naming convention
-		expect(metadata.operations.createUser.optimistic).toBeDefined();
-		expect(metadata.operations.updateUser.optimistic).toBeDefined();
-		expect(metadata.operations.deleteUser.optimistic).toBeDefined();
+		// Without plugin, no optimistic hints
+		expect(metadata.operations.createUser.optimistic).toBeUndefined();
+		expect(metadata.operations.updateUser.optimistic).toBeUndefined();
+		expect(metadata.operations.deleteUser.optimistic).toBeUndefined();
 	});
 
 	it("handles nested router paths", () => {

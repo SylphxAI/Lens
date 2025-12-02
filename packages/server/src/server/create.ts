@@ -24,14 +24,11 @@ import {
 	type InferRouterContext,
 	isEntityDef,
 	isMutationDef,
-	isPipeline,
 	isQueryDef,
 	type MutationDef,
-	type Pipeline,
 	type QueryDef,
 	type ResolverDef,
 	type Resolvers,
-	type ReturnSpec,
 	type RouterDef,
 	toResolverMap,
 } from "@sylphx/lens-core";
@@ -347,51 +344,6 @@ function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
 	return value != null && typeof value === "object" && Symbol.asyncIterator in value;
 }
 
-/** Extract entity type name from return spec */
-function getEntityTypeName(returnSpec: ReturnSpec | undefined): string | undefined {
-	if (!returnSpec) return undefined;
-
-	if (typeof returnSpec === "object" && "_tag" in returnSpec) {
-		if (returnSpec._tag === "entity" && returnSpec.entityDef?._name) {
-			return returnSpec.entityDef._name;
-		}
-		if (returnSpec._tag === "array" && returnSpec.element) {
-			return getEntityTypeName(returnSpec.element as ReturnSpec);
-		}
-	}
-
-	return undefined;
-}
-
-/** Get input field names from Zod schema */
-function getInputFields(schema: { shape?: Record<string, unknown> } | undefined): string[] {
-	if (!schema?.shape) return [];
-	return Object.keys(schema.shape);
-}
-
-/** Convert sugar syntax to Reify Pipeline */
-function sugarToPipeline(
-	sugar: string | Pipeline | undefined,
-	entityType: string | undefined,
-	inputFields: string[],
-): Pipeline | undefined {
-	if (!sugar) return undefined;
-	if (isPipeline(sugar)) return sugar;
-
-	const entity = entityType ?? "Entity";
-
-	switch (sugar) {
-		case "merge":
-			return [{ type: "merge", target: { entity, id: ["input", "id"] }, fields: inputFields }];
-		case "create":
-			return [{ type: "add", entity, data: ["output"] }];
-		case "delete":
-			return [{ type: "remove", entity, id: ["input", "id"] }];
-		default:
-			return undefined;
-	}
-}
-
 // =============================================================================
 // Server Implementation
 // =============================================================================
@@ -463,20 +415,10 @@ class LensServerImpl<
 			}
 		}
 
-		// Inject mutation names and auto-derive optimistic
+		// Inject mutation names
 		for (const [name, def] of Object.entries(this.mutations)) {
 			if (def && typeof def === "object") {
 				(def as { _name?: string })._name = name;
-				const lastSegment = name.includes(".") ? name.split(".").pop()! : name;
-				if (!def._optimistic) {
-					if (lastSegment.startsWith("update")) {
-						(def as { _optimistic?: string })._optimistic = "merge";
-					} else if (lastSegment.startsWith("create") || lastSegment.startsWith("add")) {
-						(def as { _optimistic?: string })._optimistic = "create";
-					} else if (lastSegment.startsWith("delete") || lastSegment.startsWith("remove")) {
-						(def as { _optimistic?: string })._optimistic = "delete";
-					}
-				}
 			}
 		}
 
@@ -545,18 +487,28 @@ class LensServerImpl<
 			current[parts[parts.length - 1]] = meta;
 		};
 
-		for (const [name, _def] of Object.entries(this.queries)) {
-			setNested(name, { type: "query" });
+		for (const [name, def] of Object.entries(this.queries)) {
+			const meta: Record<string, unknown> = { type: "query" };
+			// Let plugins enhance metadata
+			this.pluginManager.runEnhanceOperationMeta({
+				path: name,
+				type: "query",
+				meta,
+				definition: def,
+			});
+			setNested(name, meta as OperationMeta);
 		}
 
 		for (const [name, def] of Object.entries(this.mutations)) {
-			const meta: OperationMeta = { type: "mutation" };
-			if (def._optimistic) {
-				const entityType = getEntityTypeName(def._output);
-				const inputFields = getInputFields(def._input as { shape?: Record<string, unknown> });
-				meta.optimistic = sugarToPipeline(def._optimistic, entityType, inputFields);
-			}
-			setNested(name, meta);
+			const meta: Record<string, unknown> = { type: "mutation" };
+			// Let plugins enhance metadata (e.g., optimisticPlugin adds optimistic config)
+			this.pluginManager.runEnhanceOperationMeta({
+				path: name,
+				type: "mutation",
+				meta,
+				definition: def,
+			});
+			setNested(name, meta as OperationMeta);
 		}
 
 		return result;
