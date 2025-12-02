@@ -211,3 +211,20 @@ export function isRuntimePlugin(value: unknown): value is RuntimePlugin {
 		typeof (value as RuntimePlugin).name === "string"
 	);
 }
+
+/**
+ * Extract PluginExtension types from a RuntimePlugin array.
+ *
+ * This allows lens({ plugins: [optimisticPlugin()] }) to work where
+ * optimisticPlugin() returns RuntimePlugin<OptimisticPluginExtension>.
+ *
+ * @example
+ * ```typescript
+ * type Plugins = [RuntimePlugin<OptimisticPluginExtension>];
+ * type Extensions = ExtractPluginExtensions<Plugins>;
+ * // Result: [OptimisticPluginExtension]
+ * ```
+ */
+export type ExtractPluginExtensions<T extends readonly RuntimePlugin[]> = {
+	[K in keyof T]: T[K] extends RuntimePlugin<infer E> ? E : NoExtension;
+};

@@ -46,13 +46,12 @@
 import type {
 	MutationBuilder,
 	MutationBuilderWithInput,
-	MutationBuilderWithReturns,
 	QueryBuilder,
 } from "./operations/index.js";
 import { mutation as createMutation, query as createQuery } from "./operations/index.js";
-import type { OptimisticPluginExtension } from "./plugin/optimistic-extension.js";
 import type {
 	ExtractExtension,
+	ExtractPluginExtensions,
 	HasPlugin,
 	NoExtension,
 	PluginExtension,
@@ -104,12 +103,14 @@ export interface LensMutation<TContext> {
  * Mutation builder with plugin extensions applied.
  * Adds methods from plugins to the builder at each stage.
  */
-export type MutationBuilderWithExtensions<TContext, TPlugins extends readonly PluginExtension[]> =
-	MutationBuilder<unknown, unknown, TContext> & {
-		input<T>(
-			schema: import("./operations/index.js").ZodLikeSchema<T>,
-		): MutationBuilderWithInputExtended<T, unknown, TContext, TPlugins>;
-	};
+export type MutationBuilderWithExtensions<
+	TContext,
+	TPlugins extends readonly PluginExtension[],
+> = MutationBuilder<unknown, unknown, TContext> & {
+	input<T>(
+		schema: import("./operations/index.js").ZodLikeSchema<T>,
+	): MutationBuilderWithInputExtended<T, unknown, TContext, TPlugins>;
+};
 
 /**
  * Mutation builder after .input() with plugin extensions.
@@ -226,8 +227,13 @@ export interface Lens<TContext> {
 
 /**
  * Configuration for lens() with plugins.
+ *
+ * Accepts RuntimePlugin[] and extracts PluginExtension types for type composition.
  */
-export interface LensConfig<TPlugins extends readonly PluginExtension[] = readonly NoExtension[]> {
+export interface LensConfig<
+	TPlugins extends
+		readonly RuntimePlugin<PluginExtension>[] = readonly RuntimePlugin<PluginExtension>[],
+> {
 	/**
 	 * Plugins that extend builder functionality.
 	 * Each plugin can add methods to query/mutation builders.
@@ -354,12 +360,16 @@ export interface LensWithPlugins<
 export function lens<TContext = FieldResolverContext>(): Lens<TContext>;
 export function lens<
 	TContext = FieldResolverContext,
-	TPlugins extends readonly PluginExtension[] = readonly NoExtension[],
->(config: LensConfig<TPlugins>): LensWithPlugins<TContext, TPlugins>;
+	TPlugins extends
+		readonly RuntimePlugin<PluginExtension>[] = readonly RuntimePlugin<PluginExtension>[],
+>(config: LensConfig<TPlugins>): LensWithPlugins<TContext, ExtractPluginExtensions<TPlugins>>;
 export function lens<
 	TContext = FieldResolverContext,
-	TPlugins extends readonly PluginExtension[] = readonly NoExtension[],
->(config?: LensConfig<TPlugins>): Lens<TContext> | LensWithPlugins<TContext, TPlugins> {
+	TPlugins extends
+		readonly RuntimePlugin<PluginExtension>[] = readonly RuntimePlugin<PluginExtension>[],
+>(
+	config?: LensConfig<TPlugins>,
+): Lens<TContext> | LensWithPlugins<TContext, ExtractPluginExtensions<TPlugins>> {
 	// Create typed resolver factory using curried form
 	const typedResolver = createResolver<TContext>();
 
