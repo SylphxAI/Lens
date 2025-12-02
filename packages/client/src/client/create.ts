@@ -166,10 +166,7 @@ class ClientImpl {
 	>();
 
 	/** Maps original callbacks to their wrapped versions for proper cleanup */
-	private callbackWrappers = new WeakMap<
-		(data: unknown) => void,
-		(data: unknown) => void
-	>();
+	private callbackWrappers = new WeakMap<(data: unknown) => void, (data: unknown) => void>();
 
 	constructor(config: LensClientConfig) {
 		this.transport = config.transport;

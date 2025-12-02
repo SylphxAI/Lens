@@ -34,7 +34,7 @@
  */
 
 import { createClient, http, type LensClientConfig } from "@sylphx/lens-client";
-import type { LensServer } from "@sylphx/lens-server";
+import { createServerClientProxy, type LensServer } from "@sylphx/lens-server";
 import { type ComputedRef, computed, ref } from "vue";
 
 // =============================================================================
@@ -174,38 +174,11 @@ export function createLensNuxt<TServer extends LensServer>(
 	};
 }
 
-// =============================================================================
-// Server Client (Direct Execution)
-// =============================================================================
-
-function createServerClientProxy(server: LensServer): unknown {
-	function createProxy(path: string): unknown {
-		return new Proxy(() => {}, {
-			get(_, prop) {
-				if (typeof prop === "symbol") return undefined;
-				if (prop === "then") return undefined;
-
-				const newPath = path ? `${path}.${prop}` : String(prop);
-				return createProxy(newPath);
-			},
-			async apply(_, __, args) {
-				const input = args[0];
-				const result = await server.execute({ path, input });
-
-				if (result.error) {
-					throw result.error;
-				}
-
-				return result.data;
-			},
-		});
-	}
-
-	return createProxy("");
-}
+// NOTE: createServerClientProxy is now imported from @sylphx/lens-server
+// H3 handler functions remain here because they use H3-specific APIs (not standard Web Request)
 
 // =============================================================================
-// Nuxt Handler
+// Nuxt Handler (H3-specific)
 // =============================================================================
 
 function createHandler(server: LensServer, basePath: string) {

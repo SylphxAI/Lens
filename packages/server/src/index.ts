@@ -108,6 +108,13 @@ export {
 	createWSHandler,
 	type WSHandler,
 	type WSHandlerOptions,
+	// Framework Handler Utilities
+	createFrameworkHandler,
+	createServerClientProxy,
+	type FrameworkHandlerOptions,
+	handleWebMutation,
+	handleWebQuery,
+	handleWebSSE,
 	// Deprecated aliases
 	createHTTPAdapter,
 	createSSEAdapter,

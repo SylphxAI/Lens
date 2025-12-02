@@ -78,7 +78,12 @@ export interface Handler {
  * ```
  */
 export function createHandler(server: LensServer, options: HandlerOptions = {}): Handler {
-	const { ssePath = "/__lens/sse", stateManager = createGraphStateManager(), heartbeatInterval, ...httpOptions } = options;
+	const {
+		ssePath = "/__lens/sse",
+		stateManager = createGraphStateManager(),
+		heartbeatInterval,
+		...httpOptions
+	} = options;
 
 	const pathPrefix = httpOptions.pathPrefix ?? "";
 	const fullSsePath = `${pathPrefix}${ssePath}`;

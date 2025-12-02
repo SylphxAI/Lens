@@ -11,6 +11,19 @@
 export { createHandler, type Handler, type HandlerOptions } from "./unified.js";
 
 // =============================================================================
+// Framework Handler Utilities
+// =============================================================================
+
+export {
+	createFrameworkHandler,
+	createServerClientProxy,
+	type FrameworkHandlerOptions,
+	handleWebMutation,
+	handleWebQuery,
+	handleWebSSE,
+} from "./framework.js";
+
+// =============================================================================
 // SSE Handler
 // =============================================================================
 

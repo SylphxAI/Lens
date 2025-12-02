@@ -52,7 +52,11 @@
  */
 
 import { createClient, http, type LensClientConfig } from "@sylphx/lens-client";
-import type { LensServer } from "@sylphx/lens-server";
+import {
+	createFrameworkHandler,
+	createServerClientProxy,
+	type LensServer,
+} from "@sylphx/lens-server";
 
 // =============================================================================
 // Types
@@ -153,8 +157,12 @@ export function createLensFresh<TServer extends LensServer>(
 		...config.clientConfig,
 	}) as unknown as InferClient<TServer>;
 
-	// Handler
-	const handler = createHandler(server, basePath);
+	// Handler (using shared utilities from @sylphx/lens-server)
+	const baseHandler = createFrameworkHandler(server, { basePath });
+	const handler = {
+		GET: baseHandler,
+		POST: baseHandler,
+	};
 
 	// Serialization utilities
 	const serialize = <T>(data: T): SerializedData<T> => ({
@@ -187,161 +195,8 @@ export function createLensFresh<TServer extends LensServer>(
 	};
 }
 
-// =============================================================================
-// Server Client (Direct Execution)
-// =============================================================================
-
-function createServerClientProxy(server: LensServer): unknown {
-	function createProxy(path: string): unknown {
-		return new Proxy(() => {}, {
-			get(_, prop) {
-				if (typeof prop === "symbol") return undefined;
-				if (prop === "then") return undefined;
-
-				const newPath = path ? `${path}.${prop}` : String(prop);
-				return createProxy(newPath);
-			},
-			async apply(_, __, args) {
-				const input = args[0];
-				const result = await server.execute({ path, input });
-
-				if (result.error) {
-					throw result.error;
-				}
-
-				return result.data;
-			},
-		});
-	}
-
-	return createProxy("");
-}
-
-// =============================================================================
-// Fresh Handler
-// =============================================================================
-
-function createHandler(server: LensServer, basePath: string) {
-	const handleRequest = async (req: Request): Promise<Response> => {
-		const url = new URL(req.url);
-		const pathMatch = url.pathname.match(new RegExp(`${basePath}/(.+)`));
-		const path = pathMatch ? pathMatch[1] : "";
-
-		// Handle SSE subscription
-		if (req.headers.get("accept") === "text/event-stream") {
-			return handleSSE(server, path, req);
-		}
-
-		// Handle query (GET)
-		if (req.method === "GET") {
-			return handleQuery(server, path, url);
-		}
-
-		// Handle mutation (POST)
-		if (req.method === "POST") {
-			return handleMutation(server, path, req);
-		}
-
-		return new Response("Method not allowed", { status: 405 });
-	};
-
-	return {
-		GET: handleRequest,
-		POST: handleRequest,
-	};
-}
-
-async function handleQuery(server: LensServer, path: string, url: URL): Promise<Response> {
-	try {
-		const inputParam = url.searchParams.get("input");
-		const input = inputParam ? JSON.parse(inputParam) : undefined;
-
-		const result = await server.execute({ path, input });
-
-		if (result.error) {
-			return Response.json({ error: result.error.message }, { status: 400 });
-		}
-
-		return Response.json({ data: result.data });
-	} catch (error) {
-		return Response.json(
-			{ error: error instanceof Error ? error.message : "Unknown error" },
-			{ status: 500 },
-		);
-	}
-}
-
-async function handleMutation(server: LensServer, path: string, req: Request): Promise<Response> {
-	try {
-		const body = await req.json();
-		const input = body.input;
-
-		const result = await server.execute({ path, input });
-
-		if (result.error) {
-			return Response.json({ error: result.error.message }, { status: 400 });
-		}
-
-		return Response.json({ data: result.data });
-	} catch (error) {
-		return Response.json(
-			{ error: error instanceof Error ? error.message : "Unknown error" },
-			{ status: 500 },
-		);
-	}
-}
-
-function handleSSE(server: LensServer, path: string, req: Request): Response {
-	const url = new URL(req.url);
-	const inputParam = url.searchParams.get("input");
-	const input = inputParam ? JSON.parse(inputParam) : undefined;
-
-	const stream = new ReadableStream({
-		start(controller) {
-			const encoder = new TextEncoder();
-
-			const result = server.execute({ path, input });
-
-			if (result && typeof result === "object" && "subscribe" in result) {
-				const observable = result as {
-					subscribe: (handlers: {
-						next: (value: { data?: unknown }) => void;
-						error: (err: Error) => void;
-						complete: () => void;
-					}) => { unsubscribe: () => void };
-				};
-
-				const subscription = observable.subscribe({
-					next: (value) => {
-						const data = `data: ${JSON.stringify(value.data)}\n\n`;
-						controller.enqueue(encoder.encode(data));
-					},
-					error: (err) => {
-						const data = `event: error\ndata: ${JSON.stringify({ error: err.message })}\n\n`;
-						controller.enqueue(encoder.encode(data));
-						controller.close();
-					},
-					complete: () => {
-						controller.close();
-					},
-				});
-
-				req.signal.addEventListener("abort", () => {
-					subscription.unsubscribe();
-					controller.close();
-				});
-			}
-		},
-	});
-
-	return new Response(stream, {
-		headers: {
-			"Content-Type": "text/event-stream",
-			"Cache-Control": "no-cache",
-			Connection: "keep-alive",
-		},
-	});
-}
+// NOTE: Server client proxy and handler utilities are now imported from @sylphx/lens-server
+// See: createServerClientProxy, createFrameworkHandler
 
 // =============================================================================
 // Preact Hooks
