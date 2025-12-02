@@ -14,6 +14,7 @@ export {
 // Optimistic Updates Plugin
 export {
 	isOptimisticPlugin,
+	type OptimisticPlugin,
 	type OptimisticPluginOptions,
 	optimisticPlugin,
 } from "./optimistic.js";

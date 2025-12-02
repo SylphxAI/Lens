@@ -4,10 +4,25 @@
  * Server-side plugin that enables optimistic update configuration.
  * Processes mutation definitions and adds optimistic config to handshake metadata.
  *
- * Without this plugin, mutations won't have optimistic config in handshake.
- * Client needs a matching optimisticPlugin to execute the pipelines.
+ * This plugin implements both:
+ * - RuntimePlugin<OptimisticPluginExtension> for lens() type extensions
+ * - ServerPlugin for server-side metadata processing
  *
- * @example
+ * @example With lens() for type-safe .optimistic()
+ * ```typescript
+ * const { mutation, plugins } = lens<AppContext>({ plugins: [optimisticPlugin()] });
+ *
+ * // .optimistic() is now type-safe (compile error without plugin)
+ * const updateUser = mutation()
+ *   .input(z.object({ id: z.string(), name: z.string() }))
+ *   .returns(User)
+ *   .optimistic('merge')  // ✅ Type-safe
+ *   .resolve(({ input }) => db.user.update(input));
+ *
+ * const server = createServer({ router, plugins });
+ * ```
+ *
+ * @example Direct server usage
  * ```typescript
  * const server = createServer({
  *   router,
@@ -16,7 +31,12 @@
  * ```
  */
 
-import { isPipeline, type Pipeline } from "@sylphx/lens-core";
+import {
+	isPipeline,
+	OPTIMISTIC_PLUGIN_SYMBOL,
+	type OptimisticPluginMarker,
+	type Pipeline,
+} from "@sylphx/lens-core";
 import type { EnhanceOperationMetaContext, ServerPlugin } from "./types.js";
 
 /**
@@ -255,12 +275,35 @@ function isOptimisticDSL(value: unknown): value is OptimisticDSL {
 }
 
 /**
+ * Combined plugin type that works with both lens() and createServer().
+ *
+ * This type satisfies:
+ * - OptimisticPluginMarker (RuntimePlugin<OptimisticPluginExtension>) for lens() type extensions
+ * - ServerPlugin for server-side metadata processing
+ */
+export type OptimisticPlugin = OptimisticPluginMarker & ServerPlugin;
+
+/**
  * Create an optimistic plugin.
  *
- * This plugin processes mutation definitions and adds optimistic config
- * to the handshake metadata, enabling client-side optimistic updates.
+ * This plugin enables type-safe .optimistic() on mutation builders when used
+ * with lens(), and processes mutation definitions for server metadata.
  *
- * @example
+ * @example With lens() for type-safe builders
+ * ```typescript
+ * const { mutation, plugins } = lens<AppContext>({ plugins: [optimisticPlugin()] });
+ *
+ * // .optimistic() is type-safe (compile error without plugin)
+ * const updateUser = mutation()
+ *   .input(z.object({ id: z.string(), name: z.string() }))
+ *   .returns(User)
+ *   .optimistic('merge')
+ *   .resolve(({ input }) => db.user.update(input));
+ *
+ * const server = createServer({ router, plugins });
+ * ```
+ *
+ * @example Direct server usage
  * ```typescript
  * const server = createServer({
  *   router: appRouter,
@@ -268,7 +311,7 @@ function isOptimisticDSL(value: unknown): value is OptimisticDSL {
  * });
  * ```
  */
-export function optimisticPlugin(options: OptimisticPluginOptions = {}): ServerPlugin {
+export function optimisticPlugin(options: OptimisticPluginOptions = {}): OptimisticPlugin {
 	const { autoDerive = true, debug = false } = options;
 
 	const log = (...args: unknown[]) => {
@@ -278,8 +321,11 @@ export function optimisticPlugin(options: OptimisticPluginOptions = {}): ServerP
 	};
 
 	return {
-		name: "optimistic",
+		// RuntimePlugin (OptimisticPluginMarker) interface
+		name: "optimistic" as const,
+		[OPTIMISTIC_PLUGIN_SYMBOL]: true as const,
 
+		// ServerPlugin interface
 		/**
 		 * Enhance operation metadata with optimistic config.
 		 * Called for each operation when building handshake metadata.
@@ -323,7 +369,7 @@ export function optimisticPlugin(options: OptimisticPluginOptions = {}): ServerP
 
 /**
  * Check if a plugin is an optimistic plugin.
+ *
+ * Uses the OPTIMISTIC_PLUGIN_SYMBOL for type-safe identification.
  */
-export function isOptimisticPlugin(plugin: ServerPlugin): boolean {
-	return plugin.name === "optimistic";
-}
+export { isOptimisticPlugin } from "@sylphx/lens-core";
