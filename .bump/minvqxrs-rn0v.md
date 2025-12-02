@@ -1,6 +1,17 @@
 ---
-release: patch
-package: @sylphx/lens,@sylphx/lens-client,@sylphx/lens-core,@sylphx/lens-fresh,@sylphx/lens-next,@sylphx/lens-nuxt,@sylphx/lens-preact,@sylphx/lens-react,@sylphx/lens-server,@sylphx/lens-solid,@sylphx/lens-solidstart,@sylphx/lens-svelte,@sylphx/lens-vue
+"@sylphx/lens": patch
+"@sylphx/lens-client": patch
+"@sylphx/lens-core": patch
+"@sylphx/lens-fresh": patch
+"@sylphx/lens-next": patch
+"@sylphx/lens-nuxt": patch
+"@sylphx/lens-preact": patch
+"@sylphx/lens-react": patch
+"@sylphx/lens-server": patch
+"@sylphx/lens-solid": patch
+"@sylphx/lens-solidstart": patch
+"@sylphx/lens-svelte": patch
+"@sylphx/lens-vue": patch
 ---
 
 Release patch version
