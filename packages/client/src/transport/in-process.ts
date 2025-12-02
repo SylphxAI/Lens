@@ -5,21 +5,21 @@
  * Useful for testing and SSR.
  */
 
-import type { Metadata, Observable, Operation, Result, Transport } from "./types.js";
+import type {
+	LensServerInterface,
+	Metadata,
+	Observable,
+	Operation,
+	Result,
+	Transport,
+} from "./types.js";
 
 // =============================================================================
 // Types
 // =============================================================================
 
-/**
- * Base Lens server interface for in-process transport.
- */
-export interface LensServerInterface {
-	/** Get operation metadata */
-	getMetadata(): Metadata;
-	/** Execute an operation */
-	execute(op: Operation): Promise<Result> | Observable<Result>;
-}
+// Re-export LensServerInterface for backward compatibility
+export type { LensServerInterface } from "./types.js";
 
 /**
  * Extract _types from a server (if present).

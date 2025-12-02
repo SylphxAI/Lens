@@ -13,6 +13,8 @@ export type {
 	ConnectionState,
 	// Transport capability interfaces
 	FullTransport,
+	// Server interface (for in-process transport)
+	LensServerInterface,
 	Metadata,
 	MutationCapable,
 	// Observable types

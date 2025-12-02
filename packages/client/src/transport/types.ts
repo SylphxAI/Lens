@@ -238,6 +238,21 @@ export interface Transport {
 }
 
 // =============================================================================
+// Server Interface (for in-process transport)
+// =============================================================================
+
+/**
+ * Minimal Lens server interface needed by transports.
+ * Used for in-process transport and type inference.
+ */
+export interface LensServerInterface {
+	/** Get operation metadata */
+	getMetadata(): Metadata;
+	/** Execute an operation (may return Observable for subscriptions) */
+	execute(op: Operation): Promise<Result> | Observable<Result>;
+}
+
+// =============================================================================
 // Type Guards
 // =============================================================================
 

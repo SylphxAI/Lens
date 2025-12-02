@@ -5,7 +5,14 @@
  * Handles query/mutation via POST, subscriptions via polling.
  */
 
-import type { Metadata, Observable, Operation, Result, Transport } from "./types.js";
+import type {
+	LensServerInterface,
+	Metadata,
+	Observable,
+	Operation,
+	Result,
+	Transport,
+} from "./types.js";
 
 // =============================================================================
 // Types
@@ -272,13 +279,8 @@ export interface ServerTransport {
 	listen(server: LensServerInterface): void;
 }
 
-/**
- * Minimal server interface needed by transport.
- */
-export interface LensServerInterface {
-	getMetadata(): Metadata;
-	execute(op: Operation): Promise<Result>;
-}
+// Re-export for backward compatibility
+export type { LensServerInterface } from "./types.js";
 
 /**
  * Create HTTP server transport.
