@@ -68,4 +68,9 @@ export {
 	routeByType,
 } from "./route.js";
 // WebSocket
-export { type WsTransportOptions, ws } from "./ws.js";
+export {
+	type ConnectionState,
+	type WsTransportInstance,
+	type WsTransportOptions,
+	ws,
+} from "./ws.js";

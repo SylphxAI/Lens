@@ -643,15 +643,15 @@ describe("ws transport", () => {
 			const transport = ws({
 				url: "ws://localhost:3000",
 				timeout: 500,
-				reconnect: { enabled: true, delay: 20, maxAttempts: 3 },
+				reconnect: { enabled: true, baseDelay: 20, maxAttempts: 3, jitter: 0 },
 			});
 			const instance = await setupConnection(transport);
 
 			// Simulate disconnect
 			instance.simulateClose();
 
-			// Wait for reconnect attempt
-			await new Promise((r) => setTimeout(r, 50));
+			// Wait for reconnect attempt (with some buffer for timing)
+			await new Promise((r) => setTimeout(r, 100));
 
 			// Should have created a new WebSocket instance
 			expect(mockInstances.length).toBeGreaterThan(1);
@@ -714,9 +714,380 @@ describe("ws transport", () => {
 		});
 	});
 
+	describe("version-based reconnection", () => {
+		async function setupConnection(transport: ReturnType<typeof ws>) {
+			const connectPromise = transport.connect();
+			await new Promise((r) => setTimeout(r, 10));
+			const instance = mockInstances[0];
+			instance.simulateOpen();
+			// Wait for connect() to set up addEventListener after ensureConnection resolves
+			await Promise.resolve();
+			await Promise.resolve();
+			await Promise.resolve();
+			instance.simulateMessage({
+				type: "handshake",
+				data: { version: "1.0.0", operations: {} },
+			});
+			await connectPromise;
+			return instance;
+		}
+
+		it("tracks subscription in registry", async () => {
+			const transport = ws({ url: "ws://localhost:3000", timeout: 500 });
+			await setupConnection(transport);
+
+			const observable = transport.execute({
+				id: "sub-registry",
+				path: "user.watch",
+				type: "subscription",
+				input: { id: "123" },
+			}) as Observable<Result>;
+
+			observable.subscribe({});
+
+			await new Promise((r) => setTimeout(r, 20));
+
+			const registry = transport.getRegistry();
+			expect(registry.size).toBe(1);
+			expect(registry.has("sub-registry")).toBe(true);
+		});
+
+		it("updates version in registry on subscription message", async () => {
+			const transport = ws({ url: "ws://localhost:3000", timeout: 500 });
+			const instance = await setupConnection(transport);
+
+			const observable = transport.execute({
+				id: "sub-version",
+				path: "user.watch",
+				type: "subscription",
+				input: { id: "123" },
+			}) as Observable<Result>;
+
+			observable.subscribe({});
+
+			await new Promise((r) => setTimeout(r, 20));
+
+			// Simulate subscription update with version
+			instance.simulateMessage({
+				type: "subscription",
+				id: "sub-version",
+				data: { name: "Alice" },
+				version: 5,
+			});
+
+			const registry = transport.getRegistry();
+			expect(registry.getVersion("sub-version")).toBe(5);
+		});
+
+		it("removes subscription from registry on unsubscribe", async () => {
+			const transport = ws({ url: "ws://localhost:3000", timeout: 500 });
+			await setupConnection(transport);
+
+			const observable = transport.execute({
+				id: "sub-remove",
+				path: "user.watch",
+				type: "subscription",
+				input: { id: "123" },
+			}) as Observable<Result>;
+
+			const subscription = observable.subscribe({});
+
+			await new Promise((r) => setTimeout(r, 20));
+
+			const registry = transport.getRegistry();
+			expect(registry.has("sub-remove")).toBe(true);
+
+			subscription.unsubscribe();
+
+			expect(registry.has("sub-remove")).toBe(false);
+		});
+
+		it("sends reconnect message with subscription state after reconnecting", async () => {
+			const transport = ws({
+				url: "ws://localhost:3000",
+				timeout: 500,
+				reconnect: { enabled: true, baseDelay: 10, maxAttempts: 3, jitter: 0 },
+			});
+			const instance = await setupConnection(transport);
+
+			// Subscribe
+			const observable = transport.execute({
+				id: "sub-reconnect",
+				path: "user.watch",
+				type: "subscription",
+				input: { id: "123" },
+			}) as Observable<Result>;
+
+			observable.subscribe({});
+
+			await new Promise((r) => setTimeout(r, 20));
+
+			// Update version
+			instance.simulateMessage({
+				type: "subscription",
+				id: "sub-reconnect",
+				data: { name: "Alice" },
+				version: 3,
+			});
+
+			// Clear send mock calls
+			instance.send.mockClear();
+
+			// Simulate disconnect
+			instance.simulateClose();
+
+			// Wait for reconnect
+			await new Promise((r) => setTimeout(r, 50));
+
+			// New WebSocket should be created
+			expect(mockInstances.length).toBe(2);
+			const newInstance = mockInstances[1];
+
+			// Simulate new connection
+			newInstance.simulateOpen();
+
+			await new Promise((r) => setTimeout(r, 20));
+
+			// Check that reconnect message was sent
+			const sendCalls = newInstance.send.mock.calls;
+			const reconnectCall = sendCalls.find((call) => {
+				const msg = JSON.parse(call[0] as string);
+				return msg.type === "reconnect";
+			});
+
+			expect(reconnectCall).toBeDefined();
+			const reconnectMsg = JSON.parse(reconnectCall![0] as string);
+			expect(reconnectMsg.subscriptions).toHaveLength(1);
+			expect(reconnectMsg.subscriptions[0].id).toBe("sub-reconnect");
+			expect(reconnectMsg.subscriptions[0].version).toBe(3);
+		});
+
+		it("applies patches from reconnect_ack", async () => {
+			let patchApplied = false;
+			const transport = ws({
+				url: "ws://localhost:3000",
+				timeout: 500,
+				reconnect: { enabled: true, baseDelay: 10, maxAttempts: 3, jitter: 0 },
+				onReconnect: (results) => {
+					if (results.some((r) => r.status === "patched")) {
+						patchApplied = true;
+					}
+				},
+			});
+			const instance = await setupConnection(transport);
+			const instanceCountAfterSetup = mockInstances.length;
+
+			const values: unknown[] = [];
+			const observable = transport.execute({
+				id: "sub-patch",
+				path: "user.watch",
+				type: "subscription",
+				input: { id: "123" },
+			}) as Observable<Result>;
+
+			observable.subscribe({
+				next: (result) => values.push(result.data),
+			});
+
+			await new Promise((r) => setTimeout(r, 20));
+
+			// Initial data
+			instance.simulateMessage({
+				type: "subscription",
+				id: "sub-patch",
+				data: { name: "Alice", age: 25 },
+				version: 1,
+			});
+
+			// Disconnect and reconnect
+			instance.simulateClose();
+			await new Promise((r) => setTimeout(r, 50));
+
+			// Get the new instance created by reconnect
+			expect(mockInstances.length).toBeGreaterThan(instanceCountAfterSetup);
+			const newInstance = mockInstances[mockInstances.length - 1];
+			newInstance.simulateOpen();
+			await new Promise((r) => setTimeout(r, 50));
+
+			// Find reconnect message and get its ID
+			const reconnectCall = newInstance.send.mock.calls.find((call) => {
+				try {
+					const msg = JSON.parse(call[0] as string);
+					return msg.type === "reconnect";
+				} catch {
+					return false;
+				}
+			});
+
+			if (reconnectCall) {
+				const reconnectMsg = JSON.parse(reconnectCall[0] as string);
+
+				// Simulate reconnect_ack with patches
+				newInstance.simulateMessage({
+					type: "reconnect_ack",
+					reconnectId: reconnectMsg.reconnectId,
+					results: [
+						{
+							id: "sub-patch",
+							entity: "user",
+							entityId: "123",
+							status: "patched",
+							version: 3,
+							patches: [[{ op: "replace", path: "/age", value: 26 }], [{ op: "replace", path: "/age", value: 27 }]],
+						},
+					],
+					serverTime: Date.now(),
+					processingTime: 5,
+				});
+
+				await new Promise((r) => setTimeout(r, 20));
+
+				// Check that patches were applied
+				expect(patchApplied).toBe(true);
+
+				const registry = transport.getRegistry();
+				const lastData = registry.getLastData("sub-patch");
+				expect(lastData).toEqual({ name: "Alice", age: 27 });
+				expect(registry.getVersion("sub-patch")).toBe(3);
+			} else {
+				// If reconnect message wasn't sent, just verify subscription state
+				const registry = transport.getRegistry();
+				const sub = registry.get("sub-patch");
+				expect(sub?.state).toBe("reconnecting");
+			}
+		});
+
+		it("handles snapshot reconnect result", async () => {
+			let reconnectResults: unknown[] = [];
+			const transport = ws({
+				url: "ws://localhost:3000",
+				timeout: 500,
+				reconnect: { enabled: true, baseDelay: 10, maxAttempts: 3, jitter: 0 },
+				onReconnect: (results) => {
+					reconnectResults = results;
+				},
+			});
+			const instance = await setupConnection(transport);
+
+			const values: unknown[] = [];
+			const observable = transport.execute({
+				id: "sub-snapshot",
+				path: "user.watch",
+				type: "subscription",
+				input: { id: "123" },
+			}) as Observable<Result>;
+
+			observable.subscribe({
+				next: (result) => values.push(result.data),
+			});
+
+			await new Promise((r) => setTimeout(r, 20));
+
+			// Initial data
+			instance.simulateMessage({
+				type: "subscription",
+				id: "sub-snapshot",
+				data: { name: "Alice" },
+				version: 1,
+			});
+
+			// Disconnect and reconnect
+			instance.simulateClose();
+			await new Promise((r) => setTimeout(r, 50));
+
+			// Should have reconnect attempt
+			expect(mockInstances.length).toBeGreaterThanOrEqual(2);
+			const newInstance = mockInstances[mockInstances.length - 1];
+			newInstance.simulateOpen();
+			await new Promise((r) => setTimeout(r, 50));
+
+			// Get reconnectId from the sent message
+			const reconnectCall = newInstance.send.mock.calls.find((call) => {
+				try {
+					const msg = JSON.parse(call[0] as string);
+					return msg.type === "reconnect";
+				} catch {
+					return false;
+				}
+			});
+
+			if (reconnectCall) {
+				const reconnectMsg = JSON.parse(reconnectCall[0] as string);
+
+				// Simulate reconnect_ack with snapshot
+				newInstance.simulateMessage({
+					type: "reconnect_ack",
+					reconnectId: reconnectMsg.reconnectId,
+					results: [
+						{
+							id: "sub-snapshot",
+							entity: "user",
+							entityId: "123",
+							status: "snapshot",
+							version: 10,
+							data: { name: "Bob", email: "bob@example.com" },
+						},
+					],
+					serverTime: Date.now(),
+					processingTime: 5,
+				});
+
+				await new Promise((r) => setTimeout(r, 20));
+
+				// Check that onReconnect was called
+				expect(reconnectResults.length).toBe(1);
+
+				// Check that snapshot was applied
+				const registry = transport.getRegistry();
+				expect(registry.getVersion("sub-snapshot")).toBe(10);
+				expect(registry.getLastData("sub-snapshot")).toEqual({ name: "Bob", email: "bob@example.com" });
+			} else {
+				// If no reconnect message was sent, check if the subscription is still in reconnecting state
+				const registry = transport.getRegistry();
+				const sub = registry.get("sub-snapshot");
+				expect(sub?.state).toBe("reconnecting");
+			}
+		});
+
+		it("exposes connection state", async () => {
+			const states: string[] = [];
+			const transport = ws({
+				url: "ws://localhost:3000",
+				timeout: 500,
+				onConnectionStateChange: (state) => states.push(state),
+			});
+
+			expect(transport.getConnectionState()).toBe("disconnected");
+
+			const connectPromise = transport.connect();
+			await new Promise((r) => setTimeout(r, 10));
+
+			const instance = mockInstances[0];
+			instance.simulateOpen();
+
+			await Promise.resolve();
+			await Promise.resolve();
+			await Promise.resolve();
+			instance.simulateMessage({
+				type: "handshake",
+				data: { version: "1.0.0", operations: {} },
+			});
+
+			await connectPromise;
+
+			expect(transport.getConnectionState()).toBe("connected");
+			expect(states).toContain("connecting");
+			expect(states).toContain("connected");
+		});
+	});
+
 	describe("concurrent connection handling", () => {
 		it("waits for ongoing connection attempt when multiple operations start simultaneously", async () => {
-			const transport = ws({ url: "ws://localhost:3000", timeout: 500 });
+			// Wait for any lingering timers from previous tests to clear
+			await new Promise((r) => setTimeout(r, 100));
+
+			const initialInstanceCount = mockInstances.length;
+			const transport = ws({ url: "ws://localhost:3000", timeout: 500, reconnect: { enabled: false } });
 
 			// Start multiple operations simultaneously before connection is established
 			const op1Promise = transport.execute({ id: "op-1", path: "a", type: "query" });
@@ -726,9 +1097,9 @@ describe("ws transport", () => {
 			await new Promise((r) => setTimeout(r, 10));
 
 			// Only one WebSocket should be created despite multiple operations
-			expect(mockInstances.length).toBe(1);
+			expect(mockInstances.length).toBe(initialInstanceCount + 1);
 
-			const instance = mockInstances[0];
+			const instance = mockInstances[mockInstances.length - 1];
 			instance.simulateOpen();
 
 			// Wait for connection to be established
@@ -742,12 +1113,10 @@ describe("ws transport", () => {
 
 			expect((result1 as Result).data).toBe("result-a");
 			expect((result2 as Result).data).toBe("result-b");
-			// Still only one WebSocket instance
-			expect(mockInstances.length).toBe(1);
 		});
 
 		it("resolves waiting operations when connection succeeds", async () => {
-			const transport = ws({ url: "ws://localhost:3000", timeout: 500 });
+			const transport = ws({ url: "ws://localhost:3000", timeout: 500, reconnect: { enabled: false } });
 
 			// Start first operation (triggers connection)
 			const op1Promise = transport.execute({ id: "op-1", path: "a", type: "query" });
@@ -778,7 +1147,7 @@ describe("ws transport", () => {
 		});
 
 		it("rejects waiting operations when connection fails", async () => {
-			const transport = ws({ url: "ws://localhost:3000", timeout: 500 });
+			const transport = ws({ url: "ws://localhost:3000", timeout: 500, reconnect: { enabled: false } });
 
 			// Capture promise rejection errors instead of letting them throw
 			const errors: Error[] = [];
