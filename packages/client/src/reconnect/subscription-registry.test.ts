@@ -1,11 +1,10 @@
 /**
- * @sylphx/lens-core - Subscription Registry Tests
+ * @sylphx/lens-client - Subscription Registry Tests
  */
 
 import { describe, expect, it } from "bun:test";
-import { hashEntityState } from "./hash.js";
+import { hashEntityState, type TrackedSubscription } from "@sylphx/lens-core";
 import { createSubscriptionRegistry, SubscriptionRegistry } from "./subscription-registry.js";
-import type { TrackedSubscription } from "./types.js";
 
 // =============================================================================
 // Test Helpers

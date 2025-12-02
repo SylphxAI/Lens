@@ -65,13 +65,13 @@ export {
 	route,
 	routeByPath,
 	routeByType,
-	// SSE
-	sse,
 	type SseConnectionState,
 	type SseTransportInstance,
 	type SseTransportOptions,
 	type SubscriptionCapable,
 	type SubscriptionOnlyTransport,
+	// SSE
+	sse,
 	// Types
 	type Transport,
 	type TransportBase,
@@ -134,3 +134,12 @@ export {
 	ReactiveStore,
 	type StoreConfig,
 } from "./store/reactive-store.js";
+
+// =============================================================================
+// Reconnection
+// =============================================================================
+
+export {
+	createSubscriptionRegistry,
+	SubscriptionRegistry,
+} from "./reconnect/index.js";

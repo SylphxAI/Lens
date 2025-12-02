@@ -1,5 +1,5 @@
 /**
- * @sylphx/lens-core - Reconnection Integration Tests
+ * @sylphx/lens-server - Reconnection Integration Tests
  *
  * End-to-end tests for the reconnection system.
  * Tests the complete flow of version tracking, operation log,
@@ -7,12 +7,24 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { compressIfNeeded, decompressIfNeeded, isCompressionSupported } from "./compression.js";
-import { hashEntityState } from "./hash.js";
-import { applyPatch, coalescePatches, OperationLog, type PatchOperation } from "./operation-log.js";
-import { SubscriptionRegistry } from "./subscription-registry.js";
-import type { ReconnectMessage, ReconnectResult, ReconnectStatus, ReconnectSubscription, Version } from "./types.js";
-import { generateReconnectId, isCompressedPayload, PROTOCOL_VERSION } from "./types.js";
+import { SubscriptionRegistry } from "@sylphx/lens-client";
+import {
+	applyPatch,
+	compressIfNeeded,
+	decompressIfNeeded,
+	generateReconnectId,
+	hashEntityState,
+	isCompressedPayload,
+	isCompressionSupported,
+	type PatchOperation,
+	PROTOCOL_VERSION,
+	type ReconnectMessage,
+	type ReconnectResult,
+	type ReconnectStatus,
+	type ReconnectSubscription,
+	type Version,
+} from "@sylphx/lens-core";
+import { coalescePatches, OperationLog } from "./operation-log.js";
 
 // =============================================================================
 // Test Fixtures - Simulated Server State Manager

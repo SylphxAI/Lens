@@ -18,9 +18,9 @@ import {
 	type ReconnectConfig,
 	type ReconnectMessage,
 	type ReconnectResult,
-	SubscriptionRegistry,
 	type Version,
 } from "@sylphx/lens-core";
+import { SubscriptionRegistry } from "../reconnect/subscription-registry.js";
 import type { Metadata, Observable, Operation, Result, Transport } from "./types.js";
 
 // =============================================================================
