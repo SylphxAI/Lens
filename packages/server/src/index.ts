@@ -30,6 +30,20 @@ export {
 } from "@sylphx/lens-core";
 
 // =============================================================================
+// Context System (Server-side implementation)
+// =============================================================================
+
+export {
+	createContext,
+	extendContext,
+	hasContext,
+	runWithContext,
+	runWithContextAsync,
+	tryUseContext,
+	useContext,
+} from "./context/index.js";
+
+// =============================================================================
 // Server (Pure Executor)
 // =============================================================================
 
@@ -61,15 +75,15 @@ export {
 export {
 	// HTTP Adapter
 	createHTTPAdapter,
-	type HTTPAdapter,
-	type HTTPAdapterOptions,
-	// WebSocket Adapter
-	createWSAdapter,
-	type WSAdapter,
-	type WSAdapterOptions,
 	// SSE Adapter (alias)
 	createSSEAdapter,
+	// WebSocket Adapter
+	createWSAdapter,
+	type HTTPAdapter,
+	type HTTPAdapterOptions,
 	type SSEAdapterOptions,
+	type WSAdapter,
+	type WSAdapterOptions,
 } from "./adapters/index.js";
 
 // =============================================================================
@@ -103,10 +117,10 @@ export {
 	type ConnectContext,
 	// Plugin manager
 	createPluginManager,
-	// Diff Optimizer Plugin
-	diffOptimizer,
 	type DiffOptimizerOptions,
 	type DisconnectContext,
+	// Diff Optimizer Plugin
+	diffOptimizer,
 	isDiffOptimizerPlugin,
 	PluginManager,
 	// Plugin interface
@@ -138,3 +152,9 @@ export {
 	type PusherLike,
 	type PusherTransportOptions,
 } from "./transport/index.js";
+
+// =============================================================================
+// Reconnection (Server-side)
+// =============================================================================
+
+export { coalescePatches, estimatePatchSize, OperationLog } from "./reconnect/index.js";

@@ -78,15 +78,10 @@ export {
 } from "./hash.js";
 
 // =============================================================================
-// Operation Log
+// Patch Utilities (shared between client and server)
 // =============================================================================
 
-export {
-	applyPatch,
-	coalescePatches,
-	estimatePatchSize,
-	OperationLog,
-} from "./operation-log.js";
+export { applyPatch } from "./operation-log.js";
 
 // =============================================================================
 // Subscription Registry

@@ -24,8 +24,7 @@ import {
 	hashEntityState,
 	type InternalFieldUpdate,
 	makeEntityKey,
-	OperationLog,
-	// Reconnection imports
+	// Reconnection types (from core)
 	type OperationLogConfig,
 	type PatchOperation,
 	type ReconnectResult,
@@ -34,6 +33,7 @@ import {
 	type Update,
 	type Version,
 } from "@sylphx/lens-core";
+import { OperationLog } from "../reconnect/operation-log.js";
 
 // Re-export for convenience
 export type { EntityKey };

@@ -264,20 +264,12 @@ export {
 } from "./emit/index.js";
 
 // =============================================================================
-// Context System (Internal - used by server)
+// Context System (Types only - implementation in server)
 // =============================================================================
 
 // Note: Context is now passed directly to resolvers via `ctx` parameter (tRPC style).
-// These exports are kept for advanced use cases and server internals.
-export {
-	// Types
-	type ContextStore,
-	type ContextValue,
-	// Core functions (internal use)
-	createContext,
-	runWithContext,
-	runWithContextAsync,
-} from "./context/index.js";
+// Type exports only - implementation is in @sylphx/lens-server to avoid Node.js deps.
+export type { ContextStore, ContextValue } from "./context/index.js";
 
 // =============================================================================
 // Optimistic Updates (Internal)
@@ -309,13 +301,15 @@ export {
 // =============================================================================
 
 export {
+	// Patch utilities (shared)
 	applyPatch,
+	// Compression types
 	type CompressedPayload,
 	type CompressionAlgorithm,
 	type CompressionConfig,
 	type ConnectionQuality,
 	type ConnectionState,
-	coalescePatches,
+	// Compression functions
 	compressIfNeeded,
 	createMetricsTracker,
 	createSubscriptionRegistry,
@@ -325,7 +319,6 @@ export {
 	DEFAULT_RECONNECT_CONFIG,
 	decompressIfNeeded,
 	deepEqual,
-	estimatePatchSize,
 	FieldHashMap,
 	formatCompressionStats,
 	generateReconnectId,
@@ -343,8 +336,7 @@ export {
 	type MetricsEvent,
 	// Hashing
 	murmurhash3,
-	// Operation Log
-	OperationLog,
+	// Operation Log types (implementation in server)
 	type OperationLogConfig,
 	type OperationLogEntry,
 	type OperationLogStats,

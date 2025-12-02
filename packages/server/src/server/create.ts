@@ -12,7 +12,6 @@
 
 import {
 	type ContextValue,
-	createContext,
 	createEmit,
 	type EntityDef,
 	type FieldType,
@@ -29,9 +28,9 @@ import {
 	type Resolvers,
 	type ReturnSpec,
 	type RouterDef,
-	runWithContext,
 	toResolverMap,
 } from "@sylphx/lens-core";
+import { createContext, runWithContext } from "../context/index.js";
 
 // =============================================================================
 // Types
@@ -176,7 +175,7 @@ class DataLoader<K, V> {
 		try {
 			const results = await this.batchFn(keys);
 			let i = 0;
-			for (const [key, callbacks] of batch) {
+			for (const [_key, callbacks] of batch) {
 				const result = results[i++];
 				for (const { resolve } of callbacks) {
 					resolve(result);
