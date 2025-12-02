@@ -30,7 +30,6 @@ jobs:
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           npm-token: ${{ secrets.NPM_TOKEN }}
-          skip-install: true
 
       - name: Format release message
         id: message
