@@ -12,8 +12,8 @@ import { test as bunTest, describe, expect } from "bun:test";
 
 const test = hasDom ? bunTest : bunTest.skip;
 
-import type { MutationResult, QueryResult } from "@sylphx/lens-client";
 import { signal } from "@preact/signals-core";
+import type { MutationResult, QueryResult } from "@sylphx/lens-client";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useLazyQuery, useMutation, useQuery } from "./hooks.js";
 

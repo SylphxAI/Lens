@@ -6,7 +6,6 @@
  * - QueryResult.subscribe() lifecycle
  * - QueryResult.select() field selection
  * - startSubscription behavior
- * - rollbackOptimistic functionality
  * - createAccessor subscribe method
  */
 
@@ -14,7 +13,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { entity, lens, router, t } from "@sylphx/lens-core";
-import { createServer, optimisticPlugin } from "@sylphx/lens-server";
+import { createServer } from "@sylphx/lens-server";
 import { z } from "zod";
 import type { LensServerInterface } from "../transport/in-process";
 import { inProcess } from "../transport/in-process";
@@ -558,193 +557,6 @@ describe("startSubscription", () => {
 });
 
 // =============================================================================
-// Test: rollbackOptimistic (lines 565-579)
-// =============================================================================
-
-describe("rollbackOptimistic", () => {
-	it("restores previous data after optimistic update", async () => {
-		const { query, mutation } = lens<TestContext>();
-
-		const db = new Map<string, { id: string; name: string; email: string; role: "user" | "admin"; createdAt: Date }>();
-		db.set("1", {
-			id: "1",
-			name: "Original",
-			email: "original@test.com",
-			role: "user",
-			createdAt: new Date(),
-		});
-
-		const app = createServer({
-			router: router({
-				user: router({
-					get: query()
-						.input(z.object({ id: z.string() }))
-						.returns(User)
-						.resolve(({ input, ctx }) => {
-							const user = ctx.db.users.get(input.id);
-							if (!user) throw new Error("Not found");
-							return user;
-						}),
-					update: mutation()
-						.input(z.object({ id: z.string(), name: z.string() }))
-						.returns(User)
-						.optimistic("merge")
-						.resolve(({ input, ctx }) => {
-							const user = ctx.db.users.get(input.id);
-							if (!user) throw new Error("Not found");
-							const updated = { ...user, name: input.name };
-							ctx.db.users.set(input.id, updated);
-							return updated;
-						}),
-				}),
-			}),
-			context: () => ({ db: { users: db, posts: new Map() } }),
-			plugins: [optimisticPlugin()],
-		});
-
-		const client = createClient({
-			transport: inProcess({ app }),
-			optimistic: true,
-		});
-
-		// Subscribe to query
-		const result = client.user.get({ id: "1" });
-		const updates: unknown[] = [];
-		result.subscribe((data) => {
-			updates.push(data);
-		});
-
-		// Wait for initial data
-		await new Promise((resolve) => setTimeout(resolve, 50));
-
-		const initialData = updates[updates.length - 1] as { name: string };
-		expect(initialData.name).toBe("Original");
-
-		// Execute mutation with optimistic update
-		const mutationResult = await client.user.update({
-			id: "1",
-			name: "Updated",
-		});
-
-		// Should have rollback function
-		expect(mutationResult.rollback).toBeDefined();
-
-		// Data should be updated
-		await new Promise((resolve) => setTimeout(resolve, 50));
-		const updatedData = updates[updates.length - 1] as { name: string };
-		expect(updatedData.name).toBe("Updated");
-
-		// Rollback
-		mutationResult.rollback!();
-
-		// Data should be restored
-		await new Promise((resolve) => setTimeout(resolve, 50));
-		const rolledBackData = updates[updates.length - 1] as { name: string };
-		expect(rolledBackData.name).toBe("Updated"); // Actually stays at server value after rollback
-	});
-
-	it("handles rollback on mutation error", async () => {
-		const { query, mutation } = lens<TestContext>();
-
-		const db = new Map<string, { id: string; name: string; email: string; role: "user" | "admin"; createdAt: Date }>();
-		db.set("1", {
-			id: "1",
-			name: "Before",
-			email: "before@test.com",
-			role: "user",
-			createdAt: new Date(),
-		});
-
-		const app = createServer({
-			router: router({
-				user: router({
-					get: query()
-						.input(z.object({ id: z.string() }))
-						.returns(User)
-						.resolve(({ input, ctx }) => {
-							const user = ctx.db.users.get(input.id);
-							if (!user) throw new Error("Not found");
-							return user;
-						}),
-					update: mutation()
-						.input(z.object({ id: z.string(), name: z.string() }))
-						.returns(User)
-						.optimistic("merge")
-						.resolve(() => {
-							throw new Error("Update failed");
-						}),
-				}),
-			}),
-			context: () => ({ db: { users: db, posts: new Map() } }),
-		});
-
-		const client = createClient({
-			transport: inProcess({ app }),
-			optimistic: true,
-		});
-
-		// Subscribe to query
-		const result = client.user.get({ id: "1" });
-		const updates: unknown[] = [];
-		result.subscribe((data) => {
-			updates.push(data);
-		});
-
-		await new Promise((resolve) => setTimeout(resolve, 50));
-
-		const beforeUpdate = updates[updates.length - 1] as { name: string };
-		expect(beforeUpdate.name).toBe("Before");
-
-		// Execute mutation that will fail - mutation returns thenable accessor
-		try {
-			await client.user.update({
-				id: "1",
-				name: "Failed",
-			});
-			expect(true).toBe(false); // Should not reach here
-		} catch (error) {
-			expect((error as Error).message).toBe("Update failed");
-		}
-
-		// Should automatically rollback on error
-		await new Promise((resolve) => setTimeout(resolve, 50));
-		const afterFailure = updates[updates.length - 1] as { name: string };
-		expect(afterFailure.name).toBe("Before");
-	});
-
-	it("handles rollback when optimistic entry doesn't exist", async () => {
-		const { mutation } = lens<TestContext>();
-
-		const app = createServer({
-			router: router({
-				test: mutation()
-					.input(z.object({ value: z.string() }))
-					.returns(User)
-					.optimistic("merge")
-					.resolve(() => ({
-						id: "1",
-						name: "Test",
-						email: "test@test.com",
-						role: "user" as const,
-						createdAt: new Date(),
-					})),
-			}),
-			context: () => ({ db: { users: new Map(), posts: new Map() } }),
-		});
-
-		const client = createClient({
-			transport: inProcess({ app }),
-			optimistic: true,
-		});
-
-		const result = await client.test({ value: "test" });
-
-		// Rollback should handle non-existent entry gracefully
-		expect(() => result.rollback?.()).not.toThrow();
-	});
-});
-
-// =============================================================================
 // Test: createAccessor subscribe (lines 608-610, 615-645)
 // =============================================================================
 
@@ -1020,39 +832,6 @@ describe("Edge cases and error handling", () => {
 		expect(updates1[0]).toEqual(updates2[0]);
 	});
 
-	it("handles optimistic updates with no matching subscriptions", async () => {
-		const { mutation } = lens<TestContext>();
-
-		const app = createServer({
-			router: router({
-				create: mutation()
-					.input(z.object({ name: z.string() }))
-					.returns(User)
-					.optimistic("create")
-					.resolve(({ input }) => ({
-						id: "new-id",
-						name: input.name,
-						email: "new@test.com",
-						role: "user" as const,
-						createdAt: new Date(),
-					})),
-			}),
-			context: () => ({ db: { users: new Map(), posts: new Map() } }),
-			plugins: [optimisticPlugin()],
-		});
-
-		const client = createClient({
-			transport: inProcess({ app }),
-			optimistic: true,
-		});
-
-		// Execute mutation without any active subscriptions
-		const result = await client.create({ name: "NoSub" });
-
-		expect(result.data.name).toBe("NoSub");
-		expect(result.rollback).toBeDefined();
-	});
-
 	it("handles query errors correctly", async () => {
 		const { query } = lens<TestContext>();
 
@@ -1075,66 +854,6 @@ describe("Edge cases and error handling", () => {
 		} catch (error) {
 			expect((error as Error).message).toBe("Query failed");
 		}
-	});
-
-	it("handles optimistic update with delete DSL", async () => {
-		const { query, mutation } = lens<TestContext>();
-
-		const db = new Map<string, { id: string; name: string; email: string; role: "user" | "admin"; createdAt: Date }>();
-		db.set("1", {
-			id: "1",
-			name: "ToDelete",
-			email: "delete@test.com",
-			role: "user",
-			createdAt: new Date(),
-		});
-
-		const app = createServer({
-			router: router({
-				user: router({
-					get: query()
-						.input(z.object({ id: z.string() }))
-						.returns(User)
-						.resolve(({ input, ctx }) => {
-							const user = ctx.db.users.get(input.id);
-							if (!user) throw new Error("Not found");
-							return user;
-						}),
-					delete: mutation()
-						.input(z.object({ id: z.string() }))
-						.returns(User)
-						.optimistic("delete")
-						.resolve(({ input, ctx }) => {
-							const user = ctx.db.users.get(input.id);
-							if (!user) throw new Error("Not found");
-							ctx.db.users.delete(input.id);
-							return user;
-						}),
-				}),
-			}),
-			plugins: [optimisticPlugin()],
-			context: () => ({ db: { users: db, posts: new Map() } }),
-		});
-
-		const client = createClient({
-			transport: inProcess({ app }),
-			optimistic: true,
-		});
-
-		// Subscribe to track updates
-		const result = client.user.get({ id: "1" });
-		const updates: unknown[] = [];
-		result.subscribe((data) => updates.push(data));
-
-		await new Promise((resolve) => setTimeout(resolve, 50));
-
-		// Execute delete mutation
-		const deleteResult = await client.user.delete({ id: "1" });
-
-		expect(deleteResult.data).toBeDefined();
-
-		// Should have rollback
-		expect(deleteResult.rollback).toBeDefined();
 	});
 
 	it("handles concurrent operations correctly", async () => {

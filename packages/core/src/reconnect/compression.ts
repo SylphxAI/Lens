@@ -232,7 +232,7 @@ async function decompressWithStreams(
 	const stream = new DecompressionStream(compressionFormat);
 
 	const writer = stream.writable.getWriter();
-	writer.write(compressedBytes);
+	writer.write(compressedBytes as unknown as Uint8Array<ArrayBuffer>);
 	writer.close();
 
 	const decompressedChunks: Uint8Array[] = [];

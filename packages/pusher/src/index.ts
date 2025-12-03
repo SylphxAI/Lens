@@ -74,11 +74,7 @@ export interface PusherClientLike {
  * Matches the pusher server SDK API.
  */
 export interface PusherServerLike {
-	trigger(
-		channel: string | string[],
-		event: string,
-		data: unknown,
-	): Promise<unknown>;
+	trigger(channel: string | string[], event: string, data: unknown): Promise<unknown>;
 }
 
 /**
@@ -153,4 +149,4 @@ export function createPusherBroadcaster(
 }
 
 // Legacy export for backwards compatibility
-export { type PusherClientLike as PusherLike };
+export type { PusherClientLike as PusherLike };

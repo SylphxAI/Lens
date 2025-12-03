@@ -366,7 +366,7 @@ describe("createClient type inference", () => {
 		expect(Array.isArray(results)).toBe(true);
 	});
 
-	it("client mutation returns typed result with data and rollback", async () => {
+	it("client mutation returns typed result with data", async () => {
 		const app = createTestServer();
 		const client = createClient({
 			transport: inProcess({ app }),
@@ -387,9 +387,6 @@ describe("createClient type inference", () => {
 		expect(id).toBeDefined();
 		expect(name).toBe("Charlie");
 		expect(role).toBe("user");
-
-		// Should have rollback function
-		expect(typeof result.rollback).toBe("function");
 	});
 
 	it("client mutation with optimistic has correct types", async () => {

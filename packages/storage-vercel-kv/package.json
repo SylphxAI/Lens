@@ -14,7 +14,7 @@
 	"scripts": {
 		"build": "bunup",
 		"typecheck": "tsc --noEmit",
-		"test": "bun test",
+		"test": "echo 'no tests yet'",
 		"prepack": "[ -d dist ] || bun run build"
 	},
 	"files": [

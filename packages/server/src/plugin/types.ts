@@ -345,9 +345,7 @@ export interface ServerPlugin {
 		| boolean
 		| void
 		| Promise<
-				| { version: number; patch: unknown[] | null; data: Record<string, unknown> }
-				| boolean
-				| void
+				{ version: number; patch: unknown[] | null; data: Record<string, unknown> } | boolean | void
 		  >;
 }
 
