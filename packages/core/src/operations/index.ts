@@ -48,7 +48,7 @@ export { isOptimisticDSL } from "./types.js";
 // =============================================================================
 
 export type { QueryBuilder, QueryDef } from "./query.js";
-export { isQueryDef, query, QueryBuilderImpl } from "./query.js";
+export { isQueryDef, QueryBuilderImpl, query } from "./query.js";
 
 // =============================================================================
 // Mutation
@@ -62,16 +62,16 @@ export type {
 	MutationBuilderWithReturns2,
 	MutationDef,
 } from "./mutation.js";
-export { isMutationDef, isOperationDef, mutation, MutationBuilderImpl } from "./mutation.js";
+export { isMutationDef, isOperationDef, MutationBuilderImpl, mutation } from "./mutation.js";
 
 // =============================================================================
 // Operations Factory
 // =============================================================================
 
-import { MutationBuilderImpl } from "./mutation.js";
 import type { MutationBuilder } from "./mutation.js";
-import { QueryBuilderImpl } from "./query.js";
+import { MutationBuilderImpl } from "./mutation.js";
 import type { QueryBuilder } from "./query.js";
+import { QueryBuilderImpl } from "./query.js";
 
 /**
  * Operations factory result - typed query and mutation builders

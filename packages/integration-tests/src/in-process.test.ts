@@ -14,7 +14,7 @@ import {
 	type TypedTransport,
 } from "@sylphx/lens-client";
 import { entity, lens, router, t } from "@sylphx/lens-core";
-import { createServer } from "@sylphx/lens-server";
+import { createApp } from "@sylphx/lens-server";
 import { z } from "zod";
 
 // =============================================================================
@@ -229,7 +229,7 @@ describe("inProcess type inference", () => {
 		it("preserves server type through phantom _api property", () => {
 			const { query } = lens<TestContext>();
 
-			const app = createServer({
+			const app = createApp({
 				router: router({
 					user: router({
 						get: query()
@@ -272,7 +272,7 @@ describe("inProcess type inference", () => {
 				}),
 			});
 
-			const app = createServer({
+			const app = createApp({
 				router: appRouter,
 				context: () => ({ db: new Map() }),
 			});
@@ -294,7 +294,7 @@ describe("inProcess type inference", () => {
 		it("extracts _types from server with intersection type", () => {
 			const { query } = lens<TestContext>();
 
-			const app = createServer({
+			const app = createApp({
 				router: router({
 					test: query().resolve(() => ({ ok: true })),
 				}),
@@ -324,7 +324,7 @@ describe("inProcess type inference", () => {
 		it("preserves router structure through transport", () => {
 			const { query, mutation } = lens<TestContext>();
 
-			const app = createServer({
+			const app = createApp({
 				router: router({
 					users: router({
 						list: query()
@@ -363,7 +363,7 @@ describe("inProcess type inference", () => {
 		it("preserves query/mutation types through transport", () => {
 			const { query, mutation } = lens<TestContext>();
 
-			const app = createServer({
+			const app = createApp({
 				router: router({
 					getData: query()
 						.input(z.object({ id: z.string() }))
@@ -396,13 +396,13 @@ describe("inProcess type inference", () => {
 	});
 
 	describe("Real server integration", () => {
-		it("works with full createServer setup", async () => {
+		it("works with full createApp setup", async () => {
 			const { query, mutation } = lens<TestContext>();
 
 			const db = new Map<string, { id: string; name: string; email: string }>();
 			db.set("1", { id: "1", name: "Alice", email: "alice@test.com" });
 
-			const app = createServer({
+			const app = createApp({
 				router: router({
 					user: router({
 						get: query()

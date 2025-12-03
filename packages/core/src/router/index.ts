@@ -127,7 +127,7 @@ export function isRouterDef(value: unknown): value is RouterDef {
  * Create a router for namespacing operations
  *
  * The router automatically infers the context type from its routes.
- * When used with createServer, the context function must return
+ * When used with createApp, the context function must return
  * a matching type.
  *
  * @example
@@ -151,7 +151,7 @@ export function isRouterDef(value: unknown): value is RouterDef {
  * // appRouter is RouterDef<..., MyContext>
  *
  * // createServer will enforce context type
- * const server = createServer({
+ * const server = createApp({
  *   router: appRouter,
  *   context: () => ({
  *     db: prisma,  // Must match MyContext!

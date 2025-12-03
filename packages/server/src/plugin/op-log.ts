@@ -66,11 +66,6 @@ export interface OpLogOptions extends OpLogStorageConfig {
 	debug?: boolean;
 }
 
-/** @deprecated Use OpLogOptions */
-export type StateSyncOptions = OpLogOptions;
-/** @deprecated Use OpLogOptions */
-export type ClientStateOptions = OpLogOptions;
-
 /**
  * Broadcast result returned by the plugin.
  * Handler uses this to send updates to subscribers.
@@ -283,19 +278,9 @@ export function opLog(options: OpLogOptions = {}): OpLogPlugin {
 	};
 }
 
-/** @deprecated Use opLog */
-export const stateSync = opLog;
-/** @deprecated Use opLog */
-export const clientState = opLog;
-
 /**
  * Check if a plugin is an opLog plugin.
  */
 export function isOpLogPlugin(plugin: ServerPlugin): plugin is OpLogPlugin {
 	return plugin.name === "opLog" && "getStorage" in plugin;
 }
-
-/** @deprecated Use isOpLogPlugin */
-export const isStateSyncPlugin = isOpLogPlugin;
-/** @deprecated Use isOpLogPlugin */
-export const isClientStatePlugin = isOpLogPlugin;

@@ -9,7 +9,7 @@ import { describe, expect, it } from "bun:test";
 import { entity, mutation, query, router } from "@sylphx/lens-core";
 import { z } from "zod";
 import { optimisticPlugin } from "../plugin/optimistic.js";
-import { createServer } from "./create.js";
+import { createApp } from "./create.js";
 
 // =============================================================================
 // Test Entities
@@ -61,12 +61,12 @@ const deleteUser = mutation()
 	.resolve(() => ({ success: true }));
 
 // =============================================================================
-// createServer Tests
+// createApp Tests
 // =============================================================================
 
-describe("createServer", () => {
+describe("createApp", () => {
 	it("creates a server instance", () => {
-		const server = createServer({
+		const server = createApp({
 			entities: { User },
 			queries: { getUser },
 			mutations: { createUser },
@@ -85,7 +85,7 @@ describe("createServer", () => {
 			},
 		});
 
-		const server = createServer({ router: appRouter });
+		const server = createApp({ router: appRouter });
 
 		expect(server).toBeDefined();
 		const metadata = server.getMetadata();
@@ -93,7 +93,7 @@ describe("createServer", () => {
 	});
 
 	it("creates server with custom version", () => {
-		const server = createServer({
+		const server = createApp({
 			queries: { getUser },
 			version: "2.0.0",
 		});
@@ -103,7 +103,7 @@ describe("createServer", () => {
 	});
 
 	it("creates server with empty config", () => {
-		const server = createServer({});
+		const server = createApp({});
 
 		expect(server).toBeDefined();
 		const metadata = server.getMetadata();
@@ -118,7 +118,7 @@ describe("createServer", () => {
 
 describe("getMetadata", () => {
 	it("returns correct metadata structure", () => {
-		const server = createServer({
+		const server = createApp({
 			queries: { getUser, getUsers },
 			mutations: { createUser, updateUser },
 			version: "1.2.3",
@@ -134,7 +134,7 @@ describe("getMetadata", () => {
 	});
 
 	it("includes optimistic hints for mutations with optimisticPlugin", () => {
-		const server = createServer({
+		const server = createApp({
 			mutations: { createUser, updateUser, deleteUser },
 			plugins: [optimisticPlugin()],
 		});
@@ -148,7 +148,7 @@ describe("getMetadata", () => {
 	});
 
 	it("does not include optimistic hints without optimisticPlugin", () => {
-		const server = createServer({
+		const server = createApp({
 			mutations: { createUser, updateUser, deleteUser },
 		});
 
@@ -171,7 +171,7 @@ describe("getMetadata", () => {
 			},
 		});
 
-		const server = createServer({ router: appRouter });
+		const server = createApp({ router: appRouter });
 		const metadata = server.getMetadata();
 
 		expect(metadata.operations.user).toBeDefined();
@@ -186,7 +186,7 @@ describe("getMetadata", () => {
 
 describe("execute", () => {
 	it("executes query successfully", async () => {
-		const server = createServer({
+		const server = createApp({
 			queries: { getUser },
 		});
 
@@ -204,7 +204,7 @@ describe("execute", () => {
 	});
 
 	it("executes mutation successfully", async () => {
-		const server = createServer({
+		const server = createApp({
 			mutations: { createUser },
 		});
 
@@ -222,7 +222,7 @@ describe("execute", () => {
 	});
 
 	it("returns error for unknown operation", async () => {
-		const server = createServer({
+		const server = createApp({
 			queries: { getUser },
 		});
 
@@ -237,7 +237,7 @@ describe("execute", () => {
 	});
 
 	it("returns error for invalid input", async () => {
-		const server = createServer({
+		const server = createApp({
 			queries: { getUser },
 		});
 
@@ -258,7 +258,7 @@ describe("execute", () => {
 			},
 		});
 
-		const server = createServer({ router: appRouter });
+		const server = createApp({ router: appRouter });
 
 		const queryResult = await server.execute({
 			path: "user.get",
@@ -290,7 +290,7 @@ describe("execute", () => {
 				throw new Error("Resolver error");
 			});
 
-		const server = createServer({
+		const server = createApp({
 			queries: { errorQuery },
 		});
 
@@ -305,7 +305,7 @@ describe("execute", () => {
 	});
 
 	it("executes query without input", async () => {
-		const server = createServer({
+		const server = createApp({
 			queries: { getUsers },
 		});
 
@@ -332,7 +332,7 @@ describe("context", () => {
 				return { id: "1", name: "test" };
 			});
 
-		const server = createServer({
+		const server = createApp({
 			queries: { contextQuery },
 			context: () => ({ userId: "user-123", role: "admin" }),
 		});
@@ -358,7 +358,7 @@ describe("context", () => {
 				return { id: "1", name: "test" };
 			});
 
-		const server = createServer({
+		const server = createApp({
 			queries: { contextQuery },
 			context: async () => {
 				await new Promise((r) => setTimeout(r, 10));
@@ -383,7 +383,7 @@ describe("context", () => {
 
 describe("selection", () => {
 	it("supports $select in input", async () => {
-		const server = createServer({
+		const server = createApp({
 			queries: { getUser },
 		});
 
@@ -409,7 +409,7 @@ describe("selection", () => {
 
 describe("type inference", () => {
 	it("infers types correctly", () => {
-		const server = createServer({
+		const server = createApp({
 			queries: { getUser },
 			mutations: { createUser },
 		});

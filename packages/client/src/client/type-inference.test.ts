@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { entity, lens, router, t } from "@sylphx/lens-core";
-import { createServer, optimisticPlugin } from "@sylphx/lens-server";
+import { createApp, optimisticPlugin } from "@sylphx/lens-server";
 import { z } from "zod";
 import { inProcess, type TypedTransport } from "../transport/in-process.js";
 import { createClient } from "./create.js";
@@ -89,7 +89,7 @@ describe("Server type inference", () => {
 				.resolve(({ ctx }) => Array.from(ctx.db.users.values())),
 		});
 
-		const app = createServer({
+		const app = createApp({
 			router: router({ user: userRouter }),
 			context: () => ({
 				db: { users: new Map(), posts: new Map() },
@@ -120,7 +120,7 @@ describe("inProcess transport type inference", () => {
 	it("inProcess() returns TypedTransport with server types", () => {
 		const { query } = lens<TestContext>();
 
-		const app = createServer({
+		const app = createApp({
 			router: router({
 				user: router({
 					whoami: query()
@@ -174,7 +174,7 @@ describe("inProcess transport type inference", () => {
 			}),
 		});
 
-		const app = createServer({
+		const app = createApp({
 			router: appRouter,
 			context: () => ({
 				db: { users: new Map(), posts: new Map() },
@@ -202,7 +202,7 @@ describe("createClient type inference", () => {
 	const createTestServer = () => {
 		const { query, mutation } = lens<TestContext>();
 
-		return createServer({
+		return createApp({
 			router: router({
 				user: router({
 					get: query()
@@ -453,7 +453,7 @@ describe("Type-level assertions", () => {
 	it("client type matches expected shape", () => {
 		const { query } = lens<TestContext>();
 
-		const app = createServer({
+		const app = createApp({
 			router: router({
 				user: router({
 					get: query()
@@ -490,7 +490,7 @@ describe("Type-level assertions", () => {
 	it("QueryResult type is correct", () => {
 		const { query } = lens<TestContext>();
 
-		const app = createServer({
+		const app = createApp({
 			router: router({
 				data: router({
 					list: query()
@@ -523,7 +523,7 @@ describe("Edge cases", () => {
 	it("handles deeply nested routers", async () => {
 		const { query } = lens<TestContext>();
 
-		const app = createServer({
+		const app = createApp({
 			router: router({
 				api: router({
 					v1: router({
@@ -565,7 +565,7 @@ describe("Edge cases", () => {
 	it("handles queries without input", async () => {
 		const { query } = lens<TestContext>();
 
-		const app = createServer({
+		const app = createApp({
 			router: router({
 				health: query().resolve(() => ({ status: "ok", timestamp: Date.now() })),
 			}),
@@ -584,7 +584,7 @@ describe("Edge cases", () => {
 	it("handles multiple entity types in same router", async () => {
 		const { query } = lens<TestContext>();
 
-		const app = createServer({
+		const app = createApp({
 			router: router({
 				user: query()
 					.input(z.object({ id: z.string() }))

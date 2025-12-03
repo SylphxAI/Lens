@@ -284,7 +284,7 @@ export interface ServerTransport {
  *
  * @example
  * ```typescript
- * const server = createServer({
+ * const server = createApp({
  *   transport: http.server({ port: 3000 }),
  *   router: appRouter,
  * })

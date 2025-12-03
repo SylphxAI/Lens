@@ -16,7 +16,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { entity, lens, router, t } from "@sylphx/lens-core";
-import { createServer } from "@sylphx/lens-server";
+import { createApp } from "@sylphx/lens-server";
 import { z } from "zod";
 import { inProcess } from "../transport/in-process";
 import type { SelectedType } from "./create";
@@ -126,7 +126,7 @@ function createTestServer() {
 		comments.set(comment.id, comment);
 	}
 
-	return createServer({
+	return createApp({
 		router: router({
 			user: router({
 				get: query()
@@ -731,7 +731,7 @@ describe("QueryResult.select() - Edge Cases", () => {
 	it("handles selection on null/undefined data gracefully", async () => {
 		const { query } = lens<TestContext>();
 
-		const app = createServer({
+		const app = createApp({
 			router: router({
 				nullable: query().resolve(() => null),
 			}),
@@ -754,7 +754,7 @@ describe("QueryResult.select() - Edge Cases", () => {
 	it("handles selection when query throws", async () => {
 		const { query } = lens<TestContext>();
 
-		const app = createServer({
+		const app = createApp({
 			router: router({
 				failing: query().resolve(() => {
 					throw new Error("Query failed");

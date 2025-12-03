@@ -8,7 +8,6 @@
  */
 
 import type { RouterDef } from "@sylphx/lens-core";
-import type { TypedTransport } from "../transport/in-process.js";
 import type { Plugin } from "../transport/plugin.js";
 import type { Metadata, Observable, Operation, Result, Transport } from "../transport/types.js";
 import type {
@@ -460,7 +459,7 @@ class ClientImpl {
  * @example
  * Type inference from transport (recommended):
  * ```typescript
- * const server = createServer({ router: appRouter });
+ * const server = createApp({ router: appRouter });
  * const client = createClient({
  *   transport: inProcess({ app }),
  * });

@@ -11,7 +11,7 @@ import { describe, expect, it } from "bun:test";
 import { entity, lens, mutation, query, t } from "@sylphx/lens-core";
 import { z } from "zod";
 import { optimisticPlugin } from "../plugin/optimistic.js";
-import { createServer } from "../server/create.js";
+import { createApp } from "../server/create.js";
 
 // =============================================================================
 // Test Fixtures
@@ -53,7 +53,7 @@ describe("E2E - Basic Operations", () => {
 			.returns([User])
 			.resolve(() => mockUsers);
 
-		const server = createServer({
+		const server = createApp({
 			entities: { User },
 			queries: { getUsers },
 		});
@@ -74,7 +74,7 @@ describe("E2E - Basic Operations", () => {
 				return user;
 			});
 
-		const server = createServer({
+		const server = createApp({
 			entities: { User },
 			queries: { getUser },
 		});
@@ -99,7 +99,7 @@ describe("E2E - Basic Operations", () => {
 				status: "offline",
 			}));
 
-		const server = createServer({
+		const server = createApp({
 			entities: { User },
 			mutations: { createUser },
 		});
@@ -125,7 +125,7 @@ describe("E2E - Basic Operations", () => {
 				throw new Error("Query failed");
 			});
 
-		const server = createServer({
+		const server = createApp({
 			queries: { failingQuery },
 		});
 
@@ -140,7 +140,7 @@ describe("E2E - Basic Operations", () => {
 	});
 
 	it("handles unknown operation", async () => {
-		const server = createServer({});
+		const server = createApp({});
 
 		const result = await server.execute({
 			path: "unknownOperation",
@@ -167,7 +167,7 @@ describe("E2E - Context", () => {
 				return mockUsers[0];
 			});
 
-		const server = createServer({
+		const server = createApp({
 			queries: { getUser },
 			context: () => ({ userId: "ctx-user-1", role: "admin" }),
 		});
@@ -193,7 +193,7 @@ describe("E2E - Context", () => {
 				return mockUsers[0];
 			});
 
-		const server = createServer({
+		const server = createApp({
 			queries: { getUser },
 			context: async () => {
 				await new Promise((r) => setTimeout(r, 10));
@@ -227,7 +227,7 @@ describe("E2E - Selection", () => {
 				return user;
 			});
 
-		const server = createServer({
+		const server = createApp({
 			entities: { User },
 			queries: { getUser },
 		});
@@ -257,7 +257,7 @@ describe("E2E - Selection", () => {
 			.returns(User)
 			.resolve(({ input }) => mockUsers.find((u) => u.id === input.id)!);
 
-		const server = createServer({
+		const server = createApp({
 			entities: { User },
 			queries: { getUser },
 		});
@@ -311,7 +311,7 @@ describe("E2E - Entity Resolvers", () => {
 			posts: f.many(Post).resolve(({ parent }) => posts.filter((p) => p.authorId === parent.id)),
 		}));
 
-		const server = createServer({
+		const server = createApp({
 			entities: { User, Post },
 			queries: { getUser },
 			resolvers: [userResolver],
@@ -373,7 +373,7 @@ describe("E2E - Entity Resolvers", () => {
 			}),
 		}));
 
-		const server = createServer({
+		const server = createApp({
 			entities: { User, Post },
 			queries: { getUsers },
 			resolvers: [userResolver],
@@ -417,7 +417,7 @@ describe("E2E - Metadata", () => {
 			.returns(User)
 			.resolve(({ input }) => ({ id: "new", name: input.name, email: "", status: "" }));
 
-		const server = createServer({
+		const server = createApp({
 			entities: { User },
 			queries: { getUser },
 			mutations: { createUser },
@@ -444,7 +444,7 @@ describe("E2E - Metadata", () => {
 			.input(z.object({ id: z.string() }))
 			.resolve(() => ({ success: true }));
 
-		const server = createServer({
+		const server = createApp({
 			mutations: { updateUser, deleteUser },
 			plugins: [optimisticPlugin()],
 		});

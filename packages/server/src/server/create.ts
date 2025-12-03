@@ -574,8 +574,3 @@ export function createApp<
 		_types: { queries: Q; mutations: M; context: TContext };
 	};
 }
-
-/**
- * @deprecated Use `createApp` instead. Will be removed in v1.0.
- */
-export const createServer: typeof createApp = createApp;

@@ -10,7 +10,7 @@
  * import * as queries from './queries';
  * import * as mutations from './mutations';
  *
- * export const server = createServer({
+ * export const server = createApp({
  *   entities,
  *   queries,
  *   mutations,

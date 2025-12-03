@@ -667,16 +667,3 @@ export function createWSHandler(server: LensServer, options: WSHandlerOptions = 
 
 	return handler;
 }
-
-// =============================================================================
-// Deprecated Aliases
-// =============================================================================
-
-/** @deprecated Use `WSHandlerOptions` instead */
-export type WSAdapterOptions = WSHandlerOptions;
-
-/** @deprecated Use `WSHandler` instead */
-export type WSAdapter = WSHandler;
-
-/** @deprecated Use `createWSHandler` instead */
-export const createWSAdapter: typeof createWSHandler = createWSHandler;

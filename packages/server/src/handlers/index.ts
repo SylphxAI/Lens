@@ -53,22 +53,3 @@ export {
 	type WSHandler,
 	type WSHandlerOptions,
 } from "./ws.js";
-
-// =============================================================================
-// Deprecated Aliases (will be removed in next major version)
-// =============================================================================
-
-/** @deprecated Use `SSEHandlerOptions` instead */
-export type { SSEHandlerConfig as SSEAdapterOptions } from "../sse/handler.js";
-/** @deprecated Use `createSSEHandler` instead */
-export { createSSEHandler as createSSEAdapter } from "../sse/handler.js";
-/** @deprecated Use `HTTPHandler` instead */
-/** @deprecated Use `HTTPHandlerOptions` instead */
-export type { HTTPAdapter, HTTPAdapterOptions } from "./http.js";
-/** @deprecated Use `createHTTPHandler` instead */
-export { createHTTPAdapter } from "./http.js";
-/** @deprecated Use `WSHandler` instead */
-/** @deprecated Use `WSHandlerOptions` instead */
-export type { WSAdapter, WSAdapterOptions } from "./ws.js";
-/** @deprecated Use `createWSHandler` instead */
-export { createWSAdapter } from "./ws.js";

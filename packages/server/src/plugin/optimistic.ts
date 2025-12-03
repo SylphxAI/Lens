@@ -19,12 +19,12 @@
  *   .optimistic('merge')  // ✅ Type-safe
  *   .resolve(({ input }) => db.user.update(input));
  *
- * const server = createServer({ router, plugins });
+ * const server = createApp({ router, plugins });
  * ```
  *
  * @example Direct server usage
  * ```typescript
- * const server = createServer({
+ * const server = createApp({
  *   router,
  *   plugins: [optimisticPlugin()],
  * });
@@ -275,7 +275,7 @@ function isOptimisticDSL(value: unknown): value is OptimisticDSL {
 }
 
 /**
- * Combined plugin type that works with both lens() and createServer().
+ * Combined plugin type that works with both lens() and createApp().
  *
  * This type satisfies:
  * - OptimisticPluginMarker (RuntimePlugin<OptimisticPluginExtension>) for lens() type extensions
@@ -300,12 +300,12 @@ export type OptimisticPlugin = OptimisticPluginMarker & ServerPlugin;
  *   .optimistic('merge')
  *   .resolve(({ input }) => db.user.update(input));
  *
- * const server = createServer({ router, plugins });
+ * const server = createApp({ router, plugins });
  * ```
  *
  * @example Direct server usage
  * ```typescript
- * const server = createServer({
+ * const server = createApp({
  *   router: appRouter,
  *   plugins: [optimisticPlugin()],
  * });

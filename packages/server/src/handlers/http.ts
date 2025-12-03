@@ -187,16 +187,3 @@ export function createHTTPHandler(
 
 	return result;
 }
-
-// =============================================================================
-// Deprecated Aliases
-// =============================================================================
-
-/** @deprecated Use `HTTPHandlerOptions` instead */
-export type HTTPAdapterOptions = HTTPHandlerOptions;
-
-/** @deprecated Use `HTTPHandler` instead */
-export type HTTPAdapter = HTTPHandler;
-
-/** @deprecated Use `createHTTPHandler` instead */
-export const createHTTPAdapter: typeof createHTTPHandler = createHTTPHandler;

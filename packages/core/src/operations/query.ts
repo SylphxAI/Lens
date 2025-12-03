@@ -4,12 +4,7 @@
  * Fluent interface for defining queries.
  */
 
-import type {
-	InferReturnType,
-	ResolverFn,
-	ReturnSpec,
-	ZodLikeSchema,
-} from "./types.js";
+import type { InferReturnType, ResolverFn, ReturnSpec, ZodLikeSchema } from "./types.js";
 
 // =============================================================================
 // Query Definition

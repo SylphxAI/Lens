@@ -75,8 +75,6 @@ export {
 	type ClientSendFn,
 	// Factory
 	createApp,
-	/** @deprecated Use `createApp` instead */
-	createServer,
 	type EntitiesMap,
 	type InferApi,
 	type InferInput,
@@ -103,31 +101,22 @@ export {
 	createFrameworkHandler,
 	// Unified Handler (HTTP + SSE)
 	createHandler,
-	// Deprecated aliases
-	createHTTPAdapter,
 	// HTTP Handler
 	createHTTPHandler,
 	createServerClientProxy,
-	createSSEAdapter,
 	// SSE Handler
 	createSSEHandler,
-	createWSAdapter,
 	// WebSocket Handler
 	createWSHandler,
 	type FrameworkHandlerOptions,
 	type Handler,
 	type HandlerOptions,
-	type HTTPAdapter,
-	type HTTPAdapterOptions,
 	type HTTPHandler,
 	type HTTPHandlerOptions,
 	handleWebMutation,
 	handleWebQuery,
 	handleWebSSE,
-	type SSEAdapterOptions,
 	type SSEHandlerOptions,
-	type WSAdapter,
-	type WSAdapterOptions,
 	type WSHandler,
 	type WSHandlerOptions,
 } from "./handlers/index.js";
@@ -144,19 +133,14 @@ export {
 	type BeforeSendContext,
 	// Operation Log Plugin (cursor-based state management)
 	type BroadcastResult,
-	// Deprecated aliases
-	type ClientStateOptions,
 	type ConnectContext,
-	clientState,
 	// Plugin manager
 	createPluginManager,
 	type DisconnectContext,
 	type EnhanceOperationMetaContext,
-	isClientStatePlugin,
 	isOpLogPlugin,
 	// Optimistic Plugin
 	isOptimisticPlugin,
-	isStateSyncPlugin,
 	type OpLogOptions,
 	type OpLogPlugin,
 	type OptimisticPluginOptions,
@@ -165,9 +149,7 @@ export {
 	PluginManager,
 	// Plugin interface
 	type ServerPlugin,
-	type StateSyncOptions,
 	type SubscribeContext,
-	stateSync,
 	type UnsubscribeContext,
 } from "./plugin/index.js";
 

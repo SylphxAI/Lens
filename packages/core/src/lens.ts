@@ -245,7 +245,7 @@ export interface LensWithPlugins<TContext, TPlugins extends readonly PluginExten
 	mutation: LensMutation<TContext, TPlugins>;
 
 	/**
-	 * Runtime plugins for use with createServer().
+	 * Runtime plugins for use with createApp().
 	 */
 	plugins: RuntimePlugin[];
 }
@@ -317,7 +317,7 @@ export interface LensConfigWithPlugins<TPlugins extends readonly RuntimePlugin<P
  *   .resolve(({ input }) => ...);
  *
  * // Pass plugins to server
- * createServer({ router, plugins });
+ * createApp({ router, plugins });
  * ```
  */
 /**

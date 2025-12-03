@@ -7,17 +7,10 @@
 // Operation Log Plugin (cursor-based state management)
 export {
 	type BroadcastResult,
-	type ClientStateOptions,
-	// Deprecated aliases
-	clientState,
-	isClientStatePlugin,
 	isOpLogPlugin,
-	isStateSyncPlugin,
 	type OpLogOptions,
 	type OpLogPlugin,
 	opLog,
-	type StateSyncOptions,
-	stateSync,
 } from "./op-log.js";
 
 // Optimistic Updates Plugin

@@ -10,12 +10,19 @@ import type {
 	DeltaUpdate,
 	PatchOperation,
 	PatchUpdate,
-	StrategyName,
 	Update,
 	UpdateStrategy,
 	ValueUpdate,
 } from "./strategy-types.js";
 
+// Re-export array strategy
+export {
+	type ArrayDiffOperation,
+	type ArrayUpdate,
+	applyArrayDiff,
+	computeArrayDiff,
+	createArrayUpdate,
+} from "./array-strategy.js";
 // Re-export types for external use
 export type {
 	DeltaOperation,
@@ -27,15 +34,6 @@ export type {
 	UpdateStrategy,
 	ValueUpdate,
 } from "./strategy-types.js";
-
-// Re-export array strategy
-export {
-	applyArrayDiff,
-	type ArrayDiffOperation,
-	type ArrayUpdate,
-	computeArrayDiff,
-	createArrayUpdate,
-} from "./array-strategy.js";
 
 // =============================================================================
 // Value Strategy
