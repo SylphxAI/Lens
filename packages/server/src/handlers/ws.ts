@@ -22,126 +22,24 @@
  * ```
  */
 
-import type { ReconnectMessage } from "@sylphx/lens-core";
-import type { LensServer, SelectionObject, WebSocketLike } from "../server/create.js";
+import type { ReconnectMessage, ReconnectSubscription } from "@sylphx/lens-core";
+import type { LensServer, WebSocketLike } from "../server/create.js";
+import type {
+	ClientConnection,
+	ClientMessage,
+	ClientSubscription,
+	HandshakeMessage,
+	MutationMessage,
+	QueryMessage,
+	SubscribeMessage,
+	UnsubscribeMessage,
+	UpdateFieldsMessage,
+	WSHandler,
+	WSHandlerOptions,
+} from "./ws-types.js";
 
-// =============================================================================
-// Types
-// =============================================================================
-
-export interface WSHandlerOptions {
-	/**
-	 * Logger for debugging.
-	 */
-	logger?: {
-		info?: (message: string, ...args: unknown[]) => void;
-		warn?: (message: string, ...args: unknown[]) => void;
-		error?: (message: string, ...args: unknown[]) => void;
-	};
-}
-
-/**
- * WebSocket adapter for Bun's websocket handler.
- */
-export interface WSHandler {
-	/**
-	 * Handle a new WebSocket connection.
-	 * Call this when a WebSocket connection is established.
-	 */
-	handleConnection(ws: WebSocketLike): void;
-
-	/**
-	 * Bun-compatible websocket handler object.
-	 * Use directly with Bun.serve({ websocket: wsHandler.handler })
-	 */
-	handler: {
-		message(ws: unknown, message: string | Buffer): void;
-		close(ws: unknown): void;
-		open?(ws: unknown): void;
-	};
-
-	/**
-	 * Close all connections and cleanup.
-	 */
-	close(): Promise<void>;
-}
-
-// =============================================================================
-// Protocol Messages
-// =============================================================================
-
-interface SubscribeMessage {
-	type: "subscribe";
-	id: string;
-	operation: string;
-	input?: unknown;
-	fields: string[] | "*";
-	select?: SelectionObject;
-}
-
-interface UpdateFieldsMessage {
-	type: "updateFields";
-	id: string;
-	addFields?: string[];
-	removeFields?: string[];
-	setFields?: string[];
-}
-
-interface UnsubscribeMessage {
-	type: "unsubscribe";
-	id: string;
-}
-
-interface QueryMessage {
-	type: "query";
-	id: string;
-	operation: string;
-	input?: unknown;
-	fields?: string[] | "*";
-	select?: SelectionObject;
-}
-
-interface MutationMessage {
-	type: "mutation";
-	id: string;
-	operation: string;
-	input: unknown;
-}
-
-interface HandshakeMessage {
-	type: "handshake";
-	id: string;
-	clientVersion?: string;
-}
-
-type ClientMessage =
-	| SubscribeMessage
-	| UpdateFieldsMessage
-	| UnsubscribeMessage
-	| QueryMessage
-	| MutationMessage
-	| HandshakeMessage
-	| ReconnectMessage;
-
-// =============================================================================
-// Client Connection
-// =============================================================================
-
-interface ClientConnection {
-	id: string;
-	ws: WebSocketLike;
-	subscriptions: Map<string, ClientSubscription>;
-}
-
-interface ClientSubscription {
-	id: string;
-	operation: string;
-	input: unknown;
-	fields: string[] | "*";
-	entityKeys: Set<string>;
-	cleanups: (() => void)[];
-	lastData: unknown;
-}
+// Re-export types for external use
+export type { WSHandler, WSHandlerOptions } from "./ws-types.js";
 
 // =============================================================================
 // WebSocket Handler Factory
@@ -541,7 +439,7 @@ export function createWSHandler(server: LensServer, options: WSHandlerOptions = 
 		const ctx = {
 			clientId: conn.id,
 			reconnectId: message.reconnectId,
-			subscriptions: message.subscriptions.map((sub) => {
+			subscriptions: message.subscriptions.map((sub: ReconnectSubscription) => {
 				const mapped: {
 					id: string;
 					entity: string;
