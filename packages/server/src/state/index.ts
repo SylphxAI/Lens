@@ -1,8 +1,8 @@
 /**
  * @sylphx/lens-server - State Management
  *
- * Internal state management for diff optimizer plugin.
- * GraphStateManager is not exported - it's an implementation detail of diffOptimizer.
+ * Internal state management for stateSync plugin.
+ * GraphStateManager is not exported - it's an implementation detail of stateSync.
  */
 
-// No public exports - GraphStateManager is internal to diffOptimizer plugin
+// No public exports - GraphStateManager is internal to stateSync plugin

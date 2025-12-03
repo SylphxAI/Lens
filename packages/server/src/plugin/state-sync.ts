@@ -1,13 +1,13 @@
 /**
- * @sylphx/lens-server - Diff Optimizer Plugin
+ * @sylphx/lens-server - State Sync Plugin
  *
- * Server-side plugin that enables efficient diff computation and state tracking.
+ * Server-side plugin that enables stateful real-time synchronization.
  * By default, the server operates in stateless mode (sends full data).
  * Adding this plugin enables:
  * - Per-client state tracking
- * - Minimal diff computation
- * - Optimal transfer strategy selection (value/delta/patch)
- * - Reconnection support with version tracking
+ * - Subscription management
+ * - Minimal diff computation (only send changes)
+ * - Reconnection support with state recovery
  *
  * This plugin is ideal for:
  * - Long-running WebSocket connections
@@ -35,9 +35,9 @@ import type {
 } from "./types.js";
 
 /**
- * Diff optimizer plugin configuration.
+ * State sync plugin configuration.
  */
-export interface DiffOptimizerOptions extends GraphStateManagerConfig {
+export interface StateSyncOptions extends GraphStateManagerConfig {
 	/**
 	 * Whether to enable debug logging.
 	 * @default false
@@ -46,18 +46,23 @@ export interface DiffOptimizerOptions extends GraphStateManagerConfig {
 }
 
 /**
- * Create a diff optimizer plugin.
+ * Create a state sync plugin.
  *
- * This plugin tracks state per-client and computes minimal diffs
- * when sending updates. Without this plugin, the server sends
- * full data on each update (stateless mode).
+ * This plugin enables stateful real-time synchronization:
+ * - Tracks state per-client
+ * - Manages subscriptions
+ * - Computes minimal diffs (only sends changes)
+ * - Handles reconnection with state recovery
+ *
+ * Without this plugin, the server operates in stateless mode
+ * and sends full data on each update.
  *
  * @example
  * ```typescript
- * const server = createServer({
+ * const server = createApp({
  *   router: appRouter,
  *   plugins: [
- *     diffOptimizer({
+ *     stateSync({
  *       // Optional: operation log settings for reconnection
  *       operationLog: { maxAge: 60000 },
  *     }),
@@ -65,7 +70,7 @@ export interface DiffOptimizerOptions extends GraphStateManagerConfig {
  * });
  * ```
  */
-export function diffOptimizer(options: DiffOptimizerOptions = {}): ServerPlugin & {
+export function stateSync(options: StateSyncOptions = {}): ServerPlugin & {
 	/** Get the underlying GraphStateManager instance */
 	getStateManager(): GraphStateManager;
 } {
@@ -95,14 +100,14 @@ export function diffOptimizer(options: DiffOptimizerOptions = {}): ServerPlugin 
 
 	const log = (...args: unknown[]) => {
 		if (debug) {
-			console.log("[diffOptimizer]", ...args);
+			console.log("[stateSync]", ...args);
 		}
 	};
 
 	const makeEntityKey = (entity: string, entityId: string) => `${entity}:${entityId}`;
 
 	return {
-		name: "diffOptimizer",
+		name: "stateSync",
 
 		/**
 		 * Get the underlying GraphStateManager instance.
@@ -594,10 +599,25 @@ export function diffOptimizer(options: DiffOptimizerOptions = {}): ServerPlugin 
 }
 
 /**
- * Check if a plugin is a diff optimizer plugin.
+ * Check if a plugin is a state sync plugin.
  */
-export function isDiffOptimizerPlugin(
+export function isStateSyncPlugin(
 	plugin: ServerPlugin,
 ): plugin is ServerPlugin & { getStateManager(): GraphStateManager } {
-	return plugin.name === "diffOptimizer" && "getStateManager" in plugin;
+	return plugin.name === "stateSync" && "getStateManager" in plugin;
 }
+
+/**
+ * @deprecated Use `stateSync` instead. Will be removed in v1.0.
+ */
+export const diffOptimizer = stateSync;
+
+/**
+ * @deprecated Use `StateSyncOptions` instead. Will be removed in v1.0.
+ */
+export type DiffOptimizerOptions = StateSyncOptions;
+
+/**
+ * @deprecated Use `isStateSyncPlugin` instead. Will be removed in v1.0.
+ */
+export const isDiffOptimizerPlugin = isStateSyncPlugin;

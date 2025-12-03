@@ -4,12 +4,17 @@
  * Export all plugin-related types and utilities.
  */
 
-// Diff Optimizer Plugin
+// State Sync Plugin
 export {
+	// New names
+	type StateSyncOptions,
+	stateSync,
+	isStateSyncPlugin,
+	// Deprecated aliases (backwards compatibility)
 	type DiffOptimizerOptions,
 	diffOptimizer,
 	isDiffOptimizerPlugin,
-} from "./diff-optimizer.js";
+} from "./state-sync.js";
 
 // Optimistic Updates Plugin
 export {

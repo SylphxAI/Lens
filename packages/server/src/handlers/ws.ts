@@ -16,7 +16,7 @@
  * // Stateful mode (sends diffs) - add plugin at server level
  * const app = createApp({
  *   router,
- *   plugins: [diffOptimizer()],
+ *   plugins: [stateSync()],
  * });
  * const wsHandler = createWSHandler(app);
  * ```
@@ -151,11 +151,11 @@ interface ClientSubscription {
  * Create a WebSocket handler from a Lens app.
  *
  * The handler is a pure protocol translator - all business logic is in the server.
- * State management is controlled by server plugins (e.g., diffOptimizer).
+ * State management is controlled by server plugins (e.g., stateSync).
  *
  * @example
  * ```typescript
- * import { createApp, createWSHandler, diffOptimizer } from '@sylphx/lens-server'
+ * import { createApp, createWSHandler, stateSync } from '@sylphx/lens-server'
  *
  * // Stateless mode (default) - sends full data
  * const app = createApp({ router });
@@ -164,7 +164,7 @@ interface ClientSubscription {
  * // Stateful mode - sends minimal diffs
  * const appWithState = createApp({
  *   router,
- *   plugins: [diffOptimizer()],
+ *   plugins: [stateSync()],
  * });
  * const wsHandlerWithState = createWSHandler(appWithState);
  *

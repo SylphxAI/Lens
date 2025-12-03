@@ -6,10 +6,10 @@
  * Architecture:
  * - App = Executor with optional plugin support
  *   - Stateless (default): Pure executor, sends full data
- *   - Stateful (with diffOptimizer): Tracks state, sends diffs
+ *   - Stateful (with stateSync): Tracks state, sends diffs
  * - Handlers = Pure protocol handlers (HTTP, WebSocket, SSE)
  *   - No business logic - just translate protocol to app calls
- * - Plugins = App-level middleware (diffOptimizer, auth, logger)
+ * - Plugins = App-level middleware (stateSync, auth, logger)
  *   - Configured at app level, not handler level
  *
  * @example
@@ -18,10 +18,10 @@
  * const app = createApp({ router });
  * const wsHandler = createWSHandler(app);
  *
- * // Stateful mode (with diffOptimizer plugin)
+ * // Stateful mode (with stateSync plugin)
  * const app = createApp({
  *   router,
- *   plugins: [diffOptimizer()],
+ *   plugins: [stateSync()],
  * });
  * const wsHandler = createWSHandler(app); // Now sends diffs
  * ```
@@ -130,8 +130,8 @@ export {
 // State Management
 // =============================================================================
 
-// GraphStateManager is internal to diffOptimizer plugin - not exported
-// Use diffOptimizer() plugin for stateful server behavior
+// GraphStateManager is internal to stateSync plugin - not exported
+// Use stateSync() plugin for stateful server behavior
 
 // =============================================================================
 // Plugin System
@@ -146,12 +146,8 @@ export {
 	type ConnectContext,
 	// Plugin manager
 	createPluginManager,
-	type DiffOptimizerOptions,
 	type DisconnectContext,
-	// Diff Optimizer Plugin
-	diffOptimizer,
 	type EnhanceOperationMetaContext,
-	isDiffOptimizerPlugin,
 	// Optimistic Plugin
 	isOptimisticPlugin,
 	type OptimisticPluginOptions,
@@ -159,8 +155,16 @@ export {
 	PluginManager,
 	// Plugin interface
 	type ServerPlugin,
+	// State Sync Plugin
+	type StateSyncOptions,
+	stateSync,
+	isStateSyncPlugin,
 	type SubscribeContext,
 	type UnsubscribeContext,
+	// Deprecated aliases (backwards compatibility)
+	type DiffOptimizerOptions,
+	diffOptimizer,
+	isDiffOptimizerPlugin,
 } from "./plugin/index.js";
 
 // =============================================================================
