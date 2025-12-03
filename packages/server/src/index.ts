@@ -24,10 +24,11 @@
  *   plugins: [opLog()],
  * });
  *
- * // With external storage for serverless
+ * // With external storage for serverless (install @sylphx/lens-storage-upstash)
+ * import { upstashStorage } from "@sylphx/lens-storage-upstash";
  * const app = createApp({
  *   router,
- *   plugins: [opLog({ storage: redisStorage({ url: REDIS_URL }) })],
+ *   plugins: [opLog({ storage: upstashStorage({ redis }) })],
  * });
  * ```
  */
@@ -182,20 +183,8 @@ export {
 	memoryStorage,
 	type OpLogStorage,
 	type OpLogStorageConfig,
-	// Redis (ioredis)
-	type RedisClient,
-	type RedisStorageOptions,
-	redisStorage,
 	type StoredEntityState,
 	type StoredPatchEntry,
-	// Upstash Redis (HTTP, serverless)
-	type UpstashRedisClient,
-	type UpstashStorageOptions,
-	upstashStorage,
-	// Vercel KV (Next.js/Vercel)
-	type VercelKVClient,
-	type VercelKVStorageOptions,
-	vercelKVStorage,
 } from "./storage/index.js";
 
 // =============================================================================

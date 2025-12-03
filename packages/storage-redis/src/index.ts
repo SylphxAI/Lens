@@ -1,7 +1,7 @@
 /**
- * @sylphx/lens-server - Redis Storage
+ * @sylphx/lens-storage-redis
  *
- * Storage adapter for Redis using ioredis.
+ * Redis storage adapter for Lens opLog plugin using ioredis.
  * Best for long-running servers with persistent connections.
  *
  * Features:
@@ -9,11 +9,13 @@
  * - Optimistic locking with retry on conflict
  * - Automatic patch eviction
  *
- * For serverless environments, use `upstashStorage` or `vercelKVStorage` instead.
+ * For serverless environments, use `@sylphx/lens-storage-upstash` or
+ * `@sylphx/lens-storage-vercel-kv` instead.
  *
  * @example
  * ```typescript
  * import Redis from "ioredis";
+ * import { redisStorage } from "@sylphx/lens-storage-redis";
  *
  * const redis = new Redis(process.env.REDIS_URL);
  *
@@ -33,7 +35,7 @@ import {
 	type OpLogStorage,
 	type OpLogStorageConfig,
 	type StoredPatchEntry,
-} from "./types.js";
+} from "@sylphx/lens-server";
 
 /**
  * Redis client interface.
@@ -129,6 +131,7 @@ function computePatch(
  * @example
  * ```typescript
  * import Redis from "ioredis";
+ * import { redisStorage } from "@sylphx/lens-storage-redis";
  *
  * const redis = new Redis(process.env.REDIS_URL);
  *
@@ -287,7 +290,8 @@ export function redisStorage(options: RedisStorageOptions): OpLogStorage {
 			if (!stored || stored.patches.length === 0) {
 				return null;
 			}
-			return stored.patches[stored.patches.length - 1].patch;
+			const lastPatch = stored.patches[stored.patches.length - 1];
+			return lastPatch ? lastPatch.patch : null;
 		},
 
 		async getPatchesSince(entity, entityId, sinceVersion): Promise<PatchOperation[][] | null> {
@@ -309,12 +313,15 @@ export function redisStorage(options: RedisStorageOptions): OpLogStorage {
 
 			relevantPatches.sort((a, b) => a.version - b.version);
 
-			if (relevantPatches[0].version !== sinceVersion + 1) {
+			const firstPatch = relevantPatches[0];
+			if (!firstPatch || firstPatch.version !== sinceVersion + 1) {
 				return null;
 			}
 
 			for (let i = 1; i < relevantPatches.length; i++) {
-				if (relevantPatches[i].version !== relevantPatches[i - 1].version + 1) {
+				const current = relevantPatches[i];
+				const previous = relevantPatches[i - 1];
+				if (!current || !previous || current.version !== previous.version + 1) {
 					return null;
 				}
 			}

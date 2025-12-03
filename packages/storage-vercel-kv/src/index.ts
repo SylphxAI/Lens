@@ -1,8 +1,8 @@
 /**
- * @sylphx/lens-server - Upstash Redis Storage
+ * @sylphx/lens-storage-vercel-kv
  *
- * Storage adapter for Upstash Redis (HTTP-based).
- * Perfect for serverless/edge environments.
+ * Vercel KV storage adapter for Lens opLog plugin.
+ * Designed for Next.js and Vercel serverless functions.
  *
  * Features:
  * - HTTP-based (no persistent connections)
@@ -11,17 +11,13 @@
  *
  * @example
  * ```typescript
- * import { Redis } from "@upstash/redis";
- *
- * const redis = new Redis({
- *   url: process.env.UPSTASH_REDIS_REST_URL,
- *   token: process.env.UPSTASH_REDIS_REST_TOKEN,
- * });
+ * import { kv } from "@vercel/kv";
+ * import { vercelKVStorage } from "@sylphx/lens-storage-vercel-kv";
  *
  * const app = createApp({
  *   router,
  *   plugins: [opLog({
- *     storage: upstashStorage({ redis }),
+ *     storage: vercelKVStorage({ kv }),
  *   })],
  * });
  * ```
@@ -34,34 +30,36 @@ import {
 	type OpLogStorage,
 	type OpLogStorageConfig,
 	type StoredPatchEntry,
-} from "./types.js";
+} from "@sylphx/lens-server";
 
 /**
- * Upstash Redis client interface.
- * Compatible with @upstash/redis.
+ * Vercel KV client interface.
+ * Compatible with @vercel/kv.
  */
-export interface UpstashRedisClient {
+export interface VercelKVClient {
 	get<T>(key: string): Promise<T | null>;
-	set(key: string, value: unknown, options?: { ex?: number; nx?: boolean }): Promise<unknown>;
+	set(key: string, value: unknown, options?: { ex?: number }): Promise<unknown>;
 	del(...keys: string[]): Promise<number>;
 	keys(pattern: string): Promise<string[]>;
 	exists(...keys: string[]): Promise<number>;
 }
 
 /**
- * Upstash storage options.
+ * Vercel KV storage options.
  */
-export interface UpstashStorageOptions extends OpLogStorageConfig {
+export interface VercelKVStorageOptions extends OpLogStorageConfig {
 	/**
-	 * Upstash Redis client instance.
+	 * Vercel KV client instance.
 	 *
 	 * @example
 	 * ```typescript
-	 * import { Redis } from "@upstash/redis";
-	 * const redis = new Redis({ url, token });
+	 * import { kv } from "@vercel/kv";
+	 * // or
+	 * import { createClient } from "@vercel/kv";
+	 * const kv = createClient({ url, token });
 	 * ```
 	 */
-	redis: UpstashRedisClient;
+	kv: VercelKVClient;
 
 	/**
 	 * Key prefix for all stored data.
@@ -119,32 +117,28 @@ function computePatch(
 }
 
 /**
- * Create an Upstash Redis storage adapter.
+ * Create a Vercel KV storage adapter.
  *
- * Requires `@upstash/redis` as a peer dependency.
+ * Requires `@vercel/kv` as a peer dependency.
  *
  * Uses optimistic locking: if a concurrent write is detected,
  * the operation is retried up to `maxRetries` times.
  *
  * @example
  * ```typescript
- * import { Redis } from "@upstash/redis";
- *
- * const redis = new Redis({
- *   url: process.env.UPSTASH_REDIS_REST_URL,
- *   token: process.env.UPSTASH_REDIS_REST_TOKEN,
- * });
+ * import { kv } from "@vercel/kv";
+ * import { vercelKVStorage } from "@sylphx/lens-storage-vercel-kv";
  *
  * const app = createApp({
  *   router,
  *   plugins: [opLog({
- *     storage: upstashStorage({ redis }),
+ *     storage: vercelKVStorage({ kv }),
  *   })],
  * });
  * ```
  */
-export function upstashStorage(options: UpstashStorageOptions): OpLogStorage {
-	const { redis, prefix = "lens", stateTTL = 0 } = options;
+export function vercelKVStorage(options: VercelKVStorageOptions): OpLogStorage {
+	const { kv, prefix = "lens", stateTTL = 0 } = options;
 	const cfg = { ...DEFAULT_STORAGE_CONFIG, ...options };
 
 	function makeKey(entity: string, entityId: string): string {
@@ -153,16 +147,16 @@ export function upstashStorage(options: UpstashStorageOptions): OpLogStorage {
 
 	async function getData(entity: string, entityId: string): Promise<StoredData | null> {
 		const key = makeKey(entity, entityId);
-		const data = await redis.get<StoredData>(key);
+		const data = await kv.get<StoredData>(key);
 		return data;
 	}
 
 	async function setData(entity: string, entityId: string, data: StoredData): Promise<void> {
 		const key = makeKey(entity, entityId);
 		if (stateTTL > 0) {
-			await redis.set(key, data, { ex: stateTTL });
+			await kv.set(key, data, { ex: stateTTL });
 		} else {
-			await redis.set(key, data);
+			await kv.set(key, data);
 		}
 	}
 
@@ -191,7 +185,6 @@ export function upstashStorage(options: UpstashStorageOptions): OpLogStorage {
 		const existing = await getData(entity, entityId);
 
 		if (!existing) {
-			// First emit - no conflict possible
 			const newData: StoredData = {
 				data: { ...data },
 				version: 1,
@@ -209,7 +202,6 @@ export function upstashStorage(options: UpstashStorageOptions): OpLogStorage {
 
 		const expectedVersion = existing.version;
 
-		// Check if changed
 		const oldHash = JSON.stringify(existing.data);
 		const newHash = JSON.stringify(data);
 
@@ -221,11 +213,9 @@ export function upstashStorage(options: UpstashStorageOptions): OpLogStorage {
 			};
 		}
 
-		// Compute patch
 		const patch = computePatch(existing.data, data);
 		const newVersion = expectedVersion + 1;
 
-		// Update patches array
 		let patches = [...existing.patches];
 		if (patch.length > 0) {
 			patches.push({
@@ -236,7 +226,6 @@ export function upstashStorage(options: UpstashStorageOptions): OpLogStorage {
 			patches = trimPatches(patches, now);
 		}
 
-		// Prepare new data
 		const newData: StoredData = {
 			data: { ...data },
 			version: newVersion,
@@ -244,21 +233,17 @@ export function upstashStorage(options: UpstashStorageOptions): OpLogStorage {
 			patches,
 		};
 
-		// Write and verify version didn't change
 		await setData(entity, entityId, newData);
 
 		// Re-read to verify our write succeeded (optimistic check)
 		const verify = await getData(entity, entityId);
 		if (verify && verify.version !== newVersion) {
-			// Version conflict - another write happened
+			// Version conflict
 			if (retryCount < cfg.maxRetries) {
-				// Retry with exponential backoff
 				const delay = Math.min(10 * 2 ** retryCount, 100);
 				await new Promise((resolve) => setTimeout(resolve, delay));
 				return emitWithRetry(entity, entityId, data, retryCount + 1);
 			}
-			// Max retries exceeded - return the current state
-			// This implements "last writer wins" semantics
 			return {
 				version: verify.version,
 				patch: null,
@@ -291,7 +276,8 @@ export function upstashStorage(options: UpstashStorageOptions): OpLogStorage {
 			if (!stored || stored.patches.length === 0) {
 				return null;
 			}
-			return stored.patches[stored.patches.length - 1].patch;
+			const lastPatch = stored.patches[stored.patches.length - 1];
+			return lastPatch ? lastPatch.patch : null;
 		},
 
 		async getPatchesSince(entity, entityId, sinceVersion): Promise<PatchOperation[][] | null> {
@@ -313,12 +299,15 @@ export function upstashStorage(options: UpstashStorageOptions): OpLogStorage {
 
 			relevantPatches.sort((a, b) => a.version - b.version);
 
-			if (relevantPatches[0].version !== sinceVersion + 1) {
+			const firstPatch = relevantPatches[0];
+			if (!firstPatch || firstPatch.version !== sinceVersion + 1) {
 				return null;
 			}
 
 			for (let i = 1; i < relevantPatches.length; i++) {
-				if (relevantPatches[i].version !== relevantPatches[i - 1].version + 1) {
+				const current = relevantPatches[i];
+				const previous = relevantPatches[i - 1];
+				if (!current || !previous || current.version !== previous.version + 1) {
 					return null;
 				}
 			}
@@ -328,19 +317,19 @@ export function upstashStorage(options: UpstashStorageOptions): OpLogStorage {
 
 		async has(entity, entityId): Promise<boolean> {
 			const key = makeKey(entity, entityId);
-			const count = await redis.exists(key);
+			const count = await kv.exists(key);
 			return count > 0;
 		},
 
 		async delete(entity, entityId): Promise<void> {
 			const key = makeKey(entity, entityId);
-			await redis.del(key);
+			await kv.del(key);
 		},
 
 		async clear(): Promise<void> {
-			const keys = await redis.keys(`${prefix}:*`);
+			const keys = await kv.keys(`${prefix}:*`);
 			if (keys.length > 0) {
-				await redis.del(...keys);
+				await kv.del(...keys);
 			}
 		},
 	};
