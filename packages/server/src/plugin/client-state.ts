@@ -1,23 +1,30 @@
 /**
  * @sylphx/lens-server - Client State Plugin
  *
- * Server-side plugin that enables per-client state tracking.
+ * Server-side plugin that enables cursor-based state synchronization.
  * By default, the server operates in stateless mode.
  * Adding this plugin enables:
- * - Per-client state tracking (what each client has seen)
  * - Subscription management
- * - Efficient diff computation (only send changes)
- * - Reconnection support with state recovery
+ * - Version tracking per entity (cursor-based)
+ * - Efficient patch-based updates (same patch sent to all subscribers)
+ * - Reconnection support with state recovery via operation log
+ *
+ * Architecture (Cursor-Based):
+ * - Server maintains: canonical state + version + operation log per entity
+ * - NO per-client state tracking - memory is O(entities × history) not O(clients × entities)
+ * - When state changes: compute patch once, send same patch to all subscribers
+ * - Client tracks its own version and applies patches locally
  *
  * This plugin is ideal for:
+ * - High client count scenarios (scalable memory)
  * - Long-running WebSocket connections
- * - Bandwidth-sensitive applications
  * - Real-time collaborative features
+ * - Offline-first patterns (clients can catch up via patches)
  *
  * For serverless/stateless deployments, skip this plugin.
  */
 
-import { createUpdate, type Update } from "@sylphx/lens-core";
+import type { PatchOperation } from "@sylphx/lens-core";
 import { GraphStateManager, type GraphStateManagerConfig } from "../state/graph-state-manager.js";
 import type {
 	AfterSendContext,
@@ -47,11 +54,12 @@ export interface ClientStateOptions extends GraphStateManagerConfig {
 /**
  * Create a client state plugin.
  *
- * This plugin enables per-client state tracking:
- * - Tracks what each client has seen
- * - Manages subscriptions
- * - Computes efficient diffs (only sends changes)
- * - Handles reconnection with state recovery
+ * This plugin enables cursor-based state synchronization:
+ * - Manages subscriptions and entity version tracking
+ * - Sends same patch to all subscribers (not per-client diffs)
+ * - Handles reconnection with operation log (patches or snapshot)
+ *
+ * Memory: O(entities × history) instead of O(clients × entities)
  *
  * Without this plugin, the server operates in stateless mode.
  *
@@ -75,13 +83,13 @@ export function clientState(options: ClientStateOptions = {}): ServerPlugin & {
 	const stateManager = new GraphStateManager(options);
 	const debug = options.debug ?? false;
 
-	// Per-client state tracking: clientId → entityKey → lastState
-	const clientStates = new Map<string, Map<string, Record<string, unknown>>>();
+	// Cursor-based: NO per-client state tracking
+	// Memory is O(entities × history) instead of O(clients × entities)
 
 	// Track client-entity subscriptions
 	const clientSubscriptions = new Map<string, Set<string>>(); // clientId -> Set<entityKey>
 
-	// Track client-entity fields: clientId → entityKey → fields
+	// Track client-entity fields: clientId → entityKey → fields (for field filtering only)
 	const clientFields = new Map<string, Map<string, string[] | "*">>();
 
 	// Store client send functions for actual message delivery
@@ -116,11 +124,11 @@ export function clientState(options: ClientStateOptions = {}): ServerPlugin & {
 		},
 
 		/**
-		 * When a client connects, initialize their state tracking and store send function.
+		 * When a client connects, initialize subscription tracking and store send function.
+		 * Note: Cursor-based - no per-client state tracking needed.
 		 */
 		onConnect(ctx: ConnectContext): void {
 			log("Client connected:", ctx.clientId);
-			clientStates.set(ctx.clientId, new Map());
 			clientSubscriptions.set(ctx.clientId, new Set());
 			clientFields.set(ctx.clientId, new Map());
 			subscriptionInfo.set(ctx.clientId, new Map());
@@ -132,7 +140,8 @@ export function clientState(options: ClientStateOptions = {}): ServerPlugin & {
 		},
 
 		/**
-		 * When a client disconnects, clean up their state.
+		 * When a client disconnects, clean up their subscription tracking.
+		 * Note: Cursor-based - no per-client state to clean up.
 		 */
 		onDisconnect(ctx: DisconnectContext): void {
 			log("Client disconnected:", ctx.clientId, "subscriptions:", ctx.subscriptionCount);
@@ -157,7 +166,6 @@ export function clientState(options: ClientStateOptions = {}): ServerPlugin & {
 				}
 			}
 
-			clientStates.delete(ctx.clientId);
 			clientSubscriptions.delete(ctx.clientId);
 			clientFields.delete(ctx.clientId);
 			clientSendFns.delete(ctx.clientId);
@@ -198,19 +206,18 @@ export function clientState(options: ClientStateOptions = {}): ServerPlugin & {
 
 		/**
 		 * When a client unsubscribes, remove from tracking.
+		 * Note: Cursor-based - no per-client state to clean up.
 		 */
 		onUnsubscribe(ctx: UnsubscribeContext): void {
 			log("Unsubscribe:", ctx.clientId, ctx.subscriptionId);
 
 			const subs = clientSubscriptions.get(ctx.clientId);
-			const states = clientStates.get(ctx.clientId);
 			const fields = clientFields.get(ctx.clientId);
 			const subInfo = subscriptionInfo.get(ctx.clientId);
 
-			if (subs || states || fields) {
+			if (subs || fields) {
 				for (const entityKey of ctx.entityKeys) {
 					subs?.delete(entityKey);
-					states?.delete(entityKey);
 					fields?.delete(entityKey);
 
 					// Remove from entity subscribers
@@ -234,11 +241,10 @@ export function clientState(options: ClientStateOptions = {}): ServerPlugin & {
 		},
 
 		/**
-		 * Before sending data, compute optimal diff if we have previous state.
-		 * This is the core optimization logic.
+		 * Before sending data for initial subscription.
+		 * Cursor-based: sends full data + version (no per-client diff computation).
 		 *
-		 * In the stateless server design, this hook also handles actual message delivery
-		 * using the send function stored from onConnect.
+		 * Updates are handled via onBroadcast which sends same patch to all subscribers.
 		 */
 		beforeSend(ctx: BeforeSendContext): Record<string, unknown> | void {
 			const { clientId, subscriptionId, entity, entityId, data, isInitial, fields } = ctx;
@@ -248,107 +254,38 @@ export function clientState(options: ClientStateOptions = {}): ServerPlugin & {
 
 			// Get send function for this client
 			const sendFn = clientSendFns.get(clientId);
-
-			// Get or create client state map
-			let clientStateMap = clientStates.get(clientId);
-			if (!clientStateMap) {
-				clientStateMap = new Map();
-				clientStates.set(clientId, clientStateMap);
+			if (!sendFn) {
+				log("  No send function for client");
+				return;
 			}
 
-			// Initial send: store state, send full data
-			if (isInitial) {
-				clientStateMap.set(entityKey, { ...data });
-				log("  Initial send, storing state");
+			// Get current version from state manager
+			const version = stateManager.getVersion(entity, entityId);
 
-				// Send initial data message
-				if (sendFn) {
-					sendFn({
-						type: "data",
-						id: subscriptionId,
-						entity,
-						entityId,
-						data,
-					});
+			// Filter data by subscribed fields if needed
+			let filteredData = data;
+			if (fields !== "*") {
+				filteredData = {};
+				for (const field of fields) {
+					if (field in data) {
+						filteredData[field] = data[field];
+					}
 				}
-				return data;
 			}
 
-			// Get client's last known state
-			const lastState = clientStateMap.get(entityKey);
-
-			// No previous state: treat as initial
-			if (!lastState) {
-				clientStateMap.set(entityKey, { ...data });
-				log("  No previous state, storing and sending full");
-
-				if (sendFn) {
-					sendFn({
-						type: "data",
-						id: subscriptionId,
-						entity,
-						entityId,
-						data,
-					});
-				}
-				return data;
-			}
-
-			// Compute diff: only send changed fields
-			const fieldsToCheck = fields === "*" ? Object.keys(data) : fields;
-			const updates: Record<string, Update> = {};
-			let hasChanges = false;
-
-			for (const field of fieldsToCheck) {
-				const oldValue = lastState[field];
-				const newValue = data[field];
-
-				// Skip if unchanged (deep equality check)
-				if (oldValue === newValue) continue;
-				if (
-					typeof oldValue === "object" &&
-					typeof newValue === "object" &&
-					JSON.stringify(oldValue) === JSON.stringify(newValue)
-				) {
-					continue;
-				}
-
-				// Compute optimal update strategy
-				const update = createUpdate(oldValue, newValue);
-				updates[field] = update;
-				hasChanges = true;
-			}
-
-			// Update client's last known state
-			clientStateMap.set(entityKey, { ...data });
-
-			// No changes: don't send anything
-			if (!hasChanges) {
-				log("  No changes detected");
-				return {};
-			}
-
-			// Send optimized update message
-			const transformedData = {
-				_type: "update",
+			// Cursor-based: always send full data + version
+			// Client tracks its own version and applies patches locally
+			sendFn({
+				type: "data",
+				id: subscriptionId,
 				entity,
-				id: entityId,
-				updates,
-			};
+				entityId,
+				data: filteredData,
+				version,
+			});
 
-			log("  Computed diff with", Object.keys(updates).length, "field changes");
-
-			if (sendFn) {
-				sendFn({
-					type: "update",
-					id: subscriptionId,
-					entity,
-					entityId,
-					data: transformedData,
-				});
-			}
-
-			return transformedData;
+			log("  Sent data with version:", version);
+			return filteredData;
 		},
 
 		/**
@@ -361,15 +298,15 @@ export function clientState(options: ClientStateOptions = {}): ServerPlugin & {
 		/**
 		 * Handle client reconnection with subscription state.
 		 * Uses GraphStateManager to determine sync strategy for each subscription.
+		 * Cursor-based: client sends version, server returns patches or snapshot.
 		 */
 		onReconnect(ctx: ReconnectContext): ReconnectHookResult[] {
 			log("Reconnect:", ctx.clientId, "subscriptions:", ctx.subscriptions.length);
 
 			const results: ReconnectHookResult[] = [];
 
-			// Initialize client state tracking if not exists
-			if (!clientStates.has(ctx.clientId)) {
-				clientStates.set(ctx.clientId, new Map());
+			// Initialize subscription tracking if not exists (cursor-based: no per-client state)
+			if (!clientSubscriptions.has(ctx.clientId)) {
 				clientSubscriptions.set(ctx.clientId, new Set());
 				clientFields.set(ctx.clientId, new Map());
 				subscriptionInfo.set(ctx.clientId, new Map());
@@ -429,11 +366,8 @@ export function clientState(options: ClientStateOptions = {}): ServerPlugin & {
 					}
 					subscribers.add({ clientId: ctx.clientId, subscriptionId: sub.id });
 
-					// If we got a snapshot, update client's last known state
-					if (stateResult.status === "snapshot" && stateResult.data) {
-						const clientStateMap = clientStates.get(ctx.clientId);
-						clientStateMap?.set(entityKey, { ...stateResult.data });
-					}
+					// Cursor-based: no per-client state to update
+					// Client will receive snapshot/patches and track its own version
 				}
 
 				// Convert to plugin result format
@@ -499,8 +433,11 @@ export function clientState(options: ClientStateOptions = {}): ServerPlugin & {
 		},
 
 		/**
-		 * Handle broadcast - find all subscribers of an entity and send data to them.
-		 * This is the core of the stateless server design - the plugin owns subscriber tracking.
+		 * Handle broadcast - find all subscribers of an entity and send SAME patch to all.
+		 * This is the core of cursor-based design:
+		 * - Compute patch ONCE (not per-client)
+		 * - Send same patch to ALL subscribers
+		 * - Memory is O(entities × history) not O(clients × entities)
 		 */
 		onBroadcast(ctx: BroadcastContext): boolean {
 			const { entity, entityId, data } = ctx;
@@ -511,10 +448,21 @@ export function clientState(options: ClientStateOptions = {}): ServerPlugin & {
 			const subscribers = entitySubscribers.get(entityKey);
 			if (!subscribers || subscribers.size === 0) {
 				log("  No subscribers for entity");
-				return true; // We handled it, just no one to send to
+				// Still update canonical state for future subscribers
+				stateManager.emit(entity, entityId, data);
+				return true;
 			}
 
-			// Send to each subscriber
+			// Update canonical state via GraphStateManager (computes patch once)
+			stateManager.emit(entity, entityId, data);
+
+			// Get the patch that was computed (same for all subscribers)
+			const version = stateManager.getVersion(entity, entityId);
+			const patch = stateManager.getLatestPatch(entity, entityId);
+
+			log("  Version:", version, "Patch ops:", patch?.length ?? 0);
+
+			// Send SAME message to ALL subscribers (cursor-based)
 			for (const { clientId, subscriptionId } of subscribers) {
 				const sendFn = clientSendFns.get(clientId);
 				if (!sendFn) {
@@ -522,73 +470,59 @@ export function clientState(options: ClientStateOptions = {}): ServerPlugin & {
 					continue;
 				}
 
-				// Get client's subscribed fields for this entity
+				// Get client's subscribed fields for this entity (for filtering)
 				const fieldsMap = clientFields.get(clientId);
 				const fields = fieldsMap?.get(entityKey) ?? "*";
 
-				// Use beforeSend logic to compute diff and send
-				const clientStateMap = clientStates.get(clientId);
-				const lastState = clientStateMap?.get(entityKey);
+				if (patch && patch.length > 0) {
+					// Filter patch by subscribed fields if needed
+					let filteredPatch: PatchOperation[] = patch;
+					if (fields !== "*") {
+						const fieldSet = new Set(fields);
+						filteredPatch = patch.filter((op) => {
+							// Extract field name from path (e.g., "/fieldName" or "/fieldName/nested")
+							const pathParts = op.path.split("/");
+							const fieldName = pathParts[1]; // First part after leading /
+							return fieldSet.has(fieldName);
+						});
+					}
 
-				if (!lastState) {
-					// No previous state - send full data
-					clientStateMap?.set(entityKey, { ...data });
+					if (filteredPatch.length > 0) {
+						// Send patch update
+						sendFn({
+							type: "patch",
+							id: subscriptionId,
+							entity,
+							entityId,
+							patch: filteredPatch,
+							version,
+						});
+						log("  Sent patch to:", clientId, "ops:", filteredPatch.length);
+					} else {
+						log("  No relevant fields for:", clientId);
+					}
+				} else {
+					// No patch available (first emit or log evicted) - send full data
+					let filteredData = data;
+					if (fields !== "*") {
+						filteredData = {};
+						for (const field of fields) {
+							if (field in data) {
+								filteredData[field] = data[field];
+							}
+						}
+					}
+
 					sendFn({
 						type: "data",
 						id: subscriptionId,
 						entity,
 						entityId,
-						data,
+						data: filteredData,
+						version,
 					});
 					log("  Sent full data to:", clientId);
-					continue;
 				}
-
-				// Compute diff
-				const fieldsToCheck = fields === "*" ? Object.keys(data) : fields;
-				const updates: Record<string, Update> = {};
-				let hasChanges = false;
-
-				for (const field of fieldsToCheck) {
-					const oldValue = lastState[field];
-					const newValue = data[field];
-
-					if (oldValue === newValue) continue;
-					if (
-						typeof oldValue === "object" &&
-						typeof newValue === "object" &&
-						JSON.stringify(oldValue) === JSON.stringify(newValue)
-					) {
-						continue;
-					}
-
-					const update = createUpdate(oldValue, newValue);
-					updates[field] = update;
-					hasChanges = true;
-				}
-
-				// Update state
-				clientStateMap?.set(entityKey, { ...data });
-
-				if (!hasChanges) {
-					log("  No changes for:", clientId);
-					continue;
-				}
-
-				// Send update
-				sendFn({
-					type: "update",
-					id: subscriptionId,
-					entity,
-					entityId,
-					data: {
-						_type: "update",
-						entity,
-						id: entityId,
-						updates,
-					},
-				});
-				log("  Sent diff to:", clientId, "fields:", Object.keys(updates).length);
 			}
 
 			return true;

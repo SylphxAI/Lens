@@ -1045,6 +1045,24 @@ export class GraphStateManager {
 	}
 
 	/**
+	 * Get the latest patch for an entity.
+	 * Returns null if no recent patches available.
+	 *
+	 * This is used by cursor-based clients to receive the same patch
+	 * that was computed when state changed, rather than per-client diffs.
+	 */
+	getLatestPatch(entity: string, id: string): PatchOperation[] | null {
+		const key = this.makeKey(entity, id);
+		const version = this.versions.get(key);
+		if (!version) return null;
+
+		const entries = this.operationLog.getSince(key, version - 1);
+		if (!entries || entries.length === 0) return null;
+
+		return entries[entries.length - 1].patch;
+	}
+
+	/**
 	 * Handle a reconnection request from a client.
 	 * Determines the most efficient way to sync each subscription.
 	 *
