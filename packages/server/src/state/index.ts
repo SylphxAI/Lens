@@ -1,8 +1,14 @@
 /**
  * @sylphx/lens-server - State Management
  *
- * Internal state management for clientState plugin.
- * GraphStateManager is not exported - it's an implementation detail of clientState.
+ * State management is handled by the storage layer.
+ * See: packages/server/src/storage/
+ *
+ * Available storage adapters:
+ * - memoryStorage() - In-memory (default)
+ * - redisStorage() - Redis via ioredis
+ * - upstashStorage() - Upstash Redis HTTP
+ * - vercelKVStorage() - Vercel KV
  */
 
-// No public exports - GraphStateManager is internal to clientState plugin
+// No exports - state management moved to storage layer

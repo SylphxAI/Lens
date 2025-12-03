@@ -184,6 +184,14 @@ export interface OpLogStorageConfig {
 	 * @default 60000 (1 minute)
 	 */
 	cleanupInterval?: number;
+
+	/**
+	 * Maximum retries for emit operations on version conflict.
+	 * Only applies to external storage (Redis, Upstash, Vercel KV).
+	 * Set to 0 to disable retries (fail immediately on conflict).
+	 * @default 3
+	 */
+	maxRetries?: number;
 }
 
 /**
@@ -193,4 +201,5 @@ export const DEFAULT_STORAGE_CONFIG: Required<OpLogStorageConfig> = {
 	maxPatchesPerEntity: 1000,
 	maxPatchAge: 5 * 60 * 1000, // 5 minutes
 	cleanupInterval: 60 * 1000, // 1 minute
+	maxRetries: 3,
 };

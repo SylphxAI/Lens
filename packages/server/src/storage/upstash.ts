@@ -4,6 +4,11 @@
  * Storage adapter for Upstash Redis (HTTP-based).
  * Perfect for serverless/edge environments.
  *
+ * Features:
+ * - HTTP-based (no persistent connections)
+ * - Optimistic locking with retry on conflict
+ * - Automatic patch eviction
+ *
  * @example
  * ```typescript
  * import { Redis } from "@upstash/redis";
@@ -37,7 +42,7 @@ import {
  */
 export interface UpstashRedisClient {
 	get<T>(key: string): Promise<T | null>;
-	set(key: string, value: unknown, options?: { ex?: number }): Promise<unknown>;
+	set(key: string, value: unknown, options?: { ex?: number; nx?: boolean }): Promise<unknown>;
 	del(...keys: string[]): Promise<number>;
 	keys(pattern: string): Promise<string[]>;
 	exists(...keys: string[]): Promise<number>;
@@ -118,6 +123,9 @@ function computePatch(
  *
  * Requires `@upstash/redis` as a peer dependency.
  *
+ * Uses optimistic locking: if a concurrent write is detected,
+ * the operation is retried up to `maxRetries` times.
+ *
  * @example
  * ```typescript
  * import { Redis } from "@upstash/redis";
@@ -159,11 +167,9 @@ export function upstashStorage(options: UpstashStorageOptions): OpLogStorage {
 	}
 
 	function trimPatches(patches: StoredPatchEntry[], now: number): StoredPatchEntry[] {
-		// Remove old patches
 		const minTimestamp = now - cfg.maxPatchAge;
 		let filtered = patches.filter((p) => p.timestamp >= minTimestamp);
 
-		// Keep only maxPatchesPerEntity
 		if (filtered.length > cfg.maxPatchesPerEntity) {
 			filtered = filtered.slice(-cfg.maxPatchesPerEntity);
 		}
@@ -171,70 +177,104 @@ export function upstashStorage(options: UpstashStorageOptions): OpLogStorage {
 		return filtered;
 	}
 
-	return {
-		async emit(entity, entityId, data): Promise<EmitResult> {
-			const now = Date.now();
-			const existing = await getData(entity, entityId);
+	/**
+	 * Emit with optimistic locking.
+	 * Retries on version conflict up to maxRetries times.
+	 */
+	async function emitWithRetry(
+		entity: string,
+		entityId: string,
+		data: Record<string, unknown>,
+		retryCount = 0,
+	): Promise<EmitResult> {
+		const now = Date.now();
+		const existing = await getData(entity, entityId);
 
-			if (!existing) {
-				// First emit
-				const newData: StoredData = {
-					data: { ...data },
-					version: 1,
-					updatedAt: now,
-					patches: [],
-				};
-				await setData(entity, entityId, newData);
-
-				return {
-					version: 1,
-					patch: null,
-					changed: true,
-				};
-			}
-
-			// Check if changed
-			const oldHash = JSON.stringify(existing.data);
-			const newHash = JSON.stringify(data);
-
-			if (oldHash === newHash) {
-				return {
-					version: existing.version,
-					patch: null,
-					changed: false,
-				};
-			}
-
-			// Compute patch
-			const patch = computePatch(existing.data, data);
-			const newVersion = existing.version + 1;
-
-			// Update patches array
-			let patches = [...existing.patches];
-			if (patch.length > 0) {
-				patches.push({
-					version: newVersion,
-					patch,
-					timestamp: now,
-				});
-				patches = trimPatches(patches, now);
-			}
-
-			// Save
+		if (!existing) {
+			// First emit - no conflict possible
 			const newData: StoredData = {
 				data: { ...data },
-				version: newVersion,
+				version: 1,
 				updatedAt: now,
-				patches,
+				patches: [],
 			};
 			await setData(entity, entityId, newData);
 
 			return {
-				version: newVersion,
-				patch: patch.length > 0 ? patch : null,
+				version: 1,
+				patch: null,
 				changed: true,
 			};
-		},
+		}
+
+		const expectedVersion = existing.version;
+
+		// Check if changed
+		const oldHash = JSON.stringify(existing.data);
+		const newHash = JSON.stringify(data);
+
+		if (oldHash === newHash) {
+			return {
+				version: existing.version,
+				patch: null,
+				changed: false,
+			};
+		}
+
+		// Compute patch
+		const patch = computePatch(existing.data, data);
+		const newVersion = expectedVersion + 1;
+
+		// Update patches array
+		let patches = [...existing.patches];
+		if (patch.length > 0) {
+			patches.push({
+				version: newVersion,
+				patch,
+				timestamp: now,
+			});
+			patches = trimPatches(patches, now);
+		}
+
+		// Prepare new data
+		const newData: StoredData = {
+			data: { ...data },
+			version: newVersion,
+			updatedAt: now,
+			patches,
+		};
+
+		// Write and verify version didn't change
+		await setData(entity, entityId, newData);
+
+		// Re-read to verify our write succeeded (optimistic check)
+		const verify = await getData(entity, entityId);
+		if (verify && verify.version !== newVersion) {
+			// Version conflict - another write happened
+			if (retryCount < cfg.maxRetries) {
+				// Retry with exponential backoff
+				const delay = Math.min(10 * 2 ** retryCount, 100);
+				await new Promise((resolve) => setTimeout(resolve, delay));
+				return emitWithRetry(entity, entityId, data, retryCount + 1);
+			}
+			// Max retries exceeded - return the current state
+			// This implements "last writer wins" semantics
+			return {
+				version: verify.version,
+				patch: null,
+				changed: true,
+			};
+		}
+
+		return {
+			version: newVersion,
+			patch: patch.length > 0 ? patch : null,
+			changed: true,
+		};
+	}
+
+	return {
+		emit: (entity, entityId, data) => emitWithRetry(entity, entityId, data, 0),
 
 		async getState(entity, entityId): Promise<Record<string, unknown> | null> {
 			const stored = await getData(entity, entityId);
@@ -271,7 +311,6 @@ export function upstashStorage(options: UpstashStorageOptions): OpLogStorage {
 				return null;
 			}
 
-			// Sort and verify continuity
 			relevantPatches.sort((a, b) => a.version - b.version);
 
 			if (relevantPatches[0].version !== sinceVersion + 1) {

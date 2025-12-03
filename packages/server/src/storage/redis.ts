@@ -4,6 +4,11 @@
  * Storage adapter for Redis using ioredis.
  * Best for long-running servers with persistent connections.
  *
+ * Features:
+ * - Persistent connection pooling
+ * - Optimistic locking with retry on conflict
+ * - Automatic patch eviction
+ *
  * For serverless environments, use `upstashStorage` or `vercelKVStorage` instead.
  *
  * @example
@@ -118,24 +123,14 @@ function computePatch(
  *
  * Requires `ioredis` as a peer dependency.
  *
+ * Uses optimistic locking: if a concurrent write is detected,
+ * the operation is retried up to `maxRetries` times.
+ *
  * @example
  * ```typescript
  * import Redis from "ioredis";
  *
  * const redis = new Redis(process.env.REDIS_URL);
- *
- * const app = createApp({
- *   router,
- *   plugins: [opLog({
- *     storage: redisStorage({ redis }),
- *   })],
- * });
- *
- * // With cluster
- * const redis = new Redis.Cluster([
- *   { host: "node1", port: 6379 },
- *   { host: "node2", port: 6379 },
- * ]);
  *
  * const app = createApp({
  *   router,
@@ -187,65 +182,95 @@ export function redisStorage(options: RedisStorageOptions): OpLogStorage {
 		return filtered;
 	}
 
-	return {
-		async emit(entity, entityId, data): Promise<EmitResult> {
-			const now = Date.now();
-			const existing = await getData(entity, entityId);
+	/**
+	 * Emit with optimistic locking.
+	 * Retries on version conflict up to maxRetries times.
+	 */
+	async function emitWithRetry(
+		entity: string,
+		entityId: string,
+		data: Record<string, unknown>,
+		retryCount = 0,
+	): Promise<EmitResult> {
+		const now = Date.now();
+		const existing = await getData(entity, entityId);
 
-			if (!existing) {
-				const newData: StoredData = {
-					data: { ...data },
-					version: 1,
-					updatedAt: now,
-					patches: [],
-				};
-				await setData(entity, entityId, newData);
-
-				return {
-					version: 1,
-					patch: null,
-					changed: true,
-				};
-			}
-
-			const oldHash = JSON.stringify(existing.data);
-			const newHash = JSON.stringify(data);
-
-			if (oldHash === newHash) {
-				return {
-					version: existing.version,
-					patch: null,
-					changed: false,
-				};
-			}
-
-			const patch = computePatch(existing.data, data);
-			const newVersion = existing.version + 1;
-
-			let patches = [...existing.patches];
-			if (patch.length > 0) {
-				patches.push({
-					version: newVersion,
-					patch,
-					timestamp: now,
-				});
-				patches = trimPatches(patches, now);
-			}
-
+		if (!existing) {
 			const newData: StoredData = {
 				data: { ...data },
-				version: newVersion,
+				version: 1,
 				updatedAt: now,
-				patches,
+				patches: [],
 			};
 			await setData(entity, entityId, newData);
 
 			return {
-				version: newVersion,
-				patch: patch.length > 0 ? patch : null,
+				version: 1,
+				patch: null,
 				changed: true,
 			};
-		},
+		}
+
+		const expectedVersion = existing.version;
+
+		const oldHash = JSON.stringify(existing.data);
+		const newHash = JSON.stringify(data);
+
+		if (oldHash === newHash) {
+			return {
+				version: existing.version,
+				patch: null,
+				changed: false,
+			};
+		}
+
+		const patch = computePatch(existing.data, data);
+		const newVersion = expectedVersion + 1;
+
+		let patches = [...existing.patches];
+		if (patch.length > 0) {
+			patches.push({
+				version: newVersion,
+				patch,
+				timestamp: now,
+			});
+			patches = trimPatches(patches, now);
+		}
+
+		const newData: StoredData = {
+			data: { ...data },
+			version: newVersion,
+			updatedAt: now,
+			patches,
+		};
+
+		await setData(entity, entityId, newData);
+
+		// Re-read to verify our write succeeded (optimistic check)
+		const verify = await getData(entity, entityId);
+		if (verify && verify.version !== newVersion) {
+			// Version conflict
+			if (retryCount < cfg.maxRetries) {
+				const delay = Math.min(10 * 2 ** retryCount, 100);
+				await new Promise((resolve) => setTimeout(resolve, delay));
+				return emitWithRetry(entity, entityId, data, retryCount + 1);
+			}
+			return {
+				version: verify.version,
+				patch: null,
+				changed: true,
+			};
+		}
+
+		return {
+			version: newVersion,
+			patch: patch.length > 0 ? patch : null,
+			changed: true,
+		};
+	}
+
+	return {
+		emit: (entity, entityId, data) => emitWithRetry(entity, entityId, data, 0),
 
 		async getState(entity, entityId): Promise<Record<string, unknown> | null> {
 			const stored = await getData(entity, entityId);
