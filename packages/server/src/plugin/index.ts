@@ -4,13 +4,17 @@
  * Export all plugin-related types and utilities.
  */
 
-// State Sync Plugin (cursor-based state management)
+// Operation Log Plugin (cursor-based state management)
 export {
 	type BroadcastResult,
-	clientState,
 	type ClientStateOptions,
+	// Deprecated aliases
+	clientState,
 	isClientStatePlugin,
+	isOpLogPlugin,
 	isStateSyncPlugin,
+	type OpLogOptions,
+	opLog,
 	type StateSyncOptions,
 	stateSync,
 } from "./client-state.js";

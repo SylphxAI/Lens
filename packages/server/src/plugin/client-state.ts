@@ -1,5 +1,5 @@
 /**
- * @sylphx/lens-server - State Sync Plugin
+ * @sylphx/lens-server - Operation Log Plugin
  *
  * Server-side plugin for cursor-based state synchronization.
  * Provides:
@@ -17,7 +17,7 @@
  * ```typescript
  * const server = createApp({
  *   router: appRouter,
- *   plugins: [stateSync()],
+ *   plugins: [opLog()],
  * });
  * ```
  */
@@ -32,9 +32,9 @@ import type {
 } from "./types.js";
 
 /**
- * State sync plugin configuration.
+ * Operation log plugin configuration.
  */
-export interface StateSyncOptions extends GraphStateManagerConfig {
+export interface OpLogOptions extends GraphStateManagerConfig {
 	/**
 	 * Whether to enable debug logging.
 	 * @default false
@@ -42,8 +42,10 @@ export interface StateSyncOptions extends GraphStateManagerConfig {
 	debug?: boolean;
 }
 
-/** @deprecated Use StateSyncOptions */
-export type ClientStateOptions = StateSyncOptions;
+/** @deprecated Use OpLogOptions */
+export type StateSyncOptions = OpLogOptions;
+/** @deprecated Use OpLogOptions */
+export type ClientStateOptions = OpLogOptions;
 
 /**
  * Broadcast result returned by the plugin.
@@ -59,7 +61,7 @@ export interface BroadcastResult {
 }
 
 /**
- * Create a state sync plugin.
+ * Create an operation log plugin.
  *
  * This plugin provides cursor-based state synchronization:
  * - Canonical state per entity (server truth)
@@ -73,11 +75,11 @@ export interface BroadcastResult {
  * ```typescript
  * const server = createApp({
  *   router: appRouter,
- *   plugins: [stateSync()],
+ *   plugins: [opLog()],
  * });
  * ```
  */
-export function stateSync(options: StateSyncOptions = {}): ServerPlugin & {
+export function opLog(options: OpLogOptions = {}): ServerPlugin & {
 	/** Get the underlying GraphStateManager instance */
 	getStateManager(): GraphStateManager;
 	/** Get version for an entity */
@@ -92,12 +94,12 @@ export function stateSync(options: StateSyncOptions = {}): ServerPlugin & {
 
 	const log = (...args: unknown[]) => {
 		if (debug) {
-			console.log("[stateSync]", ...args);
+			console.log("[opLog]", ...args);
 		}
 	};
 
 	return {
-		name: "stateSync",
+		name: "opLog",
 
 		/**
 		 * Get the underlying GraphStateManager instance.
@@ -205,17 +207,19 @@ export function stateSync(options: StateSyncOptions = {}): ServerPlugin & {
 	};
 }
 
-/** @deprecated Use stateSync */
-export const clientState = stateSync;
+/** @deprecated Use opLog */
+export const stateSync = opLog;
+/** @deprecated Use opLog */
+export const clientState = opLog;
 
 /**
- * Check if a plugin is a state sync plugin.
+ * Check if a plugin is an opLog plugin.
  */
-export function isStateSyncPlugin(
-	plugin: ServerPlugin,
-): plugin is ReturnType<typeof stateSync> {
-	return plugin.name === "stateSync" && "getStateManager" in plugin;
+export function isOpLogPlugin(plugin: ServerPlugin): plugin is ReturnType<typeof opLog> {
+	return plugin.name === "opLog" && "getStateManager" in plugin;
 }
 
-/** @deprecated Use isStateSyncPlugin */
-export const isClientStatePlugin = isStateSyncPlugin;
+/** @deprecated Use isOpLogPlugin */
+export const isStateSyncPlugin = isOpLogPlugin;
+/** @deprecated Use isOpLogPlugin */
+export const isClientStatePlugin = isOpLogPlugin;

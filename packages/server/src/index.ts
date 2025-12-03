@@ -143,31 +143,31 @@ export {
 	type AfterSendContext,
 	type BeforeMutationContext,
 	type BeforeSendContext,
+	// Operation Log Plugin (cursor-based state management)
+	type BroadcastResult,
+	// Deprecated aliases
+	type ClientStateOptions,
 	type ConnectContext,
+	clientState,
 	// Plugin manager
 	createPluginManager,
 	type DisconnectContext,
 	type EnhanceOperationMetaContext,
+	isClientStatePlugin,
+	isOpLogPlugin,
 	// Optimistic Plugin
 	isOptimisticPlugin,
+	isStateSyncPlugin,
+	type OpLogOptions,
 	type OptimisticPluginOptions,
+	opLog,
 	optimisticPlugin,
 	PluginManager,
 	// Plugin interface
 	type ServerPlugin,
-	// State Sync Plugin (cursor-based state management)
-	type BroadcastResult,
 	type StateSyncOptions,
-	stateSync,
-	isStateSyncPlugin,
-	// Deprecated aliases for backwards compatibility
-	/** @deprecated Use StateSyncOptions */
-	type ClientStateOptions,
-	/** @deprecated Use stateSync */
-	clientState,
-	/** @deprecated Use isStateSyncPlugin */
-	isClientStatePlugin,
 	type SubscribeContext,
+	stateSync,
 	type UnsubscribeContext,
 } from "./plugin/index.js";
 
