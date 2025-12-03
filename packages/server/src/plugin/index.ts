@@ -4,11 +4,15 @@
  * Export all plugin-related types and utilities.
  */
 
-// Client State Plugin
+// State Sync Plugin (cursor-based state management)
 export {
-	type ClientStateOptions,
+	type BroadcastResult,
 	clientState,
+	type ClientStateOptions,
 	isClientStatePlugin,
+	isStateSyncPlugin,
+	type StateSyncOptions,
+	stateSync,
 } from "./client-state.js";
 
 // Optimistic Updates Plugin

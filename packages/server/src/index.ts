@@ -155,9 +155,17 @@ export {
 	PluginManager,
 	// Plugin interface
 	type ServerPlugin,
-	// Client State Plugin
+	// State Sync Plugin (cursor-based state management)
+	type BroadcastResult,
+	type StateSyncOptions,
+	stateSync,
+	isStateSyncPlugin,
+	// Deprecated aliases for backwards compatibility
+	/** @deprecated Use StateSyncOptions */
 	type ClientStateOptions,
+	/** @deprecated Use stateSync */
 	clientState,
+	/** @deprecated Use isStateSyncPlugin */
 	isClientStatePlugin,
 	type SubscribeContext,
 	type UnsubscribeContext,

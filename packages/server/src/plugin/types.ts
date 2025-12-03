@@ -333,12 +333,22 @@ export interface ServerPlugin {
 
 	/**
 	 * Called when broadcasting data to subscribers of an entity.
-	 * Plugin should handle finding subscribers and sending data.
-	 * If no plugin handles it, broadcast is a no-op (stateless mode).
+	 * Plugin updates canonical state and returns patch info.
+	 * Handler is responsible for routing to subscribers.
 	 *
-	 * @returns true if handled, false/void to let other plugins try
+	 * @returns BroadcastResult with version, patch, and data
 	 */
-	onBroadcast?: (ctx: BroadcastContext) => boolean | void | Promise<boolean | void>;
+	onBroadcast?: (
+		ctx: BroadcastContext,
+	) =>
+		| { version: number; patch: unknown[] | null; data: Record<string, unknown> }
+		| boolean
+		| void
+		| Promise<
+				| { version: number; patch: unknown[] | null; data: Record<string, unknown> }
+				| boolean
+				| void
+		  >;
 }
 
 // =============================================================================
@@ -509,18 +519,29 @@ export class PluginManager {
 
 	/**
 	 * Run onBroadcast hooks.
-	 * Returns true if any plugin handled the broadcast.
+	 * Returns BroadcastResult if a plugin handled it, null otherwise.
 	 */
-	async runOnBroadcast(ctx: BroadcastContext): Promise<boolean> {
+	async runOnBroadcast(
+		ctx: BroadcastContext,
+	): Promise<{ version: number; patch: unknown[] | null; data: Record<string, unknown> } | null> {
 		for (const plugin of this.plugins) {
 			if (plugin.onBroadcast) {
-				const handled = await plugin.onBroadcast(ctx);
-				if (handled === true) {
-					return true;
+				const result = await plugin.onBroadcast(ctx);
+				// If result is an object with version, it's a BroadcastResult
+				if (result && typeof result === "object" && "version" in result) {
+					return result as {
+						version: number;
+						patch: unknown[] | null;
+						data: Record<string, unknown>;
+					};
+				}
+				// Legacy: if true, means handled but no result
+				if (result === true) {
+					return { version: 0, patch: null, data: ctx.data };
 				}
 			}
 		}
-		return false;
+		return null;
 	}
 }
 
