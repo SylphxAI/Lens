@@ -34,7 +34,6 @@ import {
 	toResolverMap,
 } from "@sylphx/lens-core";
 import { createContext, runWithContext } from "../context/index.js";
-import { isDiffOptimizerPlugin } from "../plugin/diff-optimizer.js";
 import {
 	createPluginManager,
 	type PluginManager,
@@ -45,7 +44,6 @@ import {
 	type UnsubscribeContext,
 	type UpdateFieldsContext,
 } from "../plugin/types.js";
-import type { GraphStateManager } from "../state/graph-state-manager.js";
 
 // =============================================================================
 // Types
@@ -256,17 +254,6 @@ export interface LensServer {
 	 * @param ctx - Update fields context
 	 */
 	updateFields(ctx: UpdateFieldsContext): Promise<void>;
-
-	/**
-	 * Check if server has state management enabled (diffOptimizer plugin).
-	 */
-	hasStateManagement(): boolean;
-
-	/**
-	 * Get the underlying GraphStateManager (if diffOptimizer is enabled).
-	 * Used by adapters that need direct access for advanced operations.
-	 */
-	getStateManager(): GraphStateManager | undefined;
 
 	/**
 	 * Get the plugin manager for direct hook access.
@@ -963,20 +950,6 @@ class LensServerImpl<
 
 		// Run plugin hooks
 		await this.pluginManager.runOnUpdateFields(ctx);
-	}
-
-	hasStateManagement(): boolean {
-		// Check if diffOptimizer plugin is registered
-		return this.pluginManager.getPlugins().some((p) => isDiffOptimizerPlugin(p));
-	}
-
-	getStateManager(): GraphStateManager | undefined {
-		// Get stateManager from diffOptimizer plugin if present
-		const plugin = this.pluginManager.getPlugins().find((p) => isDiffOptimizerPlugin(p));
-		if (plugin && isDiffOptimizerPlugin(plugin)) {
-			return plugin.getStateManager();
-		}
-		return undefined;
 	}
 
 	getPluginManager(): PluginManager {

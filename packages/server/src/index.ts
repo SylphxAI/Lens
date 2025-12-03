@@ -130,19 +130,8 @@ export {
 // State Management
 // =============================================================================
 
-export {
-	// Factory
-	createGraphStateManager,
-	// Types
-	type EntityKey,
-	// Class
-	GraphStateManager,
-	type GraphStateManagerConfig,
-	type StateClient,
-	type StateFullMessage,
-	type StateUpdateMessage,
-	type Subscription,
-} from "./state/index.js";
+// GraphStateManager is internal to diffOptimizer plugin - not exported
+// Use diffOptimizer() plugin for stateful server behavior
 
 // =============================================================================
 // Plugin System
@@ -179,10 +168,10 @@ export {
 // =============================================================================
 
 export {
-	type SSEClientInfo,
+	// Types
+	type SSEClient,
 	// Class
 	SSEHandler,
-	// Types
 	type SSEHandlerConfig,
 } from "./sse/handler.js";
 

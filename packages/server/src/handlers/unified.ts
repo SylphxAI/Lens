@@ -2,12 +2,11 @@
  * @sylphx/lens-server - Unified Handler
  *
  * Creates a combined HTTP + SSE handler from a Lens app.
- * Routes SSE requests automatically.
+ * Pure routing - no state management.
  */
 
 import type { LensServer } from "../server/create.js";
-import { SSEHandler } from "../sse/handler.js";
-import { createGraphStateManager, type GraphStateManager } from "../state/index.js";
+import { type SSEClient, SSEHandler } from "../sse/handler.js";
 import { createHTTPHandler, type HTTPHandlerOptions } from "./http.js";
 
 // =============================================================================
@@ -20,12 +19,6 @@ export interface HandlerOptions extends HTTPHandlerOptions {
 	 * Default: "/__lens/sse"
 	 */
 	ssePath?: string;
-
-	/**
-	 * GraphStateManager for subscriptions.
-	 * If not provided, a new one is created.
-	 */
-	stateManager?: GraphStateManager;
 
 	/**
 	 * Heartbeat interval for SSE connections in ms.
@@ -47,9 +40,9 @@ export interface Handler {
 	handle(request: Request): Promise<Response>;
 
 	/**
-	 * Access the GraphStateManager for manual subscriptions.
+	 * Access the SSE handler for manual operations.
 	 */
-	stateManager: GraphStateManager;
+	sse: SSEHandler;
 }
 
 // =============================================================================
@@ -78,12 +71,7 @@ export interface Handler {
  * ```
  */
 export function createHandler(server: LensServer, options: HandlerOptions = {}): Handler {
-	const {
-		ssePath = "/__lens/sse",
-		stateManager = createGraphStateManager(),
-		heartbeatInterval,
-		...httpOptions
-	} = options;
+	const { ssePath = "/__lens/sse", heartbeatInterval, ...httpOptions } = options;
 
 	const pathPrefix = httpOptions.pathPrefix ?? "";
 	const fullSsePath = `${pathPrefix}${ssePath}`;
@@ -91,10 +79,18 @@ export function createHandler(server: LensServer, options: HandlerOptions = {}):
 	// Create HTTP handler
 	const httpHandler = createHTTPHandler(server, httpOptions);
 
-	// Create SSE handler
+	// Create SSE handler with plugin integration
+	const pluginManager = server.getPluginManager();
 	const sseHandler = new SSEHandler({
-		stateManager,
 		...(heartbeatInterval !== undefined && { heartbeatInterval }),
+		onConnect: (client: SSEClient) => {
+			// Notify plugins of connection
+			pluginManager.runOnConnect({ clientId: client.id });
+		},
+		onDisconnect: (clientId: string) => {
+			// Notify plugins of disconnection
+			pluginManager.runOnDisconnect({ clientId, subscriptionCount: 0 });
+		},
 	});
 
 	const handler = async (request: Request): Promise<Response> => {
@@ -112,7 +108,7 @@ export function createHandler(server: LensServer, options: HandlerOptions = {}):
 	// Make it callable as both function and object
 	const result = handler as Handler;
 	result.handle = handler;
-	result.stateManager = stateManager;
+	result.sse = sseHandler;
 
 	return result;
 }

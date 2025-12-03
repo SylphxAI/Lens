@@ -1,16 +1,8 @@
 /**
  * @sylphx/lens-server - State Management
  *
- * Server-side state management for reactive data sync.
+ * Internal state management for diff optimizer plugin.
+ * GraphStateManager is not exported - it's an implementation detail of diffOptimizer.
  */
 
-export {
-	createGraphStateManager,
-	type EntityKey,
-	GraphStateManager,
-	type GraphStateManagerConfig,
-	type StateClient,
-	type StateFullMessage,
-	type StateUpdateMessage,
-	type Subscription,
-} from "./graph-state-manager.js";
+// No public exports - GraphStateManager is internal to diffOptimizer plugin

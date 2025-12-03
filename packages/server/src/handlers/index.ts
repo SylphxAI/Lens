@@ -29,7 +29,7 @@ export {
 
 export {
 	createSSEHandler,
-	type SSEClientInfo,
+	type SSEClient,
 	SSEHandler,
 	type SSEHandlerConfig as SSEHandlerOptions,
 } from "../sse/handler.js";
