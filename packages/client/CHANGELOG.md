@@ -1,5 +1,27 @@
 # @sylphx/lens-client
 
+## 2.0.2 (2025-12-04)
+
+fix: cache QueryResult objects for stable React references
+
+Previously, `executeQuery()` returned a new QueryResult object every call,
+causing React hooks to infinite loop:
+
+1. useMemo calls client.getSession({ id })
+2. executeQuery returns NEW QueryResult object
+3. query reference changes
+4. useEffect deps [query, ...] changes
+5. useEffect re-runs → re-subscribes
+6. subscribe fires (cached data) → setData
+7. re-render → back to step 1
+
+Now QueryResult objects are cached by key, providing stable references
+for React's referential equality checks.
+
+### 🐛 Bug Fixes
+
+- **client:** cache QueryResult objects for stable React references ([2d0db3a](https://github.com/SylphxAI/Lens/commit/2d0db3a08634bac1eb7740eeb64a69459255ea11))
+
 ## 2.0.1 (2025-12-04)
 
 Fix: bypass deprecated 2.0.0 versions on npm registry.

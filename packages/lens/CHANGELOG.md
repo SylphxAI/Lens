@@ -1,5 +1,11 @@
 # @sylphx/lens
 
+## 2.0.2 (2025-12-04)
+
+### 📦 Dependencies
+
+- Updated `@sylphx/lens-client` to 2.0.2
+
 ## 2.0.1 (2025-12-04)
 
 Fix: bypass deprecated 2.0.0 versions on npm registry.

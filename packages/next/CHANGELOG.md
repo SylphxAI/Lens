@@ -1,5 +1,11 @@
 # @sylphx/lens-next
 
+## 2.1.1 (2025-12-04)
+
+### 📦 Dependencies
+
+- Updated `@sylphx/lens-client` to 2.0.2
+
 ## 2.1.0 (2025-12-04)
 
 feat: selector-based hooks API - client auto-injected from context
