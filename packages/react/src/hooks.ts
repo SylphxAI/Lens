@@ -6,27 +6,29 @@
  *
  * @example
  * ```tsx
- * import { useLensClient, useQuery, useMutation } from '@sylphx/lens-react';
+ * import { useQuery, useMutation } from '@sylphx/lens-react';
  *
  * function UserProfile({ userId }: { userId: string }) {
- *   const client = useLensClient();
- *   // Route + Params pattern (recommended)
- *   const { data: user, loading } = useQuery(client.user.get, { id: userId });
+ *   // Client is automatically injected from context
+ *   const { data: user, loading } = useQuery(
+ *     (client) => client.user.get,
+ *     { id: userId }
+ *   );
  *   if (loading) return <Spinner />;
  *   return <h1>{user?.name}</h1>;
  * }
  *
  * function CreatePost() {
- *   const client = useLensClient();
- *   const { mutate, loading } = useMutation(client.post.create);
+ *   const { mutate, loading } = useMutation((client) => client.post.create);
  *   const handleCreate = () => mutate({ title: 'Hello' });
  *   return <button onClick={handleCreate} disabled={loading}>Create</button>;
  * }
  * ```
  */
 
-import type { MutationResult, QueryResult } from "@sylphx/lens-client";
+import type { LensClient, MutationResult, QueryResult } from "@sylphx/lens-client";
 import { type DependencyList, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useLensClient } from "./context.js";
 
 // =============================================================================
 // Types
@@ -66,40 +68,50 @@ export interface UseQueryOptions<TData = unknown, TSelected = TData> {
 	select?: (data: TData) => TSelected;
 }
 
-/** Route function type - takes params and returns QueryResult */
-export type RouteFunction<TParams, TResult> = (params: TParams) => QueryResult<TResult>;
+/** Client type for callbacks */
+type Client = LensClient<any, any>;
 
-/** Accessor function type - returns QueryResult or null */
-export type QueryAccessor<T> = () => QueryResult<T> | null | undefined;
+/** Route selector - callback that returns a route function */
+export type RouteSelector<TParams, TResult> = (
+	client: Client,
+) => ((params: TParams) => QueryResult<TResult>) | null;
 
-/** Mutation function type */
-export type MutationFn<TInput, TOutput> = (input: TInput) => Promise<MutationResult<TOutput>>;
+/** Query accessor selector - callback that returns QueryResult */
+export type QuerySelector<TResult> = (client: Client) => QueryResult<TResult> | null | undefined;
+
+/** Mutation selector - callback that returns mutation function */
+export type MutationSelector<TInput, TOutput> = (
+	client: Client,
+) => (input: TInput) => Promise<MutationResult<TOutput>>;
 
 // =============================================================================
-// useQuery Hook - Route + Params (Primary API)
+// useQuery Hook
 // =============================================================================
 
 /**
  * Subscribe to a query with reactive updates.
+ * Client is automatically injected from LensProvider context.
  *
  * Two usage patterns:
  *
  * **1. Route + Params (recommended)** - Stable references, no infinite loops
  * ```tsx
- * const { data } = useQuery(client.user.get, { id: userId });
+ * const { data } = useQuery((client) => client.user.get, { id: userId });
  * ```
  *
  * **2. Accessor + Deps (escape hatch)** - For complex/composed queries
  * ```tsx
- * const { data } = useQuery(() => client.user.get({ id }).pipe(transform), [id]);
+ * const { data } = useQuery((client) => client.user.get({ id }), [id]);
  * ```
  *
  * @example
  * ```tsx
  * // Basic usage - Route + Params
  * function UserProfile({ userId }: { userId: string }) {
- *   const client = useLensClient();
- *   const { data: user, loading, error } = useQuery(client.user.get, { id: userId });
+ *   const { data: user, loading, error } = useQuery(
+ *     (client) => client.user.get,
+ *     { id: userId }
+ *   );
  *
  *   if (loading) return <Spinner />;
  *   if (error) return <Error message={error.message} />;
@@ -108,34 +120,36 @@ export type MutationFn<TInput, TOutput> = (input: TInput) => Promise<MutationRes
  *
  * // With select transform
  * function UserName({ userId }: { userId: string }) {
- *   const client = useLensClient();
- *   const { data: name } = useQuery(client.user.get, { id: userId }, {
- *     select: (user) => user.name
- *   });
+ *   const { data: name } = useQuery(
+ *     (client) => client.user.get,
+ *     { id: userId },
+ *     { select: (user) => user.name }
+ *   );
  *   return <span>{name}</span>;
  * }
  *
- * // Conditional query
+ * // Conditional query (return null to skip)
  * function SessionInfo({ sessionId }: { sessionId: string | null }) {
- *   const client = useLensClient();
  *   const { data } = useQuery(
- *     sessionId ? client.session.get : null,
+ *     (client) => sessionId ? client.session.get : null,
  *     { id: sessionId ?? '' }
  *   );
  *   return <span>{data?.totalTokens}</span>;
  * }
  *
- * // Skip query
+ * // Skip query with option
  * function ConditionalQuery({ userId, shouldFetch }: { userId: string; shouldFetch: boolean }) {
- *   const client = useLensClient();
- *   const { data } = useQuery(client.user.get, { id: userId }, { skip: !shouldFetch });
+ *   const { data } = useQuery(
+ *     (client) => client.user.get,
+ *     { id: userId },
+ *     { skip: !shouldFetch }
+ *   );
  * }
  *
  * // Complex queries with accessor (escape hatch)
  * function ComplexQuery({ userId }: { userId: string }) {
- *   const client = useLensClient();
  *   const { data } = useQuery(
- *     () => client.user.get({ id: userId }),
+ *     (client) => client.user.get({ id: userId }),
  *     [userId]
  *   );
  * }
@@ -144,24 +158,26 @@ export type MutationFn<TInput, TOutput> = (input: TInput) => Promise<MutationRes
 
 // Overload 1: Route + Params (recommended)
 export function useQuery<TParams, TResult, TSelected = TResult>(
-	route: RouteFunction<TParams, TResult> | null,
+	selector: RouteSelector<TParams, TResult>,
 	params: TParams,
 	options?: UseQueryOptions<TResult, TSelected>,
 ): UseQueryResult<TSelected>;
 
 // Overload 2: Accessor + Deps (escape hatch for complex queries)
 export function useQuery<TResult, TSelected = TResult>(
-	accessor: QueryAccessor<TResult>,
+	selector: QuerySelector<TResult>,
 	deps: DependencyList,
 	options?: UseQueryOptions<TResult, TSelected>,
 ): UseQueryResult<TSelected>;
 
 // Implementation
 export function useQuery<TParams, TResult, TSelected = TResult>(
-	routeOrAccessor: RouteFunction<TParams, TResult> | QueryAccessor<TResult> | null,
+	selector: RouteSelector<TParams, TResult> | QuerySelector<TResult>,
 	paramsOrDeps: TParams | DependencyList,
 	options?: UseQueryOptions<TResult, TSelected>,
 ): UseQueryResult<TSelected> {
+	const client = useLensClient();
+
 	// Detect which overload is being used
 	const isAccessorMode = Array.isArray(paramsOrDeps);
 
@@ -174,21 +190,22 @@ export function useQuery<TParams, TResult, TSelected = TResult>(
 			if (options?.skip) return null;
 
 			if (isAccessorMode) {
-				// Accessor mode: call the function
-				const accessor = routeOrAccessor as QueryAccessor<TResult>;
-				return accessor();
+				// Accessor mode: selector returns QueryResult directly
+				const querySelector = selector as QuerySelector<TResult>;
+				return querySelector(client);
 			}
-			// Route + Params mode
-			if (!routeOrAccessor) return null;
-			const route = routeOrAccessor as RouteFunction<TParams, TResult>;
+			// Route + Params mode: selector returns route function
+			const routeSelector = selector as RouteSelector<TParams, TResult>;
+			const route = routeSelector(client);
+			if (!route) return null;
 			return route(paramsOrDeps as TParams);
 		},
 		// biome-ignore lint/correctness/useExhaustiveDependencies: Dynamic deps based on overload mode - intentional
 		isAccessorMode
 			? // eslint-disable-next-line react-hooks/exhaustive-deps
-				[options?.skip, ...(paramsOrDeps as DependencyList)]
+				[client, options?.skip, ...(paramsOrDeps as DependencyList)]
 			: // eslint-disable-next-line react-hooks/exhaustive-deps
-				[routeOrAccessor, paramsKey, options?.skip],
+				[client, selector, paramsKey, options?.skip],
 	);
 
 	// Use ref for select to avoid it being a dependency
@@ -288,15 +305,17 @@ export function useQuery<TParams, TResult, TSelected = TResult>(
 // =============================================================================
 
 /**
- * Execute mutations with loading/error state
+ * Execute mutations with loading/error state.
+ * Client is automatically injected from LensProvider context.
  *
- * @param mutationFn - Mutation function from client API
+ * @param selector - Callback that returns mutation function from client
  *
  * @example
  * ```tsx
  * function CreatePost() {
- *   const client = useLensClient();
- *   const { mutate, loading, error, data } = useMutation(client.post.create);
+ *   const { mutate, loading, error, data } = useMutation(
+ *     (client) => client.post.create
+ *   );
  *
  *   const handleSubmit = async (formData: FormData) => {
  *     try {
@@ -322,8 +341,7 @@ export function useQuery<TParams, TResult, TSelected = TResult>(
  *
  * // With optimistic updates
  * function UpdatePost({ postId }: { postId: string }) {
- *   const client = useLensClient();
- *   const { mutate } = useMutation(client.post.update);
+ *   const { mutate } = useMutation((client) => client.post.update);
  *
  *   const handleUpdate = async (title: string) => {
  *     const result = await mutate({ id: postId, title });
@@ -333,14 +351,21 @@ export function useQuery<TParams, TResult, TSelected = TResult>(
  * ```
  */
 export function useMutation<TInput, TOutput>(
-	mutationFn: MutationFn<TInput, TOutput>,
+	selector: MutationSelector<TInput, TOutput>,
 ): UseMutationResult<TInput, TOutput> {
+	const client = useLensClient();
+	const mutationFn = selector(client);
+
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<Error | null>(null);
 	const [data, setData] = useState<TOutput | null>(null);
 
 	// Track mounted state
 	const mountedRef = useRef(true);
+
+	// Store mutation ref for latest version
+	const mutationRef = useRef(mutationFn);
+	mutationRef.current = mutationFn;
 
 	useEffect(() => {
 		mountedRef.current = true;
@@ -350,33 +375,30 @@ export function useMutation<TInput, TOutput>(
 	}, []);
 
 	// Mutation wrapper
-	const mutate = useCallback(
-		async (input: TInput): Promise<MutationResult<TOutput>> => {
-			setLoading(true);
-			setError(null);
+	const mutate = useCallback(async (input: TInput): Promise<MutationResult<TOutput>> => {
+		setLoading(true);
+		setError(null);
 
-			try {
-				const result = await mutationFn(input);
+		try {
+			const result = await mutationRef.current(input);
 
-				if (mountedRef.current) {
-					setData(result.data);
-				}
-
-				return result;
-			} catch (err) {
-				const mutationError = err instanceof Error ? err : new Error(String(err));
-				if (mountedRef.current) {
-					setError(mutationError);
-				}
-				throw mutationError;
-			} finally {
-				if (mountedRef.current) {
-					setLoading(false);
-				}
+			if (mountedRef.current) {
+				setData(result.data);
 			}
-		},
-		[mutationFn],
-	);
+
+			return result;
+		} catch (err) {
+			const mutationError = err instanceof Error ? err : new Error(String(err));
+			if (mountedRef.current) {
+				setError(mutationError);
+			}
+			throw mutationError;
+		} finally {
+			if (mountedRef.current) {
+				setLoading(false);
+			}
+		}
+	}, []);
 
 	// Reset function
 	const reset = useCallback(() => {
@@ -407,16 +429,16 @@ export interface UseLazyQueryResult<T> {
 }
 
 /**
- * Execute a query on demand (not on mount)
+ * Execute a query on demand (not on mount).
+ * Client is automatically injected from LensProvider context.
  *
  * @example
  * ```tsx
  * // Route + Params pattern
  * function SearchUsers() {
- *   const client = useLensClient();
  *   const [searchTerm, setSearchTerm] = useState('');
  *   const { execute, data, loading } = useLazyQuery(
- *     client.user.search,
+ *     (client) => client.user.search,
  *     { query: searchTerm }
  *   );
  *
@@ -431,9 +453,8 @@ export interface UseLazyQueryResult<T> {
  *
  * // Accessor pattern
  * function LazyComplexQuery({ userId }: { userId: string }) {
- *   const client = useLensClient();
  *   const { execute, data } = useLazyQuery(
- *     () => client.user.get({ id: userId }),
+ *     (client) => client.user.get({ id: userId }),
  *     [userId]
  *   );
  *   return <button onClick={execute}>Load</button>;
@@ -443,24 +464,26 @@ export interface UseLazyQueryResult<T> {
 
 // Overload 1: Route + Params
 export function useLazyQuery<TParams, TResult, TSelected = TResult>(
-	route: RouteFunction<TParams, TResult> | null,
+	selector: RouteSelector<TParams, TResult>,
 	params: TParams,
 	options?: UseQueryOptions<TResult, TSelected>,
 ): UseLazyQueryResult<TSelected>;
 
 // Overload 2: Accessor + Deps
 export function useLazyQuery<TResult, TSelected = TResult>(
-	accessor: QueryAccessor<TResult>,
+	selector: QuerySelector<TResult>,
 	deps: DependencyList,
 	options?: UseQueryOptions<TResult, TSelected>,
 ): UseLazyQueryResult<TSelected>;
 
 // Implementation
 export function useLazyQuery<TParams, TResult, TSelected = TResult>(
-	routeOrAccessor: RouteFunction<TParams, TResult> | QueryAccessor<TResult> | null,
+	selector: RouteSelector<TParams, TResult> | QuerySelector<TResult>,
 	paramsOrDeps: TParams | DependencyList,
 	options?: UseQueryOptions<TResult, TSelected>,
 ): UseLazyQueryResult<TSelected> {
+	const client = useLensClient();
+
 	const [data, setData] = useState<TSelected | null>(null);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<Error | null>(null);
@@ -472,8 +495,8 @@ export function useLazyQuery<TParams, TResult, TSelected = TResult>(
 	const isAccessorMode = Array.isArray(paramsOrDeps);
 
 	// Store refs for execute (so it uses latest values)
-	const routeOrAccessorRef = useRef(routeOrAccessor);
-	routeOrAccessorRef.current = routeOrAccessor;
+	const selectorRef = useRef(selector);
+	selectorRef.current = selector;
 
 	const paramsOrDepsRef = useRef(paramsOrDeps);
 	paramsOrDepsRef.current = paramsOrDeps;
@@ -493,10 +516,11 @@ export function useLazyQuery<TParams, TResult, TSelected = TResult>(
 		let query: QueryResult<TResult> | null | undefined;
 
 		if (isAccessorMode) {
-			const accessor = routeOrAccessorRef.current as QueryAccessor<TResult>;
-			query = accessor();
+			const querySelector = selectorRef.current as QuerySelector<TResult>;
+			query = querySelector(client);
 		} else {
-			const route = routeOrAccessorRef.current as RouteFunction<TParams, TResult> | null;
+			const routeSelector = selectorRef.current as RouteSelector<TParams, TResult>;
+			const route = routeSelector(client);
 			if (route) {
 				query = route(paramsOrDepsRef.current as TParams);
 			}
@@ -533,7 +557,7 @@ export function useLazyQuery<TParams, TResult, TSelected = TResult>(
 				setLoading(false);
 			}
 		}
-	}, [isAccessorMode]);
+	}, [client, isAccessorMode]);
 
 	// Reset function
 	const reset = useCallback(() => {

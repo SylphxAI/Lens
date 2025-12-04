@@ -427,9 +427,9 @@ export { createClient, http, route, ws } from "@sylphx/lens-client";
 export {
 	LensProvider,
 	type LensProviderProps,
-	type MutationFn,
-	type QueryAccessor,
-	type RouteFunction,
+	type MutationSelector,
+	type QuerySelector,
+	type RouteSelector,
 	type UseLazyQueryResult,
 	type UseMutationResult,
 	type UseQueryOptions,

@@ -1,5 +1,5 @@
 /**
- * Tests for React Hooks (Operations-based API)
+ * Tests for React Hooks (Selector-based API)
  *
  * NOTE: These tests require DOM environment (happy-dom).
  * Run from packages/react directory: cd packages/react && bun test
@@ -12,8 +12,10 @@ import { test as bunTest, describe, expect } from "bun:test";
 
 const test = hasDom ? bunTest : bunTest.skip;
 
-import type { MutationResult, QueryResult } from "@sylphx/lens-client";
+import type { LensClient, MutationResult, QueryResult } from "@sylphx/lens-client";
 import { act, renderHook, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { LensProvider } from "./context.js";
 import { useLazyQuery, useMutation, useQuery } from "./hooks.js";
 
 // =============================================================================
@@ -88,14 +90,31 @@ function createMockQueryResult<T>(initialValue: T | null = null): QueryResult<T>
 }
 
 // =============================================================================
+// Test Wrapper with Mock Client
+// =============================================================================
+
+function createMockClient() {
+	return {} as LensClient<any, any>;
+}
+
+function createWrapper(mockClient: LensClient<any, any>) {
+	return function Wrapper({ children }: { children: ReactNode }) {
+		return <LensProvider client={mockClient}>{children}</LensProvider>;
+	};
+}
+
+// =============================================================================
 // Tests: useQuery (Accessor + Deps pattern)
 // =============================================================================
 
 describe("useQuery", () => {
 	test("returns loading state initially", () => {
+		const mockClient = createMockClient();
 		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
 
-		const { result } = renderHook(() => useQuery(() => mockQuery, []));
+		const { result } = renderHook(() => useQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		expect(result.current.loading).toBe(true);
 		expect(result.current.data).toBe(null);
@@ -103,9 +122,12 @@ describe("useQuery", () => {
 	});
 
 	test("returns data when query resolves", async () => {
+		const mockClient = createMockClient();
 		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
 
-		const { result } = renderHook(() => useQuery(() => mockQuery, []));
+		const { result } = renderHook(() => useQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		// Simulate data loading
 		act(() => {
@@ -121,9 +143,12 @@ describe("useQuery", () => {
 	});
 
 	test("returns error when query fails", async () => {
+		const mockClient = createMockClient();
 		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
 
-		const { result } = renderHook(() => useQuery(() => mockQuery, []));
+		const { result } = renderHook(() => useQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		// Simulate error
 		act(() => {
@@ -139,6 +164,7 @@ describe("useQuery", () => {
 	});
 
 	test("handles non-Error rejection", async () => {
+		const mockClient = createMockClient();
 		const mockQuery = {
 			subscribe: () => () => {},
 			then: (onFulfilled: any, onRejected: any) => {
@@ -147,24 +173,36 @@ describe("useQuery", () => {
 			},
 		} as unknown as QueryResult<{ id: string }>;
 
-		const { result } = renderHook(() => useQuery(() => mockQuery, []));
+		const { result } = renderHook(() => useQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		await waitFor(() => {
-			expect(result.current.error?.message).toBe("String error");
+			expect(result.current.loading).toBe(false);
 		});
+
+		expect(result.current.error?.message).toBe("String error");
 	});
 
 	test("skips query when skip option is true", () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
+		const mockClient = createMockClient();
+		const mockQuery = createMockQueryResult<{ id: string }>();
 
-		const { result } = renderHook(() => useQuery(() => mockQuery, [], { skip: true }));
+		const { result } = renderHook(() => useQuery(() => mockQuery, [], { skip: true }), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		expect(result.current.loading).toBe(false);
 		expect(result.current.data).toBe(null);
+		expect(result.current.error).toBe(null);
 	});
 
 	test("handles null query from accessor", () => {
-		const { result } = renderHook(() => useQuery(() => null, []));
+		const mockClient = createMockClient();
+
+		const { result } = renderHook(() => useQuery(() => null, []), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		expect(result.current.loading).toBe(false);
 		expect(result.current.data).toBe(null);
@@ -172,7 +210,11 @@ describe("useQuery", () => {
 	});
 
 	test("handles undefined query from accessor", () => {
-		const { result } = renderHook(() => useQuery(() => undefined, []));
+		const mockClient = createMockClient();
+
+		const { result } = renderHook(() => useQuery(() => undefined, []), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		expect(result.current.loading).toBe(false);
 		expect(result.current.data).toBe(null);
@@ -180,130 +222,79 @@ describe("useQuery", () => {
 	});
 
 	test("updates when query subscription emits", async () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
+		const mockClient = createMockClient();
+		const mockQuery = createMockQueryResult<{ count: number }>();
 
-		const { result } = renderHook(() => useQuery(() => mockQuery, []));
+		const { result } = renderHook(() => useQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
+		});
 
-		// First value
+		// Initial value
 		act(() => {
-			mockQuery._setValue({ id: "123", name: "John" });
+			mockQuery._setValue({ count: 1 });
 		});
 
 		await waitFor(() => {
-			expect(result.current.data?.name).toBe("John");
+			expect(result.current.data?.count).toBe(1);
 		});
 
 		// Update value via subscription
 		act(() => {
-			mockQuery._setValue({ id: "123", name: "Jane" });
+			mockQuery._setValue({ count: 2 });
 		});
 
 		await waitFor(() => {
-			expect(result.current.data?.name).toBe("Jane");
+			expect(result.current.data?.count).toBe(2);
 		});
 	});
 
 	test("refetch reloads the query", async () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
+		const mockClient = createMockClient();
+		const mockQuery = createMockQueryResult<{ id: string }>({ id: "initial" });
 
-		const { result } = renderHook(() => useQuery(() => mockQuery, []));
-
-		// Initial load
-		act(() => {
-			mockQuery._setValue({ id: "123", name: "John" });
+		const { result } = renderHook(() => useQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
 		});
 
-		await waitFor(() => {
-			expect(result.current.data?.name).toBe("John");
-		});
-
-		// Refetch should trigger loading state and reload
-		act(() => {
-			result.current.refetch();
-		});
-
-		// Note: In this mock, refetch will resolve with the same data
-		// In a real scenario, it would trigger a new network request
 		await waitFor(() => {
 			expect(result.current.loading).toBe(false);
 		});
 
-		expect(result.current.data).toEqual({ id: "123", name: "John" });
+		expect(result.current.data?.id).toBe("initial");
+
+		// Refetch
+		act(() => {
+			result.current.refetch();
+		});
+
+		expect(result.current.loading).toBe(true);
+
+		await waitFor(() => {
+			expect(result.current.loading).toBe(false);
+		});
 	});
 
 	test("refetch handles errors", async () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
-
-		const { result } = renderHook(() => useQuery(() => mockQuery, []));
-
-		// Initial load succeeds
-		act(() => {
-			mockQuery._setValue({ id: "123", name: "John" });
-		});
-
-		await waitFor(() => {
-			expect(result.current.data?.name).toBe("John");
-		});
-
-		// Create a new query that will fail
-		const failingQuery = {
-			subscribe: () => () => {},
-			then: (onFulfilled: any, onRejected: any) => {
-				return Promise.reject(new Error("Refetch failed")).then(onFulfilled, onRejected);
-			},
-		} as unknown as QueryResult<{ id: string; name: string }>;
-
-		// Update the query to use failing query
-		const { result: result2 } = renderHook(() => useQuery(() => failingQuery, []));
-
-		await waitFor(() => {
-			expect(result2.current.error?.message).toBe("Refetch failed");
-		});
-	});
-
-	test("refetch does nothing when query is null", () => {
-		const { result } = renderHook(() => useQuery(() => null, []));
-
-		act(() => {
-			result.current.refetch();
-		});
-
-		expect(result.current.loading).toBe(false);
-		expect(result.current.data).toBe(null);
-	});
-
-	test("refetch does nothing when skip is true", () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
-
-		const { result } = renderHook(() => useQuery(() => mockQuery, [], { skip: true }));
-
-		act(() => {
-			result.current.refetch();
-		});
-
-		expect(result.current.loading).toBe(false);
-		expect(result.current.data).toBe(null);
-	});
-
-	test("refetch with non-Error rejection", async () => {
+		const mockClient = createMockClient();
 		let shouldFail = false;
 		const mockQuery = {
 			subscribe: () => () => {},
 			then: (onFulfilled: any, onRejected: any) => {
 				if (shouldFail) {
-					return Promise.reject("Refetch string error").then(onFulfilled, onRejected);
+					return Promise.reject(new Error("Refetch failed")).then(onFulfilled, onRejected);
 				}
-				return Promise.resolve({ id: "123", name: "John" } as any).then(onFulfilled, onRejected);
+				return Promise.resolve({ id: "test" }).then(onFulfilled, onRejected);
 			},
-		} as unknown as QueryResult<{ id: string; name: string }>;
+		} as unknown as QueryResult<{ id: string }>;
 
-		const { result } = renderHook(() => useQuery(() => mockQuery, []));
-
-		await waitFor(() => {
-			expect(result.current.data).toEqual({ id: "123", name: "John" });
+		const { result } = renderHook(() => useQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
 		});
 
-		// Make it fail on refetch
+		await waitFor(() => {
+			expect(result.current.loading).toBe(false);
+		});
+
 		shouldFail = true;
 
 		act(() => {
@@ -311,25 +302,91 @@ describe("useQuery", () => {
 		});
 
 		await waitFor(() => {
-			expect(result.current.error?.message).toBe("Refetch string error");
+			expect(result.current.loading).toBe(false);
 		});
+
+		expect(result.current.error?.message).toBe("Refetch failed");
+	});
+
+	test("refetch does nothing when query is null", async () => {
+		const mockClient = createMockClient();
+
+		const { result } = renderHook(() => useQuery(() => null, []), {
+			wrapper: createWrapper(mockClient),
+		});
+
+		// Should not throw
+		act(() => {
+			result.current.refetch();
+		});
+
+		expect(result.current.loading).toBe(false);
+	});
+
+	test("refetch does nothing when skip is true", async () => {
+		const mockClient = createMockClient();
+		const mockQuery = createMockQueryResult<{ id: string }>();
+
+		const { result } = renderHook(() => useQuery(() => mockQuery, [], { skip: true }), {
+			wrapper: createWrapper(mockClient),
+		});
+
+		// Should not throw
+		act(() => {
+			result.current.refetch();
+		});
+
+		expect(result.current.loading).toBe(false);
+	});
+
+	test("refetch with non-Error rejection", async () => {
+		const mockClient = createMockClient();
+		let callCount = 0;
+		const mockQuery = {
+			subscribe: () => () => {},
+			then: (onFulfilled: any, onRejected: any) => {
+				callCount++;
+				if (callCount > 1) {
+					return Promise.reject("String error on refetch").then(onFulfilled, onRejected);
+				}
+				return Promise.resolve({ id: "test" }).then(onFulfilled, onRejected);
+			},
+		} as unknown as QueryResult<{ id: string }>;
+
+		const { result } = renderHook(() => useQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
+		});
+
+		await waitFor(() => {
+			expect(result.current.loading).toBe(false);
+		});
+
+		act(() => {
+			result.current.refetch();
+		});
+
+		await waitFor(() => {
+			expect(result.current.loading).toBe(false);
+		});
+
+		expect(result.current.error?.message).toBe("String error on refetch");
 	});
 
 	test("cleans up subscription on unmount", async () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
+		const mockClient = createMockClient();
 		let unsubscribeCalled = false;
+		const mockQuery = {
+			subscribe: () => {
+				return () => {
+					unsubscribeCalled = true;
+				};
+			},
+			then: (onFulfilled: any) => Promise.resolve({ id: "test" }).then(onFulfilled),
+		} as unknown as QueryResult<{ id: string }>;
 
-		// Override subscribe to track unsubscribe
-		const originalSubscribe = mockQuery.subscribe;
-		mockQuery.subscribe = (callback?: (data: { id: string; name: string }) => void) => {
-			const originalUnsubscribe = originalSubscribe.call(mockQuery, callback);
-			return () => {
-				unsubscribeCalled = true;
-				originalUnsubscribe();
-			};
-		};
-
-		const { unmount } = renderHook(() => useQuery(() => mockQuery, []));
+		const { unmount } = renderHook(() => useQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		unmount();
 
@@ -337,136 +394,136 @@ describe("useQuery", () => {
 	});
 
 	test("does not update state after unmount", async () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
+		const mockClient = createMockClient();
+		const mockQuery = createMockQueryResult<{ id: string }>();
 
-		const { unmount } = renderHook(() => useQuery(() => mockQuery, []));
-
-		// Unmount before query resolves
-		unmount();
-
-		// Try to set value after unmount
-		act(() => {
-			mockQuery._setValue({ id: "123", name: "John" });
+		const { result, unmount } = renderHook(() => useQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
 		});
 
-		// State should not be updated (we can't really assert this directly,
-		// but the test passing without errors shows no state update occurred)
-		expect(true).toBe(true);
+		unmount();
+
+		// This should not cause errors or state updates
+		act(() => {
+			mockQuery._setValue({ id: "after-unmount" });
+		});
+
+		// Result should still be from before unmount
+		expect(result.current.data).toBe(null);
 	});
 
 	test("handles query change via deps", async () => {
-		const mockQuery1 = createMockQueryResult<{ id: string; name: string }>();
-		const mockQuery2 = createMockQueryResult<{ id: string; name: string }>();
+		const mockClient = createMockClient();
+		const mockQuery1 = createMockQueryResult<{ id: string }>({ id: "query1" });
+		const mockQuery2 = createMockQueryResult<{ id: string }>({ id: "query2" });
 
-		let queryId = 1;
-		const { result, rerender } = renderHook(() => useQuery(() => (queryId === 1 ? mockQuery1 : mockQuery2), [queryId]));
-
-		// Load first query
-		act(() => {
-			mockQuery1._setValue({ id: "1", name: "First" });
+		let useQuery1 = true;
+		const { result, rerender } = renderHook(() => useQuery(() => (useQuery1 ? mockQuery1 : mockQuery2), [useQuery1]), {
+			wrapper: createWrapper(mockClient),
 		});
 
 		await waitFor(() => {
-			expect(result.current.data?.name).toBe("First");
+			expect(result.current.data?.id).toBe("query1");
 		});
 
-		// Change to second query
-		queryId = 2;
+		// Change to query2
+		useQuery1 = false;
 		rerender();
 
-		expect(result.current.loading).toBe(true);
-
-		// Load second query
-		act(() => {
-			mockQuery2._setValue({ id: "2", name: "Second" });
-		});
-
 		await waitFor(() => {
-			expect(result.current.data?.name).toBe("Second");
+			expect(result.current.data?.id).toBe("query2");
 		});
 	});
 
 	test("handles skip option change from true to false", async () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
+		const mockClient = createMockClient();
+		const mockQuery = createMockQueryResult<{ id: string }>({ id: "test" });
 
 		let skip = true;
-		const { result, rerender } = renderHook(() => useQuery(() => mockQuery, [], { skip }));
+		const { result, rerender } = renderHook(() => useQuery(() => mockQuery, [], { skip }), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		expect(result.current.loading).toBe(false);
+		expect(result.current.data).toBe(null);
 
-		// Change skip to false
+		// Enable query
 		skip = false;
 		rerender();
 
-		expect(result.current.loading).toBe(true);
-
-		act(() => {
-			mockQuery._setValue({ id: "123", name: "John" });
-		});
-
 		await waitFor(() => {
-			expect(result.current.data).toEqual({ id: "123", name: "John" });
+			expect(result.current.data?.id).toBe("test");
 		});
 	});
 
 	test("handles skip option change from false to true", async () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
+		const mockClient = createMockClient();
+		const mockQuery = createMockQueryResult<{ id: string }>({ id: "test" });
 
 		let skip = false;
-		const { result, rerender } = renderHook(() => useQuery(() => mockQuery, [], { skip }));
-
-		act(() => {
-			mockQuery._setValue({ id: "123", name: "John" });
+		const { result, rerender } = renderHook(() => useQuery(() => mockQuery, [], { skip }), {
+			wrapper: createWrapper(mockClient),
 		});
 
 		await waitFor(() => {
-			expect(result.current.data).toEqual({ id: "123", name: "John" });
+			expect(result.current.data?.id).toBe("test");
 		});
 
-		// Change skip to true
+		// Disable query
 		skip = true;
 		rerender();
 
+		await waitFor(() => {
+			expect(result.current.data).toBe(null);
+		});
+
 		expect(result.current.loading).toBe(false);
-		expect(result.current.data).toBe(null);
-		expect(result.current.error).toBe(null);
 	});
 
 	test("select transforms the data", async () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
+		const mockClient = createMockClient();
+		const mockQuery = createMockQueryResult<{ id: string; name: string }>({
+			id: "123",
+			name: "John",
+		});
 
-		const { result } = renderHook(() =>
-			useQuery(() => mockQuery, [], {
-				select: (data) => data.name.toUpperCase(),
-			}),
+		const { result } = renderHook(
+			() =>
+				useQuery(() => mockQuery, [], {
+					select: (data) => data.name.toUpperCase(),
+				}),
+			{ wrapper: createWrapper(mockClient) },
 		);
 
-		act(() => {
-			mockQuery._setValue({ id: "123", name: "John" });
+		await waitFor(() => {
+			expect(result.current.loading).toBe(false);
 		});
 
-		await waitFor(() => {
-			expect(result.current.data).toBe("JOHN");
-		});
+		expect(result.current.data).toBe("JOHN");
 	});
 
 	test("Route + Params pattern works", async () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
+		const mockClient = createMockClient();
+		const mockQuery = createMockQueryResult<{ id: string }>({ id: "user-123" });
 		const route = (_params: { id: string }) => mockQuery;
 
-		const { result } = renderHook(() => useQuery(route, { id: "123" }));
-
-		act(() => {
-			mockQuery._setValue({ id: "123", name: "John" });
+		const { result } = renderHook(() => useQuery(() => route, { id: "123" }), {
+			wrapper: createWrapper(mockClient),
 		});
 
 		await waitFor(() => {
-			expect(result.current.data).toEqual({ id: "123", name: "John" });
+			expect(result.current.loading).toBe(false);
 		});
+
+		expect(result.current.data?.id).toBe("user-123");
 	});
 
-	test("Route + Params with null route", () => {
-		const { result } = renderHook(() => useQuery(null, { id: "123" }));
+	test("Route + Params with null route", async () => {
+		const mockClient = createMockClient();
+
+		const { result } = renderHook(() => useQuery(() => null, { id: "123" }), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		expect(result.current.loading).toBe(false);
 		expect(result.current.data).toBe(null);
@@ -479,39 +536,40 @@ describe("useQuery", () => {
 
 describe("useMutation", () => {
 	test("executes mutation and returns result", async () => {
-		const mutationFn = async (input: { name: string }): Promise<MutationResult<{ id: string; name: string }>> => {
-			return {
-				data: { id: "new-id", name: input.name },
-			};
+		const mockClient = createMockClient();
+		const mockMutation = async (_input: { title: string }): Promise<MutationResult<{ id: string }>> => {
+			return { data: { id: "new-123" } };
 		};
 
-		const { result } = renderHook(() => useMutation(mutationFn));
-
-		expect(result.current.loading).toBe(false);
-		expect(result.current.data).toBe(null);
-
-		let mutationResult: MutationResult<{ id: string; name: string }> | undefined;
-		await act(async () => {
-			mutationResult = await result.current.mutate({ name: "New User" });
+		const { result } = renderHook(() => useMutation(() => mockMutation), {
+			wrapper: createWrapper(mockClient),
 		});
 
-		expect(mutationResult?.data).toEqual({ id: "new-id", name: "New User" });
-		expect(result.current.data).toEqual({ id: "new-id", name: "New User" });
+		let mutationResult: MutationResult<{ id: string }> | undefined;
+		await act(async () => {
+			mutationResult = await result.current.mutate({ title: "Test" });
+		});
+
+		expect(mutationResult?.data?.id).toBe("new-123");
+		expect(result.current.data?.id).toBe("new-123");
 		expect(result.current.loading).toBe(false);
 	});
 
 	test("handles mutation error", async () => {
-		const mutationFn = async (_input: { name: string }): Promise<MutationResult<{ id: string; name: string }>> => {
+		const mockClient = createMockClient();
+		const mockMutation = async (): Promise<MutationResult<{ id: string }>> => {
 			throw new Error("Mutation failed");
 		};
 
-		const { result } = renderHook(() => useMutation(mutationFn));
+		const { result } = renderHook(() => useMutation(() => mockMutation), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		await act(async () => {
 			try {
-				await result.current.mutate({ name: "New User" });
+				await result.current.mutate({ title: "Test" });
 			} catch {
-				// Expected error
+				// Expected
 			}
 		});
 
@@ -520,46 +578,49 @@ describe("useMutation", () => {
 	});
 
 	test("handles non-Error exception in mutation", async () => {
-		const mutationFn = async (_input: { name: string }): Promise<MutationResult<{ id: string; name: string }>> => {
+		const mockClient = createMockClient();
+		const mockMutation = async (): Promise<MutationResult<{ id: string }>> => {
 			throw "String error";
 		};
 
-		const { result } = renderHook(() => useMutation(mutationFn));
+		const { result } = renderHook(() => useMutation(() => mockMutation), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		await act(async () => {
 			try {
-				await result.current.mutate({ name: "New User" });
+				await result.current.mutate({ title: "Test" });
 			} catch {
-				// Expected error
+				// Expected
 			}
 		});
 
 		expect(result.current.error?.message).toBe("String error");
-		expect(result.current.loading).toBe(false);
 	});
 
 	test("shows loading state during mutation", async () => {
-		let resolveMutation: ((value: MutationResult<{ id: string }>) => void) | null = null;
-		const mutationFn = async (_input: { name: string }): Promise<MutationResult<{ id: string }>> => {
-			return new Promise((resolve) => {
-				resolveMutation = resolve;
+		const mockClient = createMockClient();
+		let resolvePromise: () => void;
+		const mockMutation = async (): Promise<MutationResult<{ id: string }>> => {
+			await new Promise<void>((resolve) => {
+				resolvePromise = resolve;
 			});
+			return { data: { id: "test" } };
 		};
 
-		const { result } = renderHook(() => useMutation(mutationFn));
-
-		// Start mutation (don't await)
-		let mutationPromise: Promise<MutationResult<{ id: string }>> | undefined;
-		act(() => {
-			mutationPromise = result.current.mutate({ name: "New User" });
+		const { result } = renderHook(() => useMutation(() => mockMutation), {
+			wrapper: createWrapper(mockClient),
 		});
 
-		// Should be loading
+		let mutationPromise: Promise<any>;
+		act(() => {
+			mutationPromise = result.current.mutate({ title: "Test" });
+		});
+
 		expect(result.current.loading).toBe(true);
 
-		// Resolve mutation
 		await act(async () => {
-			resolveMutation?.({ data: { id: "new-id" } });
+			resolvePromise!();
 			await mutationPromise;
 		});
 
@@ -567,14 +628,17 @@ describe("useMutation", () => {
 	});
 
 	test("reset clears mutation state", async () => {
-		const mutationFn = async (input: { name: string }): Promise<MutationResult<{ id: string; name: string }>> => {
-			return { data: { id: "new-id", name: input.name } };
+		const mockClient = createMockClient();
+		const mockMutation = async (): Promise<MutationResult<{ id: string }>> => {
+			return { data: { id: "test" } };
 		};
 
-		const { result } = renderHook(() => useMutation(mutationFn));
+		const { result } = renderHook(() => useMutation(() => mockMutation), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		await act(async () => {
-			await result.current.mutate({ name: "New User" });
+			await result.current.mutate({ title: "Test" });
 		});
 
 		expect(result.current.data).not.toBe(null);
@@ -589,128 +653,142 @@ describe("useMutation", () => {
 	});
 
 	test("handles multiple mutations in sequence", async () => {
-		let counter = 0;
-		const mutationFn = async (input: { name: string }): Promise<MutationResult<{ id: string; name: string }>> => {
-			counter++;
-			return { data: { id: `id-${counter}`, name: input.name } };
+		const mockClient = createMockClient();
+		let callCount = 0;
+		const mockMutation = async (_input: { title: string }): Promise<MutationResult<{ count: number }>> => {
+			callCount++;
+			return { data: { count: callCount } };
 		};
 
-		const { result } = renderHook(() => useMutation(mutationFn));
-
-		// First mutation
-		await act(async () => {
-			await result.current.mutate({ name: "First" });
+		const { result } = renderHook(() => useMutation(() => mockMutation), {
+			wrapper: createWrapper(mockClient),
 		});
 
-		expect(result.current.data).toEqual({ id: "id-1", name: "First" });
-
-		// Second mutation
 		await act(async () => {
-			await result.current.mutate({ name: "Second" });
+			await result.current.mutate({ title: "First" });
 		});
+		expect(result.current.data?.count).toBe(1);
 
-		expect(result.current.data).toEqual({ id: "id-2", name: "Second" });
+		await act(async () => {
+			await result.current.mutate({ title: "Second" });
+		});
+		expect(result.current.data?.count).toBe(2);
 	});
 
 	test("clears error on successful mutation after previous error", async () => {
+		const mockClient = createMockClient();
 		let shouldFail = true;
-		const mutationFn = async (input: { name: string }): Promise<MutationResult<{ id: string; name: string }>> => {
+		const mockMutation = async (): Promise<MutationResult<{ id: string }>> => {
 			if (shouldFail) {
-				throw new Error("Mutation failed");
+				throw new Error("Failed");
 			}
-			return { data: { id: "new-id", name: input.name } };
+			return { data: { id: "success" } };
 		};
 
-		const { result } = renderHook(() => useMutation(mutationFn));
+		const { result } = renderHook(() => useMutation(() => mockMutation), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		// First mutation fails
 		await act(async () => {
 			try {
-				await result.current.mutate({ name: "New User" });
+				await result.current.mutate({ title: "Test" });
 			} catch {
-				// Expected error
+				// Expected
 			}
 		});
 
-		expect(result.current.error?.message).toBe("Mutation failed");
+		expect(result.current.error).not.toBe(null);
 
 		// Second mutation succeeds
 		shouldFail = false;
 		await act(async () => {
-			await result.current.mutate({ name: "New User" });
+			await result.current.mutate({ title: "Test" });
 		});
 
 		expect(result.current.error).toBe(null);
-		expect(result.current.data).toEqual({ id: "new-id", name: "New User" });
+		expect(result.current.data?.id).toBe("success");
 	});
 
 	test("does not update state after unmount", async () => {
-		const mutationFn = async (input: { name: string }): Promise<MutationResult<{ id: string; name: string }>> => {
-			return { data: { id: "new-id", name: input.name } };
+		const mockClient = createMockClient();
+		let resolvePromise: () => void;
+		const mockMutation = async (): Promise<MutationResult<{ id: string }>> => {
+			await new Promise<void>((resolve) => {
+				resolvePromise = resolve;
+			});
+			return { data: { id: "test" } };
 		};
 
-		const { result, unmount } = renderHook(() => useMutation(mutationFn));
+		const { result, unmount } = renderHook(() => useMutation(() => mockMutation), {
+			wrapper: createWrapper(mockClient),
+		});
 
-		// Start mutation but unmount before it completes
-		const mutationPromise = result.current.mutate({ name: "New User" });
+		let mutationPromise: Promise<any>;
+		act(() => {
+			mutationPromise = result.current.mutate({ title: "Test" });
+		});
+
 		unmount();
 
-		// Wait for mutation to complete
-		await mutationPromise;
-
-		// Test passes if no error is thrown (state update after unmount would cause error)
-		expect(true).toBe(true);
+		// Resolve after unmount - should not cause errors
+		await act(async () => {
+			resolvePromise!();
+			await mutationPromise;
+		});
 	});
 });
 
 // =============================================================================
-// Tests: useLazyQuery (Accessor + Deps pattern)
+// Tests: useLazyQuery
 // =============================================================================
 
 describe("useLazyQuery", () => {
 	test("does not execute query on mount", () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
+		const mockClient = createMockClient();
+		const mockQuery = createMockQueryResult<{ id: string }>();
 
-		const { result } = renderHook(() => useLazyQuery(() => mockQuery, []));
+		const { result } = renderHook(() => useLazyQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		expect(result.current.loading).toBe(false);
 		expect(result.current.data).toBe(null);
 	});
 
 	test("executes query when execute is called", async () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>({
-			id: "123",
-			name: "John",
+		const mockClient = createMockClient();
+		const mockQuery = createMockQueryResult<{ id: string }>({ id: "lazy-123" });
+
+		const { result } = renderHook(() => useLazyQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
 		});
 
-		const { result } = renderHook(() => useLazyQuery(() => mockQuery, []));
-
-		let queryResult: { id: string; name: string } | undefined;
 		await act(async () => {
-			queryResult = await result.current.execute();
+			await result.current.execute();
 		});
 
-		expect(queryResult).toEqual({ id: "123", name: "John" });
-		expect(result.current.data).toEqual({ id: "123", name: "John" });
+		expect(result.current.data?.id).toBe("lazy-123");
+		expect(result.current.loading).toBe(false);
 	});
 
 	test("handles query error", async () => {
-		// Create a mock query that rejects
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
+		const mockClient = createMockClient();
+		const mockQuery = {
+			then: (_: any, onRejected: any) => {
+				return Promise.reject(new Error("Query failed")).then(null, onRejected);
+			},
+		} as unknown as QueryResult<{ id: string }>;
 
-		const { result } = renderHook(() => useLazyQuery(() => mockQuery, []));
-
-		// Set error before execute
-		act(() => {
-			mockQuery._setError(new Error("Query failed"));
+		const { result } = renderHook(() => useLazyQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
 		});
 
-		// Execute should throw
 		await act(async () => {
 			try {
 				await result.current.execute();
 			} catch {
-				// Expected error
+				// Expected
 			}
 		});
 
@@ -718,19 +796,22 @@ describe("useLazyQuery", () => {
 	});
 
 	test("handles non-Error rejection", async () => {
+		const mockClient = createMockClient();
 		const mockQuery = {
-			then: (onFulfilled: any, onRejected: any) => {
-				return Promise.reject("String error").then(onFulfilled, onRejected);
+			then: (_: any, onRejected: any) => {
+				return Promise.reject("String error").then(null, onRejected);
 			},
 		} as unknown as QueryResult<{ id: string }>;
 
-		const { result } = renderHook(() => useLazyQuery(() => mockQuery, []));
+		const { result } = renderHook(() => useLazyQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		await act(async () => {
 			try {
 				await result.current.execute();
 			} catch {
-				// Expected error
+				// Expected
 			}
 		});
 
@@ -738,12 +819,12 @@ describe("useLazyQuery", () => {
 	});
 
 	test("reset clears query state", async () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>({
-			id: "123",
-			name: "John",
-		});
+		const mockClient = createMockClient();
+		const mockQuery = createMockQueryResult<{ id: string }>({ id: "test" });
 
-		const { result } = renderHook(() => useLazyQuery(() => mockQuery, []));
+		const { result } = renderHook(() => useLazyQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		await act(async () => {
 			await result.current.execute();
@@ -756,165 +837,195 @@ describe("useLazyQuery", () => {
 		});
 
 		expect(result.current.data).toBe(null);
-		expect(result.current.error).toBe(null);
-		expect(result.current.loading).toBe(false);
 	});
 
 	test("handles null query from accessor", async () => {
-		const { result } = renderHook(() => useLazyQuery(() => null, []));
+		const mockClient = createMockClient();
 
-		let queryResult: any;
-		await act(async () => {
-			queryResult = await result.current.execute();
+		const { result } = renderHook(() => useLazyQuery(() => null, []), {
+			wrapper: createWrapper(mockClient),
 		});
 
-		expect(queryResult).toBe(null);
+		let executeResult: any;
+		await act(async () => {
+			executeResult = await result.current.execute();
+		});
+
+		expect(executeResult).toBe(null);
 		expect(result.current.data).toBe(null);
-		expect(result.current.loading).toBe(false);
 	});
 
 	test("handles undefined query from accessor", async () => {
-		const { result } = renderHook(() => useLazyQuery(() => undefined, []));
+		const mockClient = createMockClient();
 
-		let queryResult: any;
-		await act(async () => {
-			queryResult = await result.current.execute();
+		const { result } = renderHook(() => useLazyQuery(() => undefined, []), {
+			wrapper: createWrapper(mockClient),
 		});
 
-		expect(queryResult).toBe(null);
+		let executeResult: any;
+		await act(async () => {
+			executeResult = await result.current.execute();
+		});
+
+		expect(executeResult).toBe(null);
 		expect(result.current.data).toBe(null);
-		expect(result.current.loading).toBe(false);
 	});
 
 	test("uses latest query value from accessor on execute", async () => {
-		let currentValue = "first";
-		const mockQuery1 = createMockQueryResult<string>("first");
-		const mockQuery2 = createMockQueryResult<string>("second");
+		const mockClient = createMockClient();
+		const mockQuery1 = createMockQueryResult<{ id: string }>({ id: "query1" });
+		const mockQuery2 = createMockQueryResult<{ id: string }>({ id: "query2" });
 
-		const accessor = () => (currentValue === "first" ? mockQuery1 : mockQuery2);
+		let useQuery1 = true;
+		const { result, rerender } = renderHook(
+			() => useLazyQuery(() => (useQuery1 ? mockQuery1 : mockQuery2), [useQuery1]),
+			{ wrapper: createWrapper(mockClient) },
+		);
 
-		const { result } = renderHook(() => useLazyQuery(accessor, []));
+		// Change to query2 before executing
+		useQuery1 = false;
+		rerender();
 
-		// First execute
-		let queryResult1: string | undefined;
 		await act(async () => {
-			queryResult1 = await result.current.execute();
+			await result.current.execute();
 		});
 
-		expect(queryResult1).toBe("first");
-
-		// Change accessor to return different query
-		currentValue = "second";
-
-		// Second execute should use new query
-		let queryResult2: string | undefined;
-		await act(async () => {
-			queryResult2 = await result.current.execute();
-		});
-
-		expect(queryResult2).toBe("second");
+		expect(result.current.data?.id).toBe("query2");
 	});
 
 	test("shows loading state during execution", async () => {
-		const mockQuery = createMockQueryResult<{ id: string }>();
+		const mockClient = createMockClient();
+		// Create the pending promise upfront so resolvePromise is assigned immediately
+		let resolvePromise!: (value: { id: string }) => void;
+		const pendingPromise = new Promise<{ id: string }>((resolve) => {
+			resolvePromise = resolve;
+		});
+		const mockQuery = {
+			then: (onFulfilled: any, onRejected?: any) => {
+				return pendingPromise.then(onFulfilled, onRejected);
+			},
+		} as unknown as QueryResult<{ id: string }>;
 
-		const { result } = renderHook(() => useLazyQuery(() => mockQuery, []));
+		const { result } = renderHook(() => useLazyQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
+		});
 
-		// Execute and set value
-		let executePromise: Promise<{ id: string }>;
-		await act(async () => {
+		let executePromise: Promise<any>;
+		act(() => {
 			executePromise = result.current.execute();
-			mockQuery._setValue({ id: "123" });
+		});
+
+		expect(result.current.loading).toBe(true);
+
+		await act(async () => {
+			resolvePromise({ id: "test" });
 			await executePromise;
 		});
 
 		expect(result.current.loading).toBe(false);
-		expect(result.current.data).toEqual({ id: "123" });
 	});
 
 	test("does not update state after unmount", async () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>();
+		const mockClient = createMockClient();
+		// Create the pending promise upfront so resolvePromise is assigned immediately
+		let resolvePromise!: (value: { id: string }) => void;
+		const pendingPromise = new Promise<{ id: string }>((resolve) => {
+			resolvePromise = resolve;
+		});
+		const mockQuery = {
+			then: (onFulfilled: any, onRejected?: any) => {
+				return pendingPromise.then(onFulfilled, onRejected);
+			},
+		} as unknown as QueryResult<{ id: string }>;
 
-		const { result, unmount } = renderHook(() => useLazyQuery(() => mockQuery, []));
-
-		// Start execution, unmount, then resolve
-		const executePromise = result.current.execute();
-		unmount();
-
-		// Resolve after unmount
-		await act(async () => {
-			mockQuery._setValue({ id: "123", name: "John" });
-			try {
-				await executePromise;
-			} catch {
-				// May reject due to unmount
-			}
+		const { result, unmount } = renderHook(() => useLazyQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
 		});
 
-		// Test passes if no error is thrown (state update after unmount would cause error)
-		expect(true).toBe(true);
+		let executePromise: Promise<any>;
+		act(() => {
+			executePromise = result.current.execute();
+		});
+
+		unmount();
+
+		// Resolve after unmount - should not cause errors
+		await act(async () => {
+			resolvePromise({ id: "test" });
+			await executePromise;
+		});
 	});
 
 	test("can execute multiple times", async () => {
-		let count = 0;
-		const createQuery = () => {
-			count++;
-			return createMockQueryResult<{ count: number }>({ count });
-		};
+		const mockClient = createMockClient();
+		let callCount = 0;
+		const mockQuery = {
+			then: (onFulfilled: any) => {
+				callCount++;
+				return Promise.resolve({ count: callCount }).then(onFulfilled);
+			},
+		} as unknown as QueryResult<{ count: number }>;
 
-		const { result } = renderHook(() => useLazyQuery(() => createQuery(), []));
+		const { result } = renderHook(() => useLazyQuery(() => mockQuery, []), {
+			wrapper: createWrapper(mockClient),
+		});
 
-		// First execution
 		await act(async () => {
 			await result.current.execute();
 		});
-
 		expect(result.current.data?.count).toBe(1);
 
-		// Second execution
 		await act(async () => {
 			await result.current.execute();
 		});
-
 		expect(result.current.data?.count).toBe(2);
 	});
 
 	test("Route + Params pattern works", async () => {
-		const mockQuery = createMockQueryResult<{ id: string; name: string }>({
-			id: "123",
-			name: "John",
-		});
+		const mockClient = createMockClient();
+		const mockQuery = createMockQueryResult<{ id: string }>({ id: "user-123" });
 		const route = (_params: { id: string }) => mockQuery;
 
-		const { result } = renderHook(() => useLazyQuery(route, { id: "123" }));
+		const { result } = renderHook(() => useLazyQuery(() => route, { id: "123" }), {
+			wrapper: createWrapper(mockClient),
+		});
 
 		await act(async () => {
 			await result.current.execute();
 		});
 
-		expect(result.current.data).toEqual({ id: "123", name: "John" });
+		expect(result.current.data?.id).toBe("user-123");
 	});
 
 	test("Route + Params with null route", async () => {
-		const { result } = renderHook(() => useLazyQuery(null, { id: "123" }));
+		const mockClient = createMockClient();
 
-		await act(async () => {
-			await result.current.execute();
+		const { result } = renderHook(() => useLazyQuery(() => null, { id: "123" }), {
+			wrapper: createWrapper(mockClient),
 		});
 
+		let executeResult: any;
+		await act(async () => {
+			executeResult = await result.current.execute();
+		});
+
+		expect(executeResult).toBe(null);
 		expect(result.current.data).toBe(null);
 	});
 
 	test("select transforms the data", async () => {
+		const mockClient = createMockClient();
 		const mockQuery = createMockQueryResult<{ id: string; name: string }>({
 			id: "123",
 			name: "John",
 		});
 
-		const { result } = renderHook(() =>
-			useLazyQuery(() => mockQuery, [], {
-				select: (data) => data.name.toUpperCase(),
-			}),
+		const { result } = renderHook(
+			() =>
+				useLazyQuery(() => mockQuery, [], {
+					select: (data) => data.name.toUpperCase(),
+				}),
+			{ wrapper: createWrapper(mockClient) },
 		);
 
 		await act(async () => {

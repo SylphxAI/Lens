@@ -16,17 +16,17 @@ export { LensProvider, type LensProviderProps, useLensClient } from "./context.j
 // =============================================================================
 
 export {
-	type MutationFn,
 	// Types
-	type QueryAccessor,
-	type RouteFunction,
+	type MutationSelector,
+	type QuerySelector,
+	type RouteSelector,
 	type UseLazyQueryResult,
 	type UseMutationResult,
 	type UseQueryOptions,
 	type UseQueryResult,
+	// Query hooks
 	useLazyQuery,
 	// Mutation hook
 	useMutation,
-	// Query hooks
 	useQuery,
 } from "./hooks.js";
