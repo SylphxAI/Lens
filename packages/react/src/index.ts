@@ -18,7 +18,8 @@ export { LensProvider, type LensProviderProps, useLensClient } from "./context.j
 export {
 	type MutationFn,
 	// Types
-	type QueryInput,
+	type QueryAccessor,
+	type RouteFunction,
 	type UseLazyQueryResult,
 	type UseMutationResult,
 	type UseQueryOptions,
