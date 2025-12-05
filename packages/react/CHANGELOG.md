@@ -1,5 +1,17 @@
 # @sylphx/lens-react
 
+## 2.1.7 (2025-12-05)
+
+fix(react): use production JSX runtime in build output
+
+Previously, the build output used jsxDEV from react/jsx-dev-runtime,
+which only exists in development mode. Now uses NODE_ENV=production
+to ensure the build uses jsx from react/jsx-runtime.
+
+### 🐛 Bug Fixes
+
+- **react:** use production JSX runtime in build output ([0021ddf](https://github.com/SylphxAI/Lens/commit/0021ddf31c1c43ea7c1e641761d20a3b104acdee))
+
 ## 2.1.6 (2025-12-05)
 
 fix(react): use ref for selector to avoid useCallback requirement

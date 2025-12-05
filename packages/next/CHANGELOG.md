@@ -1,5 +1,11 @@
 # @sylphx/lens-next
 
+## 2.1.7 (2025-12-05)
+
+### 📦 Dependencies
+
+- Updated `@sylphx/lens-react` to 2.1.7
+
 ## 2.1.6 (2025-12-05)
 
 ### 📦 Dependencies
