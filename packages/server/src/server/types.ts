@@ -20,9 +20,26 @@ import type { PluginManager, ServerPlugin } from "../plugin/types.js";
 // Selection Types
 // =============================================================================
 
-/** Selection object type for nested field selection */
+/**
+ * Nested selection object with optional input.
+ * Used for relations that need their own params.
+ */
+export interface NestedSelection {
+	/** Input/params for this nested query */
+	input?: Record<string, unknown>;
+	/** Field selection for this nested query */
+	select?: SelectionObject;
+}
+
+/**
+ * Selection object for field selection.
+ * Supports:
+ * - `true` - Select this field
+ * - `{ select: {...} }` - Nested selection only
+ * - `{ input: {...}, select?: {...} }` - Nested with input params
+ */
 export interface SelectionObject {
-	[key: string]: boolean | SelectionObject | { select: SelectionObject };
+	[key: string]: boolean | SelectionObject | { select: SelectionObject } | NestedSelection;
 }
 
 // =============================================================================

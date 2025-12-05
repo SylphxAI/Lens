@@ -350,6 +350,7 @@ class ClientImpl {
 	async executeMutation<TInput extends Record<string, unknown>, TOutput>(
 		path: string,
 		input: TInput,
+		select?: SelectionObject,
 	): Promise<MutationResult<TOutput>> {
 		await this.ensureConnected();
 
@@ -358,6 +359,7 @@ class ClientImpl {
 			path,
 			type: "mutation",
 			input,
+			meta: select ? { select } : {},
 		};
 
 		const response = await this.execute(op);
@@ -373,10 +375,32 @@ class ClientImpl {
 	// Public Accessor API
 	// =========================================================================
 
-	createAccessor(path: string): (input?: unknown) => unknown {
-		return (input?: unknown) => {
+	/**
+	 * Create accessor with unified { input, select } pattern.
+	 * Accepts QueryDescriptor: { input?: TInput, select?: SelectionObject }
+	 *
+	 * Backwards compatible: if descriptor has no 'input' or 'select' keys,
+	 * treats the entire object as input (legacy API).
+	 */
+	createAccessor(path: string): (descriptor?: { input?: unknown; select?: SelectionObject } | unknown) => unknown {
+		return (descriptor?: { input?: unknown; select?: SelectionObject } | unknown) => {
+			// Backwards compatibility: detect legacy API (raw input without wrapper)
+			const isNewApi =
+				descriptor === undefined ||
+				descriptor === null ||
+				(typeof descriptor === "object" &&
+					descriptor !== null &&
+					("input" in descriptor || "select" in descriptor));
+
+			const input = isNewApi
+				? (descriptor as { input?: unknown })?.input
+				: descriptor;
+			const select = isNewApi
+				? (descriptor as { select?: SelectionObject })?.select
+				: undefined;
+
 			// Delegate to executeQuery for all query functionality (caching, subscriptions, etc.)
-			const queryResult = this.executeQuery<unknown>(path, input);
+			const queryResult = this.executeQuery<unknown>(path, input, select);
 
 			// Store original then for queries
 			const originalThen = queryResult.then.bind(queryResult);
@@ -395,7 +419,7 @@ class ClientImpl {
 
 					if (meta?.type === "mutation") {
 						const inputObj = (input ?? {}) as Record<string, unknown>;
-						const mutationResult = await this.executeMutation(path, inputObj);
+						const mutationResult = await this.executeMutation(path, inputObj, select);
 						return onfulfilled
 							? onfulfilled(mutationResult)
 							: (mutationResult as unknown as TResult1);

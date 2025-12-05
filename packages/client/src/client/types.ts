@@ -23,9 +23,37 @@ export type MutationsMap = Record<string, MutationDef<unknown, unknown>>;
 // Selection Types
 // =============================================================================
 
-/** Selection object for field selection */
+/**
+ * Nested selection object with optional input.
+ * Used for relations that need their own params.
+ */
+export interface NestedSelection {
+	/** Input/params for this nested query */
+	input?: Record<string, unknown>;
+	/** Field selection for this nested query */
+	select?: SelectionObject;
+}
+
+/**
+ * Selection object for field selection.
+ * Supports:
+ * - `true` - Select this field
+ * - `{ select: {...} }` - Nested selection only
+ * - `{ input: {...}, select?: {...} }` - Nested with input params
+ */
 export interface SelectionObject {
-	[key: string]: boolean | SelectionObject | { select: SelectionObject };
+	[key: string]: boolean | SelectionObject | { select: SelectionObject } | NestedSelection;
+}
+
+/**
+ * Query descriptor with unified { input, select } pattern.
+ * Used at top-level and nested levels for consistency.
+ */
+export interface QueryDescriptor<TInput = unknown, TSelect extends SelectionObject = SelectionObject> {
+	/** Input params for the query */
+	input?: TInput;
+	/** Field selection */
+	select?: TSelect;
 }
 
 /** Infer selected type from selection object */
@@ -38,13 +66,19 @@ export type SelectedType<T, S extends SelectionObject> = {
 				: T[K] extends object
 					? SelectedType<T[K], Nested>
 					: T[K]
-			: S[K] extends SelectionObject
+			: S[K] extends { input?: unknown; select?: infer Nested extends SelectionObject }
 				? T[K] extends Array<infer Item>
-					? Array<SelectedType<Item, S[K]>>
+					? Array<SelectedType<Item, Nested>>
 					: T[K] extends object
-						? SelectedType<T[K], S[K]>
+						? SelectedType<T[K], Nested>
 						: T[K]
-				: never;
+				: S[K] extends SelectionObject
+					? T[K] extends Array<infer Item>
+						? Array<SelectedType<Item, S[K]>>
+						: T[K] extends object
+							? SelectedType<T[K], S[K]>
+							: T[K]
+					: never;
 };
 
 // =============================================================================
@@ -121,16 +155,33 @@ export interface RouterApiShape<TRouter extends RouterDef = RouterDef> {
 /** Extract router from server's _types */
 export type ExtractRouter<T> = T extends { router: infer R extends RouterDef } ? R : never;
 
+/**
+ * Query function type with unified { input, select } pattern.
+ * Handles both queries with and without required input.
+ */
+export type QueryFn<TInput, TOutput> = TInput extends void
+	? <TSelect extends SelectionObject = SelectionObject>(
+			descriptor?: QueryDescriptor<void, TSelect>,
+		) => QueryResult<TSelect extends SelectionObject ? SelectedType<TOutput, TSelect> : TOutput>
+	: <TSelect extends SelectionObject = SelectionObject>(
+			descriptor: QueryDescriptor<TInput, TSelect>,
+		) => QueryResult<TSelect extends SelectionObject ? SelectedType<TOutput, TSelect> : TOutput>;
+
+/**
+ * Mutation function type with unified { input, select } pattern.
+ */
+export type MutationFn<TInput, TOutput> = <TSelect extends SelectionObject = SelectionObject>(
+	descriptor: QueryDescriptor<TInput, TSelect>,
+) => Promise<MutationResult<TSelect extends SelectionObject ? SelectedType<TOutput, TSelect> : TOutput>>;
+
 /** Infer client type from router routes */
 export type InferRouterClientType<TRoutes extends RouterRoutes> = {
 	[K in keyof TRoutes]: TRoutes[K] extends RouterDef<infer TNestedRoutes>
 		? InferRouterClientType<TNestedRoutes>
 		: TRoutes[K] extends QueryDef<infer TInput, infer TOutput>
-			? TInput extends void
-				? () => QueryResult<TOutput>
-				: (input: TInput) => QueryResult<TOutput>
+			? QueryFn<TInput, TOutput>
 			: TRoutes[K] extends MutationDef<infer TInput, infer TOutput>
-				? (input: TInput) => Promise<MutationResult<TOutput>>
+				? MutationFn<TInput, TOutput>
 				: never;
 };
 
