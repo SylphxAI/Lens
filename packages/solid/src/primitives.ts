@@ -6,7 +6,7 @@
  */
 
 import type { MutationResult, QueryResult } from "@sylphx/lens-client";
-import { type Accessor, createSignal, onCleanup } from "solid-js";
+import { type Accessor, createEffect, createSignal, onCleanup } from "solid-js";
 
 // =============================================================================
 // Query Input Types
@@ -120,8 +120,12 @@ export function createQuery<T>(
 
 	let unsubscribe: (() => void) | null = null;
 
-	const executeQuery = () => {
-		const queryResult = resolveQuery(queryInput);
+	const executeQuery = (queryResult: QueryResult<T> | null | undefined) => {
+		// Cleanup previous subscription
+		if (unsubscribe) {
+			unsubscribe();
+			unsubscribe = null;
+		}
 
 		// Handle null/undefined query or skip
 		if (options?.skip || queryResult == null) {
@@ -156,8 +160,19 @@ export function createQuery<T>(
 		);
 	};
 
-	// Execute query immediately (not in effect) for initial load
-	executeQuery();
+	// Execute initial query synchronously
+	const initialQuery = resolveQuery(queryInput);
+	executeQuery(initialQuery);
+
+	// Use createEffect to track reactive dependencies for re-execution
+	// This ensures the query re-runs when signals used in the accessor change
+	createEffect(() => {
+		const queryResult = resolveQuery(queryInput); // Solid tracks reactive deps here
+		// Only re-execute if query changed (not on initial mount)
+		if (queryResult !== initialQuery) {
+			executeQuery(queryResult);
+		}
+	});
 
 	// Cleanup on unmount
 	onCleanup(() => {
@@ -174,7 +189,25 @@ export function createQuery<T>(
 		}
 		setLoading(true);
 		setError(null);
-		executeQuery();
+		const queryResult = resolveQuery(queryInput);
+		if (queryResult) {
+			unsubscribe = queryResult.subscribe((value) => {
+				setData(() => value);
+				setLoading(false);
+				setError(null);
+			});
+			queryResult.then(
+				(value) => {
+					setData(() => value);
+					setLoading(false);
+				},
+				(err) => {
+					const queryError = err instanceof Error ? err : new Error(String(err));
+					setError(queryError);
+					setLoading(false);
+				},
+			);
+		}
 	};
 
 	return {

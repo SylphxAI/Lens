@@ -6,7 +6,7 @@
  */
 
 import type { MutationResult, QueryResult } from "@sylphx/lens-client";
-import { onUnmounted, type Ref, ref, type ShallowRef, shallowRef, watch } from "vue";
+import { onUnmounted, type Ref, ref, type ShallowRef, shallowRef, watchEffect } from "vue";
 
 // =============================================================================
 // Query Input Types
@@ -118,9 +118,17 @@ export function useQuery<T>(
 
 	let unsubscribe: (() => void) | null = null;
 
-	const executeQuery = () => {
+	// Use watchEffect to track reactive dependencies in the accessor function
+	// This ensures the query re-runs when props/refs used in the accessor change
+	const stopWatch = watchEffect((onCleanup) => {
+		// Cleanup previous subscription
+		if (unsubscribe) {
+			unsubscribe();
+			unsubscribe = null;
+		}
+
 		const skip = typeof options?.skip === "object" ? options.skip.value : options?.skip;
-		const query = resolveQuery(queryInput);
+		const query = resolveQuery(queryInput); // Vue tracks reactive deps here
 
 		// Handle null/undefined query or skip
 		if (skip || query == null) {
@@ -152,27 +160,19 @@ export function useQuery<T>(
 				loading.value = false;
 			},
 		);
-	};
 
-	// Execute immediately
-	executeQuery();
-
-	// Watch for skip changes
-	if (options?.skip && typeof options.skip === "object") {
-		watch(options.skip, (newSkip, oldSkip) => {
-			if (oldSkip && !newSkip) {
-				// Was skipped, now should execute
-				if (unsubscribe) {
-					unsubscribe();
-					unsubscribe = null;
-				}
-				executeQuery();
+		// Register cleanup for watchEffect
+		onCleanup(() => {
+			if (unsubscribe) {
+				unsubscribe();
+				unsubscribe = null;
 			}
 		});
-	}
+	});
 
 	// Cleanup on unmount
 	onUnmounted(() => {
+		stopWatch();
 		if (unsubscribe) {
 			unsubscribe();
 			unsubscribe = null;
@@ -180,11 +180,31 @@ export function useQuery<T>(
 	});
 
 	const refetch = () => {
+		// Force re-run by stopping and re-starting watchEffect
+		// This is a workaround since we can't manually trigger watchEffect
 		if (unsubscribe) {
 			unsubscribe();
 			unsubscribe = null;
 		}
-		executeQuery();
+		loading.value = true;
+		const query = resolveQuery(queryInput);
+		if (query) {
+			unsubscribe = query.subscribe((value) => {
+				data.value = value;
+				loading.value = false;
+				error.value = null;
+			});
+			query.then(
+				(value) => {
+					data.value = value;
+					loading.value = false;
+				},
+				(err) => {
+					error.value = err instanceof Error ? err : new Error(String(err));
+					loading.value = false;
+				},
+			);
+		}
 	};
 
 	return {

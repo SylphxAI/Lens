@@ -6,21 +6,35 @@
  */
 
 import type { MutationResult, QueryResult } from "@sylphx/lens-client";
-import { type Readable, readable, writable } from "svelte/store";
+import { type Readable, writable } from "svelte/store";
 
 // =============================================================================
 // Query Input Types
 // =============================================================================
 
-/** Query input - can be a query, null/undefined, or an accessor function */
+/** Query input - can be a query, null/undefined, an accessor function, or a Readable store */
 export type QueryInput<T> =
 	| QueryResult<T>
 	| null
 	| undefined
-	| (() => QueryResult<T> | null | undefined);
+	| (() => QueryResult<T> | null | undefined)
+	| Readable<QueryResult<T> | null | undefined>;
 
-/** Helper to resolve query input (handles accessor functions) */
+/** Helper to check if value is a Svelte store */
+function isReadable<T>(value: unknown): value is Readable<T> {
+	return (
+		value !== null &&
+		typeof value === "object" &&
+		"subscribe" in value &&
+		typeof (value as Readable<T>).subscribe === "function" &&
+		// Distinguish from QueryResult which also has subscribe
+		!("then" in value)
+	);
+}
+
+/** Helper to resolve query input (handles accessor functions, not stores) */
 function resolveQuery<T>(input: QueryInput<T>): QueryResult<T> | null | undefined {
+	if (isReadable(input)) return null; // Stores handled separately
 	return typeof input === "function" ? input() : input;
 }
 
@@ -64,25 +78,33 @@ export interface QueryStoreOptions {
 // =============================================================================
 
 /**
- * Create a readable store from a QueryResult.
+ * Create a reactive store from a QueryResult.
  * Automatically subscribes to query updates.
  *
  * @example
  * ```svelte
  * <script lang="ts">
  *   import { query } from '@sylphx/lens-svelte';
+ *   import { derived } from 'svelte/store';
  *   import { client } from './client';
  *
- *   const userStore = query(client.queries.getUser({ id: '123' }));
+ *   // Static query
+ *   const userStore = query(client.user.get({ input: { id: '123' } }));
  *
- *   // Conditional query (null when condition not met)
- *   const sessionStore = query(
- *     sessionId ? client.session.get({ id: sessionId }) : null
+ *   // Reactive query using Svelte's $: syntax (creates new store on change)
+ *   export let userId: string;
+ *   $: userQuery = query(client.user.get({ input: { id: userId } }));
+ *
+ *   // Reactive query using derived store (recommended for complex reactivity)
+ *   import { writable } from 'svelte/store';
+ *   const userIdStore = writable('123');
+ *   const reactiveStore = query(
+ *     derived(userIdStore, $id => client.user.get({ input: { id: $id } }))
  *   );
  *
- *   // With accessor function for reactive inputs
- *   const reactiveStore = query(
- *     () => sessionId ? client.session.get({ id: sessionId }) : null
+ *   // Conditional query (null when condition not met)
+ *   $: sessionStore = query(
+ *     sessionId ? client.session.get({ input: { id: sessionId } }) : null
  *   );
  * </script>
  *
@@ -96,59 +118,106 @@ export interface QueryStoreOptions {
  * ```
  */
 export function query<T>(queryInput: QueryInput<T>, options?: QueryStoreOptions): QueryStore<T> {
-	let refetchFn: (() => void) | null = null;
+	const store = writable<QueryStoreValue<T>>({ data: null, loading: !options?.skip, error: null });
 
-	const store = readable<QueryStoreValue<T>>(
-		{ data: null, loading: !options?.skip, error: null },
-		(set) => {
-			const queryResult = resolveQuery(queryInput);
+	let queryUnsubscribe: (() => void) | null = null;
+	let storeUnsubscribe: (() => void) | null = null;
+	let currentQuery: QueryResult<T> | null = null;
+	let subscriberCount = 0;
 
-			// Handle null/undefined query or skip
-			if (options?.skip || queryResult == null) {
-				set({ data: null, loading: false, error: null });
-				return () => {};
-			}
+	const executeQuery = (queryResult: QueryResult<T> | null | undefined) => {
+		// Cleanup previous query subscription
+		if (queryUnsubscribe) {
+			queryUnsubscribe();
+			queryUnsubscribe = null;
+		}
 
-			// Subscribe to query updates
-			const unsubscribe = queryResult.subscribe((value) => {
-				set({ data: value, loading: false, error: null });
-			});
+		currentQuery = queryResult ?? null;
 
-			// Handle initial load via promise
-			queryResult.then(
+		// Handle null/undefined query or skip
+		if (options?.skip || queryResult == null) {
+			store.set({ data: null, loading: false, error: null });
+			return;
+		}
+
+		store.set({ data: null, loading: true, error: null });
+
+		// Subscribe to query updates
+		queryUnsubscribe = queryResult.subscribe((value) => {
+			store.set({ data: value, loading: false, error: null });
+		});
+
+		// Handle initial load via promise
+		queryResult.then(
+			(value) => {
+				store.set({ data: value, loading: false, error: null });
+			},
+			(err) => {
+				const error = err instanceof Error ? err : new Error(String(err));
+				store.set({ data: null, loading: false, error });
+			},
+		);
+	};
+
+	const refetch = () => {
+		if (currentQuery) {
+			store.set({ data: null, loading: true, error: null });
+			currentQuery.then(
 				(value) => {
-					set({ data: value, loading: false, error: null });
+					store.set({ data: value, loading: false, error: null });
 				},
 				(err) => {
 					const error = err instanceof Error ? err : new Error(String(err));
-					set({ data: null, loading: false, error });
+					store.set({ data: null, loading: false, error });
 				},
 			);
+		}
+	};
 
-			// Refetch function
-			refetchFn = () => {
-				set({ data: null, loading: true, error: null });
-				queryResult.then(
-					(value) => {
-						set({ data: value, loading: false, error: null });
-					},
-					(err) => {
-						const error = err instanceof Error ? err : new Error(String(err));
-						set({ data: null, loading: false, error });
-					},
-				);
-			};
+	// Custom subscribe that handles setup/cleanup
+	const subscribe = (run: (value: QueryStoreValue<T>) => void) => {
+		subscriberCount++;
 
-			return () => {
-				unsubscribe();
-				refetchFn = null;
-			};
-		},
-	);
+		// First subscriber - set up the query
+		if (subscriberCount === 1) {
+			// Check if input is a Readable store
+			if (isReadable(queryInput)) {
+				// Subscribe to the input store for reactive updates
+				storeUnsubscribe = queryInput.subscribe(($query) => {
+					executeQuery($query);
+				});
+			} else {
+				// Static input or accessor function - resolve once
+				const queryResult = resolveQuery(queryInput);
+				executeQuery(queryResult);
+			}
+		}
+
+		// Subscribe to our writable store
+		const unsubscribe = store.subscribe(run);
+
+		return () => {
+			unsubscribe();
+			subscriberCount--;
+
+			// Last subscriber - cleanup
+			if (subscriberCount === 0) {
+				if (queryUnsubscribe) {
+					queryUnsubscribe();
+					queryUnsubscribe = null;
+				}
+				if (storeUnsubscribe) {
+					storeUnsubscribe();
+					storeUnsubscribe = null;
+				}
+				currentQuery = null;
+			}
+		};
+	};
 
 	return {
-		subscribe: store.subscribe,
-		refetch: () => refetchFn?.(),
+		subscribe,
+		refetch,
 	};
 }
 
@@ -242,8 +311,10 @@ export type LazyQueryStore<T> = Readable<QueryStoreValue<T>> & {
  *   import { client } from './client';
  *
  *   let searchTerm = '';
+ *
+ *   // Lazy query with accessor - reads searchTerm at execute() time
  *   const searchStore = lazyQuery(
- *     () => client.queries.searchUsers({ query: searchTerm })
+ *     () => client.search.users({ input: { query: searchTerm } })
  *   );
  *
  *   async function handleSearch() {
@@ -253,7 +324,7 @@ export type LazyQueryStore<T> = Readable<QueryStoreValue<T>> & {
  *
  *   // Conditional query (null when condition not met)
  *   const sessionStore = lazyQuery(
- *     () => sessionId ? client.session.get({ id: sessionId }) : null
+ *     () => sessionId ? client.session.get({ input: { id: sessionId } }) : null
  *   );
  * </script>
  *
