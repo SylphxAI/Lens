@@ -1,29 +1,78 @@
 # @sylphx/lens-solid
 
-Solid.js primitives for the Lens API framework.
+SolidJS primitives for the Lens API framework.
 
 ## Installation
 
 ```bash
-bun add @sylphx/lens-solid
+bun add @sylphx/lens-solid @sylphx/lens-client
 ```
 
 ## Usage
 
-```typescript
-import { createQuery, createMutation } from "@sylphx/lens-solid";
-import { client } from "./client";
+### Setup Client
 
-function UserProfile() {
-  const user = createQuery(() => client.user.get({ id: "1" }));
-  const createUser = createMutation(client.user.create);
+```typescript
+// lib/client.ts
+import { createClient } from "@sylphx/lens-solid";
+import { http } from "@sylphx/lens-client";
+import type { AppRouter } from "@/server/router";
+
+export const client = createClient<AppRouter>({
+  transport: http({ url: "/api/lens" }),
+});
+```
+
+### Query (in component)
+
+```tsx
+import { client } from "@/lib/client";
+import { Show } from "solid-js";
+
+function UserProfile(props: { id: string }) {
+  const { data, loading, error, refetch } = client.user.get({
+    input: { id: props.id },
+    select: { name: true, email: true },
+  });
 
   return (
-    <Show when={!user.loading} fallback={<div>Loading...</div>}>
-      <div>{user.data?.name}</div>
+    <Show when={!loading()} fallback={<div>Loading...</div>}>
+      <Show when={!error()} fallback={<div>Error: {error()?.message}</div>}>
+        <div>{data()?.name}</div>
+      </Show>
     </Show>
   );
 }
+```
+
+### Mutation (in component)
+
+```tsx
+import { client } from "@/lib/client";
+
+function CreateUser() {
+  const { mutate, loading, error, data, reset } = client.user.create({
+    onSuccess: (data) => console.log("Created:", data),
+    onError: (error) => console.error("Failed:", error),
+  });
+
+  const handleSubmit = async () => {
+    await mutate({ input: { name: "New User" } });
+  };
+
+  return (
+    <button onClick={handleSubmit} disabled={loading()}>
+      {loading() ? "Creating..." : "Create User"}
+    </button>
+  );
+}
+```
+
+### SSR / Server-side
+
+```typescript
+// Use .fetch() for promise-based calls
+const user = await client.user.get.fetch({ input: { id } });
 ```
 
 ## License
@@ -34,4 +83,4 @@ MIT
 
 Built with [@sylphx/lens-client](https://github.com/SylphxAI/Lens).
 
-✨ Powered by Sylphx
+Powered by Sylphx
